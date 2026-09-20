@@ -68,6 +68,10 @@ Rules that follow:
   over the verdict; it cannot offer one that hides the outcome.
 - Every example that shows a `Deny` also has to show what the application does on `Failure` and on
   `Abstain`, because the library will not choose for it.
+- Neither provider in the alpha abstains on its own — a hosted decision model answers an empty
+  context with a probability, and a classifier always scores. `Abstain` stays in the provider
+  outcome for providers that do; the abstention that matters in practice is the policy's, derived
+  from evidence in `PolicyEvaluation`.
 
 This forecloses `Task<bool> EvaluateAsync(...)` as a public surface, and it forecloses a provider
 that answers `false` when it did not run.

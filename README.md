@@ -56,6 +56,7 @@ tests/
   SemanticPolicy.Providers.ContractTests/  one suite every provider must pass
 docs/
   adr/                                  architecture decisions, immutable once merged
+  protocol-v0.md                        the request and result shape every provider speaks
 ```
 
 Core does not reference a provider, and a provider does not decide enforcement. That separation is

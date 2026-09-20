@@ -40,17 +40,21 @@ needs them — and returns a provider result.
 
 **Optional, and declared rather than inferred:**
 
-- a probability distribution over the options;
-- a scalar confidence;
-- a score;
+- per-option evidence of a declared kind — a calibrated probability, a provider-scaled score, a
+  logit ([0003](0003-evidence-semantics.md)). A probability over every option that sums to one is
+  a distribution; that is a property of the evidence, not a capability of its own;
 - the provider's raw output, for evaluation and debugging.
 
 A provider declares which decision types and which of these evidence kinds it supports. A policy or
 an evaluation run can ask before it relies on one. An absent capability is absent — not zero, not
 `false`, not an empty distribution.
 
-**There is no universal `confidence` with shared semantics.** Every numeric evidence carries its
-kind, and the runtime treats the kind as part of the value ([0003](0003-evidence-semantics.md)).
+**There is no universal `confidence` with shared semantics, and no provider reports one.** Every
+numeric evidence carries its kind, and the runtime treats the kind as part of the value
+([0003](0003-evidence-semantics.md)). Where a vendor computes a confidence from its own
+distribution, it is a projection of evidence the result already carries and stays in provider
+metadata. The margin between the top option and the runner-up is arithmetic the runtime performs on
+declared evidence when a policy asks for it.
 The failure and abstention states are a separate axis from the decision value
 ([0006](0006-failure-and-abstention-model.md)).
 
@@ -59,15 +63,15 @@ wrapper object, a vendor's label for a decision type — appears in the shared f
 kept in the result for evaluation and is excluded from telemetry by default
 ([0008](0008-telemetry-and-content-logging.md)).
 
-**The contract is a freeze candidate until two providers of different kinds pass it.** Before the
-public interface is frozen, the same request must go through the hosted decision model and the
-local classifier and both must return normalized results for Boolean, Choice and Score — or the
-nearest thing the provider can do for Score — with raw outputs, latency, the meaning of each
-provider's numbers and their failure behaviour examined side by side. A contract that only one kind
-of provider has passed is a wrapper around that provider.
+**The contract was frozen only after two providers of different kinds passed it.** The same
+request went through a hosted decision model and a local zero-shot classifier; both returned
+normalized results for Boolean, Choice and Score, with raw outputs, latency, the meaning of each
+provider's numbers and seventeen failure cases examined side by side. A contract that only one kind
+of provider has passed is a wrapper around that provider; this one is not.
 
 The .NET types are the first runtime, not the protocol. The request and result are documented as a
-language-neutral JSON shape alongside the types, and that shape is frozen at the same gate.
+language-neutral JSON shape in [`docs/protocol-v0.md`](../protocol-v0.md), frozen with this
+decision. A change to the shape is a new protocol version and a new record.
 
 ## Consequences
 
@@ -81,8 +85,12 @@ language-neutral JSON shape alongside the types, and that shape is frozen at the
   instead of coercing.
 - The result type is larger than a value and a number. That is the cost of not lying about what the
   number is.
-- Until the two-provider gate passes, the interface can still change, and code written against it
-  before then is written against a candidate.
+- `Core` validates a request before any provider sees it: at least two options, two to ten levels,
+  a non-empty question, a context. Providers differ in what they accept — one answers a single-level
+  score with a degenerate distribution — so an unvalidated request can yield a `Success` that means
+  nothing. An invalid request is an argument error, not a provider outcome.
+- A provider that reads text flattens a structured context to text and declares that it does. A
+  policy that depends on structure being seen as structure checks the declaration.
 
 This forecloses a `double Confidence` on the shared result, and it forecloses freezing the contract
 from a single provider's response schema.

@@ -21,6 +21,7 @@ examples/                                   three runnable demos
 tests/SemanticPolicy.Core.Tests/            unit tests
 tests/SemanticPolicy.Providers.ContractTests/  the suite every provider must pass
 docs/adr/                                   architecture decisions, immutable once merged
+docs/protocol-v0.md                         the language-neutral request/result shape
 ```
 
 Solution file: `SemanticPolicy.slnx`. Target framework `net10.0`, set once in

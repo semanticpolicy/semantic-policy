@@ -45,9 +45,13 @@ Rules that follow:
   different kind is a configuration error the runtime reports, not a silent coercion.
 - A calibrated probability appears in a decision only when the provider yields one or a calibration
   layer computed one from other evidence. The runtime never manufactures one by renaming a score.
-- A `Score` decision type — a graded answer — is distinct from `Score` evidence. Whether the graded
-  answer is represented as a continuous value, an ordinal level or a distribution over levels is
-  still open; the evidence model allows more than one representation and does not decide it here.
+- A `Score` decision type — a graded answer — is distinct from `Score` evidence. The graded answer
+  is an ordered set of levels declared in the request; the value is the top level and the evidence
+  is per level, of whatever kind the provider supports. A continuous scalar such as the expected
+  level is derived from that evidence and is not part of the result.
+- `Margin` may be computed by the runtime from any per-option evidence when a policy asks for it.
+  That is arithmetic on declared evidence, unlike renaming a score to a probability, and the result
+  is `Margin` on the provider's scale, not a probability.
 - Evaluation computes calibration metrics only on `Probability` evidence. For other kinds it reports
   threshold-free discrimination and per-provider operating points instead
   ([0005](0005-evaluation-and-threshold-ownership.md)).
