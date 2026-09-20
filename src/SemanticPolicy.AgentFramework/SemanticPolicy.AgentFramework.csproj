@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Microsoft Agent Framework integration: pre-model, pre-tool and post-tool policy checks.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
+  </ItemGroup>
+
+</Project>

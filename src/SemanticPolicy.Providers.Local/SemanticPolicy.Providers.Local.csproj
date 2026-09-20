@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>Decision provider backed by a local decision model endpoint.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
+  </ItemGroup>
+
+</Project>

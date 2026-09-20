@@ -1,0 +1,20 @@
+# Normalise line endings in the repository. Checkouts stay native, so Windows tooling is unaffected.
+* text=auto
+
+*.cs      text diff=csharp
+*.csproj  text
+*.props   text
+*.targets text
+*.slnx    text
+*.sln     text eol=crlf
+*.ps1     text
+*.sh      text eol=lf
+*.md      text
+*.json    text
+*.yml     text
+*.yaml    text
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.pdf binary

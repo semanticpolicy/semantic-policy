@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <OutputType>Exe</OutputType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
+    <ProjectReference Include="..\..\src\SemanticPolicy.Providers.Local\SemanticPolicy.Providers.Local.csproj" />
+    <ProjectReference Include="..\..\src\SemanticPolicy.Providers.TypeSafe\SemanticPolicy.Providers.TypeSafe.csproj" />
+  </ItemGroup>
+
+</Project>

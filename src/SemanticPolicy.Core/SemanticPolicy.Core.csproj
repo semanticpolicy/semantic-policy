@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The provider-agnostic core: policies, rules, verdicts, decision requests and results.</Description>
+  </PropertyGroup>
+
+</Project>
