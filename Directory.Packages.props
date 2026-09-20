@@ -5,9 +5,13 @@
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
 
-  <!-- Nothing is referenced yet. A package lands here when a task file says which project needs it
-       and why; the version is pinned here and nowhere else, so two projects cannot disagree. -->
+  <!-- A package lands here when a task file says which project needs it and why; the version is
+       pinned here and nowhere else, so two projects cannot disagree. Every package is under a licence
+       compatible with Apache-2.0 - check before adding one. -->
   <ItemGroup Label="Testing">
+    <!-- AwesomeAssertions is the Apache-2.0 fork of FluentAssertions 7. FluentAssertions 8+ is
+         commercially licensed and must not be referenced here. -->
+    <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
