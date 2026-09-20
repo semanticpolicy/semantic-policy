@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/examples/">
+    <Project Path="examples/AgentRouter/AgentRouter.csproj" />
+    <Project Path="examples/PromptInjectionGuard/PromptInjectionGuard.csproj" />
+    <Project Path="examples/ToolIntentGuard/ToolIntentGuard.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/SemanticPolicy.AgentFramework/SemanticPolicy.AgentFramework.csproj" />
+    <Project Path="src/SemanticPolicy.Core/SemanticPolicy.Core.csproj" />
+    <Project Path="src/SemanticPolicy.Providers.Local/SemanticPolicy.Providers.Local.csproj" />
+    <Project Path="src/SemanticPolicy.Providers.TypeSafe/SemanticPolicy.Providers.TypeSafe.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SemanticPolicy.Core.Tests/SemanticPolicy.Core.Tests.csproj" />
+    <Project Path="tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/SemanticPolicy.Evals/SemanticPolicy.Evals.csproj" />
+  </Folder>
+</Solution>

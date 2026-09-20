@@ -1,0 +1,54 @@
+# ==========================================
+# .NET / MSBuild
+# ==========================================
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+artifacts/
+*.nupkg
+*.snupkg
+
+# ==========================================
+# IDE
+# ==========================================
+.vs/
+.idea/
+*.user
+*.userosscache
+*.suo
+*.swp
+
+# ==========================================
+# OS
+# ==========================================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ==========================================
+# Secrets and local configuration
+# ==========================================
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.*.Local.json
+*.pfx
+*.p12
+
+# ==========================================
+# Local agent tooling
+#
+# Generated links and local working directories, none of which belong to this project's history.
+# On Windows the links are directory junctions, which git does not recognise as links: it walks
+# into them and stages the files on the other side.
+# ==========================================
+.agents/
+.agents-tmp/
+.claude/
+.scripts/
+.codeium/
