@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -76,6 +77,39 @@ public sealed record DecisionRequest(
                 EnsureLevels();
                 break;
         }
+    }
+
+    /// <summary>
+    /// The request's shape and nothing it carries. A request that lands in a log line, an exception
+    /// message or an assertion failure names its type, the kind of its context and how many criteria
+    /// sides, options or levels it has — never the question, the context or their text.
+    /// </summary>
+    public override string ToString()
+    {
+        StringBuilder text = new StringBuilder("DecisionRequest { Protocol = ")
+            .Append(Protocol)
+            .Append(", Type = ")
+            .Append(Type)
+            .Append(", Context = ")
+            .Append(Context.ValueKind);
+
+        if (Criteria is not null)
+        {
+            int sides = (Criteria.True is null ? 0 : 1) + (Criteria.False is null ? 0 : 1);
+            text.Append(", Criteria = ").Append(sides);
+        }
+
+        if (Options is not null)
+        {
+            text.Append(", Options = ").Append(Options.Count);
+        }
+
+        if (Levels is not null)
+        {
+            text.Append(", Levels = ").Append(Levels.Count);
+        }
+
+        return text.Append(" }").ToString();
     }
 
     private void EnsureLevels()

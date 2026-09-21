@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -41,4 +42,38 @@ public sealed record ProviderResult(
     /// <param name="provider">Who was asked.</param>
     public static ProviderResult Failed(DecisionType type, FailureKind kind, string message, ProviderMetadata provider) =>
         new(type, ProviderOutcome.Failure(kind, message), Value: null, Evidence: [], provider);
+
+    /// <summary>
+    /// The result's shape and its answer, nothing the provider sent back. A result that lands in a log
+    /// line names its type, what happened to the call, the answer, how much evidence came with it, who
+    /// answered and the kind of the raw response — never the raw response itself.
+    /// </summary>
+    public override string ToString()
+    {
+        StringBuilder text = new StringBuilder("ProviderResult { Protocol = ")
+            .Append(Protocol)
+            .Append(", Type = ")
+            .Append(Type)
+            .Append(", Outcome = ")
+            .Append(Outcome.Status);
+
+        if (Outcome.Kind is not null)
+        {
+            text.Append(", Kind = ").Append(Outcome.Kind);
+        }
+
+        if (Value is not null)
+        {
+            text.Append(", Value = ").Append(Value);
+        }
+
+        text.Append(", Evidence = ").Append(Evidence.Count).Append(", Provider = ").Append(Provider.Id);
+
+        if (Raw is not null)
+        {
+            text.Append(", Raw = ").Append(Raw.Value.ValueKind);
+        }
+
+        return text.Append(" }").ToString();
+    }
 }

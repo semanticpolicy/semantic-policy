@@ -49,7 +49,15 @@ public abstract record ContextPart
         return new JsonPart(name, json.Clone());
     }
 
+    /// <summary>
+    /// The part's name and the kind of its value, never the value: <c>Text</c> for a text part, the
+    /// JSON kind for a JSON part. Sealed so that no part ever prints what it holds.
+    /// </summary>
+    public sealed override string ToString() => $"ContextPart {{ Name = {Name}, Kind = {Kind} }}";
+
     internal abstract void WriteValue(Utf8JsonWriter writer);
+
+    private protected abstract string Kind { get; }
 
     private sealed record TextPart : ContextPart
     {
@@ -60,6 +68,8 @@ public abstract record ContextPart
         }
 
         public string Value { get; }
+
+        private protected override string Kind => "Text";
 
         internal override void WriteValue(Utf8JsonWriter writer) => writer.WriteStringValue(Value);
     }
@@ -73,6 +83,8 @@ public abstract record ContextPart
         }
 
         public JsonElement Value { get; }
+
+        private protected override string Kind => Value.ValueKind.ToString();
 
         internal override void WriteValue(Utf8JsonWriter writer) => Value.WriteTo(writer);
     }

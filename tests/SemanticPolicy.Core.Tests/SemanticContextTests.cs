@@ -95,5 +95,15 @@ public sealed class SemanticContextTests
         context.ToCanonicalText().Should().Be("part-a:\n{\"k\":\"v\"}");
     }
 
+    [Fact]
+    public void Rendered_Part_Names_Its_Kind_And_Never_Its_Value()
+    {
+        ContextPart text = ContextPart.Text("part-a", "text-marker");
+        ContextPart json = ContextPart.Json("part-b", Element("""{ "k": "json-marker" }"""));
+
+        text.ToString().Should().Be("ContextPart { Name = part-a, Kind = Text }");
+        json.ToString().Should().Be("ContextPart { Name = part-b, Kind = Object }");
+    }
+
     private static JsonElement Element(string json) => JsonSerializer.Deserialize<JsonElement>(json);
 }

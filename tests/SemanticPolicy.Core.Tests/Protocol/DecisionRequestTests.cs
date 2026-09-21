@@ -37,6 +37,26 @@ public sealed class DecisionRequestTests
         Score(["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"]),
     };
 
+    public static TheoryData<DecisionRequest, string> RenderedRequests => new()
+    {
+        {
+            Boolean("question-marker") with { Criteria = new BooleanCriteria("true-marker", null) },
+            "DecisionRequest { Protocol = semanticpolicy/v0, Type = Boolean, Context = String, Criteria = 1 }"
+        },
+        {
+            new DecisionRequest(
+                DecisionType.Choice,
+                "question-marker",
+                JsonSerializer.Deserialize<JsonElement>("""{ "text": "context-marker" }"""),
+                Options: new Dictionary<string, string> { ["a"] = "option-marker-a", ["b"] = "option-marker-b" }),
+            "DecisionRequest { Protocol = semanticpolicy/v0, Type = Choice, Context = Object, Options = 2 }"
+        },
+        {
+            Score(["level-marker-a", "level-marker-b"]),
+            "DecisionRequest { Protocol = semanticpolicy/v0, Type = Score, Context = String, Levels = 2 }"
+        },
+    };
+
     [Theory]
     [MemberData(nameof(InvalidRequests))]
     public void Invalid_Request_Is_Rejected_As_An_Argument_Error(string label, DecisionRequest request)
@@ -54,6 +74,15 @@ public sealed class DecisionRequestTests
         Action act = request.EnsureValid;
 
         act.Should().NotThrow();
+    }
+
+    [Theory]
+    [MemberData(nameof(RenderedRequests))]
+    public void Rendered_Request_Names_Its_Shape_And_Never_Its_Content(DecisionRequest request, string expected)
+    {
+        string text = request.ToString();
+
+        text.Should().Be(expected).And.NotContain("marker");
     }
 
     private static DecisionRequest Boolean(string question) => new(DecisionType.Boolean, question, _context);
