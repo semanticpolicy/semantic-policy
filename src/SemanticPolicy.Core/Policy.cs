@@ -19,8 +19,9 @@ namespace SemanticPolicy;
 /// </param>
 /// <param name="OnFailure">What the policy does when a provider does not decide.</param>
 /// <param name="Budget">
-/// The time the whole chain may take, or <see langword="null"/> for no budget. Expiry counts as a
-/// provider failure and goes through <paramref name="OnFailure"/>.
+/// The time the whole chain may take — greater than zero and at most <see cref="MaxBudget"/> — or
+/// <see langword="null"/> for no budget. Expiry counts as a provider failure and goes through
+/// <paramref name="OnFailure"/>.
 /// </param>
 public sealed record Policy(
     string Id,
@@ -44,6 +45,13 @@ public sealed record Policy(
 
     /// <summary>What the policy does when a provider does not decide.</summary>
     public FailureBehavior OnFailure { get; init; } = OnFailure ?? throw new ArgumentNullException(nameof(OnFailure));
+
+    /// <summary>
+    /// The longest <see cref="Budget"/> a policy may carry: <c>uint.MaxValue - 1</c> milliseconds, a little
+    /// over 49 days, which is the longest wait a timer can be armed for. A budget past it would pass the
+    /// policy and fail the evaluator at its first use, so <see cref="Validate"/> rejects it here.
+    /// </summary>
+    public static TimeSpan MaxBudget { get; } = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
 
     /// <summary>Starts a rule: <c>Policy.Rule("id").Boolean("...").WhenTrue(Verdict.Warn, Verdict.Deny)</c>.</summary>
     /// <param name="id">The rule's id, distinct within the policy it goes into.</param>
@@ -73,18 +81,18 @@ public sealed record Policy(
     /// <exception cref="PolicyConfigurationException">
     /// The policy id is empty; there are no rules, or two share an id; there are no bindings, or a
     /// provider id is empty or repeated; a Fallback has no verdict for an exhausted chain, or one that is
-    /// not Allow, Deny or Escalate, or another action carries one; the budget is not greater than zero.
-    /// A rule has an empty id or question. A Boolean ladder is empty, holds Allow or Abstain, repeats a
-    /// verdict or does not increase in severity. A Choice rule has fewer than two options, a repeated or
-    /// empty key, an empty description or an Abstain verdict. A Score rule has fewer than two or more than
-    /// ten levels, a repeated or empty level, no rungs, a rung on an unknown or repeated level, a rung of
-    /// Allow or Abstain, or rungs whose severity does not increase along the scale. A binding has an
-    /// operating point for a rule the policy does not have, or two for one rule; a Boolean rule has no
-    /// operating point on it, or one with no thresholds, or thresholds that are not exactly one per ladder
-    /// rung, or values that do not increase with severity; an operating point reads more than one evidence
-    /// kind; a threshold value is not finite, or a Probability threshold is outside [0, 1]; a gate is not a
-    /// finite number greater than zero; a Choice or Score operating point carries thresholds. The message
-    /// names the ids and the error, never a question, an option or a level.
+    /// not Allow, Deny or Escalate, or another action carries one; the budget is not greater than zero, or
+    /// is longer than <see cref="MaxBudget"/>. A rule has an empty id or question. A Boolean ladder is
+    /// empty, holds Allow or Abstain, repeats a verdict or does not increase in severity. A Choice rule has
+    /// fewer than two options, a repeated or empty key, an empty description or an Abstain verdict. A Score
+    /// rule has fewer than two or more than ten levels, a repeated or empty level, no rungs, a rung on an
+    /// unknown or repeated level, a rung of Allow or Abstain, or rungs whose severity does not increase
+    /// along the scale. A binding has an operating point for a rule the policy does not have, or two for
+    /// one rule; a Boolean rule has no operating point on it, or one with no thresholds, or thresholds that
+    /// are not exactly one per ladder rung, or values that do not increase with severity; an operating
+    /// point reads more than one evidence kind; a threshold value is not finite, or a Probability threshold
+    /// is outside [0, 1]; a gate is not a finite number greater than zero; a Choice or Score operating point
+    /// carries thresholds. The message names the ids and the error, never a question, an option or a level.
     /// </exception>
     public void Validate()
     {
@@ -107,6 +115,11 @@ public sealed record Policy(
         if (Budget is { } budget && budget <= TimeSpan.Zero)
         {
             throw Fail("the budget must be greater than zero.");
+        }
+
+        if (Budget > MaxBudget)
+        {
+            throw Fail($"the budget must be at most {MaxBudget.TotalMilliseconds:F0} milliseconds.");
         }
 
         Dictionary<string, Rule> rules = new(Rules.Count, StringComparer.Ordinal);

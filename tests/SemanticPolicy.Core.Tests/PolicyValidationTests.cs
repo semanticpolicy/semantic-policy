@@ -41,6 +41,11 @@ public sealed class PolicyValidationTests
             () => Base(Flag()).Using("p", _warnDeny).Budget(TimeSpan.FromSeconds(-1)).Build(),
             null, null
         },
+        {
+            "budget beyond the maximum",
+            () => Base(Flag()).Using("p", _warnDeny).Budget(Policy.MaxBudget + TimeSpan.FromMilliseconds(1)).Build(),
+            null, null
+        },
 
         // Rule level.
         { "empty rule id", () => Base(Flag("")).Using("p", _warnDeny).Build(), null, null },
