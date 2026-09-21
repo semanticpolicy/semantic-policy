@@ -391,8 +391,10 @@ public static class PolicyEvaluation
     private static RuleOperatingPoint? OperatingPointFor(ProviderBinding binding, string ruleId) =>
         binding.OperatingPoints.FirstOrDefault(point => string.Equals(point.RuleId, ruleId, StringComparison.Ordinal));
 
-    private static Evidence? FindEvidence(IReadOnlyList<Evidence> evidence, EvidenceKind kind) =>
-        evidence.FirstOrDefault(entry => entry is not null && entry.Kind == kind && entry.Values is not null);
+    // A stored result can deserialize with no evidence list at all; that reads as no evidence of any
+    // kind, like a null entry or a null Values does, so the breach goes through the failure behaviour.
+    private static Evidence? FindEvidence(IReadOnlyList<Evidence>? evidence, EvidenceKind kind) =>
+        evidence?.FirstOrDefault(entry => entry is not null && entry.Kind == kind && entry.Values is not null);
 
     private static string FlaggedKey(BooleanRule rule) => rule.FlaggedAnswer ? "true" : "false";
 

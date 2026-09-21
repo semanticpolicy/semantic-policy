@@ -377,6 +377,7 @@ public sealed class PolicyEvaluationTests
                 { "wrong type", probability, good with { Type = DecisionType.Choice } },
                 { "null value", probability, good with { Value = null } },
                 { "wrong value shape", probability, good with { Value = new ChoiceValue("true") } },
+                { "null evidence list", probability, good with { Evidence = null! } },
                 { "unknown option", choice, Answer(new ChoiceValue("maybe")) },
                 { "unknown level", level, Answer(new ScoreValue("nope", 1)) },
                 { "level index mismatch", level, Answer(new ScoreValue("moderate", 0)) },
@@ -396,6 +397,7 @@ public sealed class PolicyEvaluationTests
                     Answer(new BooleanValue(true), Probability(("yes", 0.9)))
                 },
                 { "no evidence under a gate", gatedChoice, Answer(new ChoiceValue("allow")) },
+                { "null evidence list under a gate", gatedChoice, Answer(new ChoiceValue("allow")) with { Evidence = null! } },
                 {
                     "single-value evidence under a gate",
                     gatedChoice,
