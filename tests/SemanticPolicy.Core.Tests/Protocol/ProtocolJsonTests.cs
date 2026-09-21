@@ -147,9 +147,14 @@ public sealed class ProtocolJsonTests
     [MemberData(nameof(RequestSamples))]
     public void Request_Serializes_To_The_Protocol_Wire_Shape(DecisionRequest request, string expected)
     {
-        string actual = JsonSerializer.Serialize(request, SemanticPolicyJson.Options);
+        string written = JsonSerializer.Serialize(request, SemanticPolicyJson.Options);
+        DecisionRequest? read = JsonSerializer.Deserialize<DecisionRequest>(expected, SemanticPolicyJson.Options);
 
-        AssertJsonEquivalent(actual, expected);
+        AssertJsonEquivalent(written, expected);
+        read.Should().NotBeNull();
+        read.Protocol.Should().Be(ProtocolVersion.V0);
+        read.Type.Should().Be(request.Type);
+        AssertJsonEquivalent(JsonSerializer.Serialize(read, SemanticPolicyJson.Options), expected);
     }
 
     [Theory]
