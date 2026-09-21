@@ -29,4 +29,74 @@ public sealed record DecisionRequest(
     /// <summary>The protocol version this request is written in.</summary>
     [JsonPropertyOrder(-1)]
     public string Protocol { get; init; } = ProtocolVersion.V0;
+
+    /// <summary>
+    /// Checks the request against the protocol before any provider sees it. An invalid request is a
+    /// mistake in the caller's process, so it is an exception here rather than a provider outcome.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// The question is empty; the context is absent or <see langword="null"/>; a Choice request has
+    /// fewer than two options; a Score request has fewer than two or more than ten levels, or a level
+    /// that is empty or repeated; or a field belongs to another decision type. The message names the
+    /// field and never quotes its value.
+    /// </exception>
+    public void EnsureValid()
+    {
+        if (string.IsNullOrWhiteSpace(Question))
+        {
+            throw new ArgumentException("The question is empty.", nameof(Question));
+        }
+
+        // An absent `context` deserializes to a default element, whose kind is Undefined.
+        if (Context.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            throw new ArgumentException("The context is absent.", nameof(Context));
+        }
+
+        if (Criteria is not null && Type != DecisionType.Boolean)
+        {
+            throw new ArgumentException("Criteria belong to a Boolean request only.", nameof(Criteria));
+        }
+
+        if (Options is not null && Type != DecisionType.Choice)
+        {
+            throw new ArgumentException("Options belong to a Choice request only.", nameof(Options));
+        }
+
+        if (Levels is not null && Type != DecisionType.Score)
+        {
+            throw new ArgumentException("Levels belong to a Score request only.", nameof(Levels));
+        }
+
+        switch (Type)
+        {
+            case DecisionType.Choice when Options is null || Options.Count < 2:
+                throw new ArgumentException("A Choice request needs at least two options.", nameof(Options));
+            case DecisionType.Score:
+                EnsureLevels();
+                break;
+        }
+    }
+
+    private void EnsureLevels()
+    {
+        if (Levels is null || Levels.Count is < 2 or > 10)
+        {
+            throw new ArgumentException("A Score request needs two to ten levels.", nameof(Levels));
+        }
+
+        HashSet<string> seen = new(StringComparer.Ordinal);
+        foreach (string level in Levels)
+        {
+            if (string.IsNullOrWhiteSpace(level))
+            {
+                throw new ArgumentException("A level is empty.", nameof(Levels));
+            }
+
+            if (!seen.Add(level))
+            {
+                throw new ArgumentException("A level is repeated.", nameof(Levels));
+            }
+        }
+    }
 }
