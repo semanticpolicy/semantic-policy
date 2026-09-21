@@ -70,7 +70,7 @@ public sealed class PolicyBuilder
     /// <summary>
     /// The time the whole chain may take. Expiry is a provider failure and goes through the failure behaviour.
     /// </summary>
-    /// <param name="budget">Greater than zero.</param>
+    /// <param name="budget">Greater than zero and at most <see cref="Policy.MaxBudget"/>.</param>
     public PolicyBuilder Budget(TimeSpan budget)
     {
         _budget = budget;
