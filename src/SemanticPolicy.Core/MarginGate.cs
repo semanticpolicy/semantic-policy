@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy;
@@ -9,5 +10,5 @@ namespace SemanticPolicy;
 /// sees it where a top probability does not.
 /// </summary>
 /// <param name="Kind">The evidence the margin is computed on; the operating point's one kind.</param>
-/// <param name="Below">The margin under which the attempt does not decide; greater than zero.</param>
-public sealed record MarginGate(EvidenceKind Kind, double Below);
+/// <param name="Below">The margin under which the attempt does not decide; finite and greater than zero.</param>
+public sealed record MarginGate([property: JsonRequired] EvidenceKind Kind, [property: JsonRequired] double Below);

@@ -97,6 +97,44 @@ public sealed class PolicyJsonTests
             label);
     }
 
+    // Every value-typed member a hand-written policy can leave out. Each has a CLR default that is a
+    // legal value -- shadow, false, allow, probability, zero -- so an absent one would otherwise load
+    // as a different policy and pass Validate().
+    public static TheoryData<string> RequiredMembers => new()
+    {
+        "mode",
+        "rules/0/flaggedAnswer",
+        "rules/1/options/0/verdict",
+        "rules/2/rungs/0/verdict",
+        "onFailure/action",
+        "bindings/0/operatingPoints/0/thresholds/0/verdict",
+        "bindings/0/operatingPoints/0/thresholds/0/kind",
+        "bindings/0/operatingPoints/0/thresholds/0/atOrAbove",
+        "bindings/0/operatingPoints/0/gate/kind",
+        "bindings/0/operatingPoints/0/gate/below",
+    };
+
+    [Theory]
+    [MemberData(nameof(RequiredMembers))]
+    public void A_Hand_Written_Policy_Missing_A_Value_Typed_Member_Is_Refused(string path)
+    {
+        JsonNode document = JsonNode.Parse(_handWritten)!;
+        string[] segments = path.Split('/');
+        JsonNode owner = document;
+        foreach (string segment in segments[..^1])
+        {
+            owner = int.TryParse(segment, out int index) ? owner[index]! : owner[segment]!;
+        }
+
+        string member = segments[^1];
+        owner.AsObject().Remove(member).Should().BeTrue("the fixture holds the member the row removes");
+        string json = document.ToJsonString();
+
+        Action act = () => JsonSerializer.Deserialize<Policy>(json, SemanticPolicyJson.Options);
+
+        act.Should().Throw<JsonException>(path).WithMessage($"*{member}*");
+    }
+
     private static Policy Sample()
     {
         BooleanRule injection = Policy.Rule("prompt-injection")

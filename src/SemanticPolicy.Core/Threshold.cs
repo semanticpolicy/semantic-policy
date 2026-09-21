@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy;
@@ -10,5 +11,10 @@ namespace SemanticPolicy;
 /// </summary>
 /// <param name="Verdict">The ladder rung this threshold reaches.</param>
 /// <param name="Kind">The evidence the value is compared against; one kind per operating point.</param>
-/// <param name="AtOrAbove">The value, inclusive; in [0, 1] for <see cref="EvidenceKind.Probability"/>.</param>
-public sealed record Threshold(Verdict Verdict, EvidenceKind Kind, double AtOrAbove);
+/// <param name="AtOrAbove">
+/// The value, inclusive: a finite number, in [0, 1] for <see cref="EvidenceKind.Probability"/>.
+/// </param>
+public sealed record Threshold(
+    [property: JsonRequired] Verdict Verdict,
+    [property: JsonRequired] EvidenceKind Kind,
+    [property: JsonRequired] double AtOrAbove);

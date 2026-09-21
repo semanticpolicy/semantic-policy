@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy;
@@ -23,7 +24,7 @@ namespace SemanticPolicy;
 /// </param>
 public sealed record Policy(
     string Id,
-    PolicyMode Mode,
+    [property: JsonRequired] PolicyMode Mode,
     IReadOnlyList<Rule> Rules,
     IReadOnlyList<ProviderBinding> Bindings,
     FailureBehavior OnFailure,
@@ -81,9 +82,9 @@ public sealed record Policy(
     /// operating point for a rule the policy does not have, or two for one rule; a Boolean rule has no
     /// operating point on it, or one with no thresholds, or thresholds that are not exactly one per ladder
     /// rung, or values that do not increase with severity; an operating point reads more than one evidence
-    /// kind; a Probability threshold is outside [0, 1]; a gate is not greater than zero; a Choice or Score
-    /// operating point carries thresholds. The message names the ids and the error, never a question, an
-    /// option or a level.
+    /// kind; a threshold value is not finite, or a Probability threshold is outside [0, 1]; a gate is not a
+    /// finite number greater than zero; a Choice or Score operating point carries thresholds. The message
+    /// names the ids and the error, never a question, an option or a level.
     /// </exception>
     public void Validate()
     {
@@ -366,10 +367,12 @@ public sealed record Policy(
     {
         string ruleId = point.RuleId;
 
-        // Negated comparisons throughout, so that NaN fails the check instead of slipping past it.
-        if (point.Gate is { } gate && !(gate.Below > 0))
+        // Every number is checked for being finite before it is compared. NaN fails every comparison and an
+        // infinity passes most of them, so without this a single-rung ladder or a Score threshold could hold
+        // a value no evidence ever reaches, or a gate that sends every attempt onward.
+        if (point.Gate is { } gate && !(double.IsFinite(gate.Below) && gate.Below > 0))
         {
-            throw Fail("the margin gate must be greater than zero.", ruleId, providerId);
+            throw Fail("the margin gate must be a finite number greater than zero.", ruleId, providerId);
         }
 
         if (rule is not BooleanRule boolean)
@@ -423,6 +426,11 @@ public sealed record Policy(
             if (threshold.Kind != kind)
             {
                 throw Fail(_oneKind, ruleId, providerId);
+            }
+
+            if (!double.IsFinite(threshold.AtOrAbove))
+            {
+                throw Fail("a threshold value must be a finite number.", ruleId, providerId);
             }
 
             if (threshold.Kind == EvidenceKind.Probability && !(threshold.AtOrAbove is >= 0 and <= 1))

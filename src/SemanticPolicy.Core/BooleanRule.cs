@@ -20,7 +20,7 @@ namespace SemanticPolicy;
 public sealed record BooleanRule(
     string Id,
     string Question,
-    bool FlaggedAnswer,
+    [property: JsonRequired] bool FlaggedAnswer,
     IReadOnlyList<Verdict> Ladder,
     BooleanCriteria? Criteria = null) : Rule(Id, Question)
 {

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SemanticPolicy;
 
 /// <summary>
@@ -10,7 +12,7 @@ namespace SemanticPolicy;
 /// For <see cref="FailureAction.Fallback"/>, the verdict when no binding is left: Allow, Deny or Escalate.
 /// Absent for every other action.
 /// </param>
-public sealed record FailureBehavior(FailureAction Action, Verdict? Then = null)
+public sealed record FailureBehavior([property: JsonRequired] FailureAction Action, Verdict? Then = null)
 {
     /// <summary>Proceed as if the check had passed; the failure is recorded.</summary>
     public static FailureBehavior Allow { get; } = new(FailureAction.Allow);

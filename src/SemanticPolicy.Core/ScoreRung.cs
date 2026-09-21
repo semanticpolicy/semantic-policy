@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SemanticPolicy;
 
 /// <summary>
@@ -5,7 +7,7 @@ namespace SemanticPolicy;
 /// </summary>
 /// <param name="Level">A level of the rule, from which the verdict applies.</param>
 /// <param name="Verdict">Warn, Escalate or Deny.</param>
-public sealed record ScoreRung(string Level, Verdict Verdict)
+public sealed record ScoreRung(string Level, [property: JsonRequired] Verdict Verdict)
 {
     /// <summary>A level of the rule, from which the verdict applies.</summary>
     public string Level { get; init; } = Level ?? throw new ArgumentNullException(nameof(Level));

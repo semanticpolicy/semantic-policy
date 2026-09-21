@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace SemanticPolicy;
 
 /// <summary>
@@ -7,7 +9,7 @@ namespace SemanticPolicy;
 /// <param name="Key">The option's key on the wire, unique within the rule.</param>
 /// <param name="Description">What the option means, as the provider reads it.</param>
 /// <param name="Verdict">The verdict when the provider picks this option: Allow, Warn, Escalate or Deny.</param>
-public sealed record ChoiceOption(string Key, string Description, Verdict Verdict)
+public sealed record ChoiceOption(string Key, string Description, [property: JsonRequired] Verdict Verdict)
 {
     /// <summary>The option's key on the wire, unique within the rule.</summary>
     public string Key { get; init; } = Key ?? throw new ArgumentNullException(nameof(Key));
