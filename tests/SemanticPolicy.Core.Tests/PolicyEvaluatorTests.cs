@@ -95,6 +95,21 @@ public sealed class PolicyEvaluatorTests
         deadline.IsCancellationRequested.Should().BeFalse();
     }
 
+    // Policy.MaxBudget is the cap Validate() enforces; this pins it to the longest span the evaluator can
+    // actually arm, so the two cannot drift apart without a failure here.
+    [Fact]
+    public async Task Budget_At_The_Maximum_Is_Accepted_And_Armed()
+    {
+        ScriptedProvider provider = new ScriptedProvider().Returns(Unflagged());
+        PolicyEvaluator evaluator = Evaluator(("primary", provider));
+        Policy policy = Define(FailureBehavior.Deny, ["primary"], [Flagged()], budget: Policy.MaxBudget);
+
+        PolicyVerdict verdict = await evaluator.EvaluateAsync(policy, _context, TestContext.Current.CancellationToken);
+
+        verdict.Evaluated.Should().Be(Verdict.Allow);
+        provider.Calls.Should().ContainSingle().Which.Token.IsCancellationRequested.Should().BeFalse();
+    }
+
     public static TheoryData<string> Misconfigurations => new()
     {
         "unknown provider",
