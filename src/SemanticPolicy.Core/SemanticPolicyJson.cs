@@ -24,6 +24,10 @@ public static class SemanticPolicyJson
 
         // The wire carries enum names, never their numbers, so an integer is refused on the way in.
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false));
+
+        // A policy a person wrote by hand rarely puts a rule's "type" first; without this the discriminator
+        // would have to be the first property of its object.
+        options.AllowOutOfOrderMetadataProperties = true;
         options.MakeReadOnly();
         return options;
     }
