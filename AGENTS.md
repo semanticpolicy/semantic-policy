@@ -40,6 +40,7 @@ Run the narrowest command that reads what you changed. All three must pass befor
 | anything under `src/`, `tools/`, `examples/`, `tests/` | `dotnet build` |
 | `src/SemanticPolicy.Core/**` | `dotnet test tests/SemanticPolicy.Core.Tests/SemanticPolicy.Core.Tests.csproj` |
 | `src/SemanticPolicy.Providers.**` | `dotnet test tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj` |
+| `tools/SemanticPolicy.Evals/**` | `dotnet test tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj` |
 | any `.cs` — whitespace and `.editorconfig` style only | `dotnet format --verify-no-changes` |
 
 CI runs the same commands on a pull request into `main`.
