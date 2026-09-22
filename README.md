@@ -6,10 +6,10 @@ Guard prompts, tool calls and tool results with a decision model — hosted or l
 your application to one provider.
 
 > **Status: pre-alpha.** `SemanticPolicy.Core` — the policy model, the evaluation engine, telemetry
-> and DI registration — is implemented and tested. The provider packages, the Agent Framework
-> integration, the evaluation CLI and the examples are still skeletons, so nothing here runs against
-> a real decision model yet. There is no released package, and every part of the API can still
-> change. Watch the repository rather than depending on it.
+> and DI registration — is implemented and tested, and so is the TypeSafe Jev provider. The local
+> provider, the Agent Framework integration, the evaluation CLI and the examples are still
+> skeletons. There is no released package, and every part of the API can still change. Watch the
+> repository rather than depending on it.
 
 ## The idea
 
@@ -51,6 +51,36 @@ A decision model is probabilistic. A prompt-injection rule raises the cost of an
 make one impossible, and nothing here should be the only thing between an untrusted input and a
 privileged action. Use it as one layer of defence in depth, behind real authorization, real input
 handling and least-privilege tools. `SECURITY.md` and `docs/THREAT_MODEL.md` say more.
+
+## Providers
+
+`SemanticPolicy.Providers.TypeSafe` answers a rule's question with the TypeSafe Jev decision model,
+either at the vendor's own endpoint or through OpenRouter's gateway. Register it under the name a
+policy's bindings refer to, once per endpoint you want to reach:
+
+```csharp
+services.AddSemanticPolicy()
+    .AddTypeSafeJev("jev", o => o.Route = TypeSafeJevRoute.TypeSafe)
+    .AddTypeSafeJev("jev-openrouter", o => o.Route = TypeSafeJevRoute.OpenRouter)
+    .AddPolicy(policy);
+```
+
+There is no default route, because choosing one would choose where your content is sent. The key is
+read when the evaluator is first resolved, from the environment variable the route names —
+`TYPESAFE_API_KEY` for the vendor's endpoint, `OPENROUTER_API_KEY` for the gateway — or from
+`o.ApiKeyVariable` to read another variable, or from `o.ApiKey` to supply it yourself.
+
+Each preset pins an exact model version, `jev-1.13.0` direct and `typesafe/jev-1.13` through the
+gateway, which `o.Model` overrides and which never moves on its own, because a threshold is measured
+against one model. A `TypeSafeJevRoute` you construct yourself reaches any other gateway or proxy that
+speaks the same wire. Every call goes through the named `HttpClient` that `IHttpClientFactory` creates
+for `"jev"`, so `services.AddHttpClient("jev")` is where a proxy, a resilience handler or a timeout of
+your own belongs. The registration removes that client's loggers, so the factory logs nothing about
+this traffic until you add logging back with `AddDefaultLogger()`.
+
+A decision model is probabilistic. The provider reports what the model estimated and decides nothing:
+a denied verdict is not proof of an attack, an allowed verdict is not proof of safety, and both are
+inputs to a decision your application still owns.
 
 ## Layout
 
