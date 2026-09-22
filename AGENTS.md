@@ -22,6 +22,7 @@ tests/SemanticPolicy.Core.Tests/            unit tests
 tests/SemanticPolicy.Providers.ContractTests/  the suite every provider must pass
 docs/adr/                                   architecture decisions, immutable once merged
 docs/protocol-v0.md                         the language-neutral request/result shape
+docs/THREAT_MODEL.md                        the threats the library is designed around
 ```
 
 Solution file: `SemanticPolicy.slnx`. Target framework `net10.0`, set once in
@@ -49,8 +50,8 @@ and a design change needs an ADR in `docs/adr/` before it needs an implementatio
 - **`Core` references no provider.** Not a type, not a package, not a `using`. A provider is reached
   through an abstraction `Core` owns.
 - **A provider decides; it does not enforce.** It answers the question it was given and returns a
-  result with its confidence. Thresholds, verdict mapping, shadow versus enforce mode and what
-  happens on a `Deny` belong to the policy.
+  result whose evidence carries its kind. Thresholds, verdict mapping, shadow versus enforce mode
+  and what happens on a `Deny` belong to the policy.
 - **A provider is replaceable.** Everything a provider must guarantee is expressed in the shared
   contract test suite; a new provider is finished when that suite passes against it.
 - **A verdict is probabilistic and says so.** No API may present a decision as certainty, and no
@@ -59,9 +60,9 @@ and a design change needs an ADR in `docs/adr/` before it needs an implementatio
 ## Logging and privacy
 
 Nothing logs content by default: not prompts, not tool arguments, not tool results, not anything a
-user typed. Telemetry carries identifiers, latency, confidence, verdict, mode and error — never the
-text that was judged. Debug content logging is opt-in, off by default, and documented where it is
-introduced.
+user typed. Telemetry carries identifiers, latency, evidence kind and value, verdict, mode and
+error — never the text that was judged. Debug content logging is opt-in, off by default, and
+documented where it is introduced.
 
 The same rule applies to tests, fixtures and example data: no real customer content, no real API
 keys, no live endpoints.

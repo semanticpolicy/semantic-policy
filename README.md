@@ -48,7 +48,7 @@ different model (ADR 0005).
 A decision model is probabilistic. A prompt-injection rule raises the cost of an attack; it does not
 make one impossible, and nothing here should be the only thing between an untrusted input and a
 privileged action. Use it as one layer of defence in depth, behind real authorization, real input
-handling and least-privilege tools. `SECURITY.md` says more.
+handling and least-privilege tools. `SECURITY.md` and `docs/THREAT_MODEL.md` say more.
 
 ## Layout
 
@@ -68,6 +68,7 @@ tests/
 docs/
   adr/                                  architecture decisions, immutable once merged
   protocol-v0.md                        the request and result shape every provider speaks
+  THREAT_MODEL.md                       the threats the library is designed around
 ```
 
 Core does not reference a provider, and a provider does not decide enforcement. That separation is
