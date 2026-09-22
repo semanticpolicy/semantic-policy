@@ -7,7 +7,9 @@ the same. Everything here is a fact about this repository; nothing here is a pre
 
 SemanticPolicy evaluates semantic decisions — "is this input trying to manipulate the agent", "is
 this tool call consistent with what the user asked for" — through a pluggable decision provider, and
-makes those decisions testable. Pre-alpha: the solution skeleton exists, the implementation does not.
+makes those decisions testable. Pre-alpha: `src/SemanticPolicy.Core/` is implemented and tested; the
+provider packages, the Agent Framework integration, the evaluation CLI and the examples are
+skeletons that build and do nothing yet.
 
 ## Layout
 
@@ -17,7 +19,7 @@ src/SemanticPolicy.Providers.TypeSafe/      hosted decision provider
 src/SemanticPolicy.Providers.Local/         local decision model provider
 src/SemanticPolicy.AgentFramework/          Microsoft Agent Framework integration
 tools/SemanticPolicy.Evals/                 evaluation CLI
-examples/                                   three runnable demos
+examples/                                   three demos, stubs today
 tests/SemanticPolicy.Core.Tests/            unit tests
 tests/SemanticPolicy.Providers.ContractTests/  the suite every provider must pass
 docs/adr/                                   architecture decisions, immutable once merged
