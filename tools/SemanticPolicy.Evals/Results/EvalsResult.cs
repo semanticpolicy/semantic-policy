@@ -19,6 +19,8 @@ namespace SemanticPolicy.Evals.Results;
 /// <param name="DecisionType">The kind of question that rule asks, which says which sections are filled.</param>
 /// <param name="Rows">How the rows were arrived at, from the dataset down to what was scored.</param>
 /// <param name="Report">The measurements, or <see langword="null"/> for a verb that takes none.</param>
+/// <param name="Sweep">What <c>sweep</c> found for the swept binding; <see langword="null"/> from any other verb.</param>
+/// <param name="Compare">What <c>compare</c> found for each binding; <see langword="null"/> from any other verb.</param>
 public sealed record EvalsResult(
     string Format,
     string Verb,
@@ -29,7 +31,9 @@ public sealed record EvalsResult(
     string RuleId,
     DecisionType DecisionType,
     RowSelection Rows,
-    ReportSection? Report)
+    ReportSection? Report,
+    SweepSection? Sweep = null,
+    CompareSection? Compare = null)
 {
     /// <summary>The format of a result file this tool writes.</summary>
     public const string FormatV0 = "semanticpolicy/evals-result/v0";

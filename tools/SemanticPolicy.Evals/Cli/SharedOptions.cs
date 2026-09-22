@@ -90,6 +90,27 @@ public static class SharedOptions
         Description = "Read the recording even though the dataset's digest differs from the recorded one.",
     };
 
+    /// <summary><c>--warn &lt;constraint&gt;</c>: repeatable; what the warn threshold must achieve.</summary>
+    public static Option<string[]> Warn { get; } = RungConstraintOption("--warn", "warn");
+
+    /// <summary><c>--escalate &lt;constraint&gt;</c>: repeatable; what the escalate threshold must achieve.</summary>
+    public static Option<string[]> Escalate { get; } = RungConstraintOption("--escalate", "escalate");
+
+    /// <summary><c>--deny &lt;constraint&gt;</c>: repeatable; what the deny threshold must achieve.</summary>
+    public static Option<string[]> Deny { get; } = RungConstraintOption("--deny", "deny");
+
+    /// <summary><c>--gate &lt;constraint&gt;</c>: repeatable; what the margin gate must achieve.</summary>
+    public static Option<string[]> Gate { get; } = new("--gate")
+    {
+        Description = "A constraint on the margin gate: max-abstain=<v> or min-accuracy=<v>, v from 0 to 1; "
+            + "repeatable, and the first one given decides which end of the feasible gates is recommended.",
+        HelpName = "constraint",
+        AllowMultipleArgumentsPerToken = true,
+    };
+
+    /// <summary>The constraint options <c>sweep</c> and <c>compare</c> share, in the order help lists them.</summary>
+    public static IReadOnlyList<Option> ConstraintOptions { get; } = [Warn, Escalate, Deny, Gate];
+
     /// <summary>The options that select the inputs, in the order help lists them.</summary>
     public static IReadOnlyList<Option> InputOptions { get; } =
     [
@@ -102,4 +123,12 @@ public static class SharedOptions
         Where,
         Rule,
     ];
+
+    private static Option<string[]> RungConstraintOption(string name, string rung) => new(name)
+    {
+        Description = $"A constraint on the {rung} threshold: min-recall=<v>, max-fpr=<v> or min-precision=<v>, v from "
+            + "0 to 1; repeatable, and the first one given decides which end of the feasible thresholds is recommended.",
+        HelpName = "constraint",
+        AllowMultipleArgumentsPerToken = true,
+    };
 }
