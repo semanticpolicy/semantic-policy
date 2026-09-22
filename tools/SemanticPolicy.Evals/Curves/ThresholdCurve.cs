@@ -103,8 +103,10 @@ public static class ThresholdCurve
             }
 
             // The kind the operating point declares and no other: a result may carry several, and a number
-            // on one scale is not a candidate cut on another.
-            Evidence? entry = result.Evidence.FirstOrDefault(candidate => candidate.Kind == kind);
+            // on one scale is not a candidate cut on another. A stored result can come back with no list,
+            // a null entry or a null Values; each reads as no evidence, as it does in the step function.
+            Evidence? entry = result.Evidence?.FirstOrDefault(candidate =>
+                candidate is not null && candidate.Kind == kind && candidate.Values is not null);
             if (entry is not null
                 && EvidenceMath.WithBooleanComplement(entry).Values.TryGetValue(flagged, out double value))
             {

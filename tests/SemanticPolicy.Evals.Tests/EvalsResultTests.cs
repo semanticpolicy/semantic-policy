@@ -63,8 +63,8 @@ public sealed class EvalsResultTests
             .Equal("allow", "deny");
         report.GetProperty("outcomes").GetProperty("failedByKind").GetProperty("timeout").GetInt32().Should().Be(1);
 
-        // A section a run did not produce is absent, not null: task-05 adds sections and a reader tells them
-        // apart by presence.
+        // A section a run did not produce is absent, not null: later verbs add sections, and a reader tells
+        // them apart by presence.
         report.TryGetProperty("classes", out _).Should().BeFalse();
         root.GetProperty("rows").GetProperty("splitSource").GetString().Should().Be("metadata");
         json.Should().Contain("\n  \"verb\": \"report\"").And.NotContain("\r");

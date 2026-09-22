@@ -161,6 +161,40 @@ public sealed class ThresholdCurveTests
         });
     }
 
+    [Fact]
+    public async Task Curve_Reads_A_Result_With_No_Usable_Evidence_As_No_Candidate_And_Counts_It_Failed()
+    {
+        using TempFile file = TempFile.Write("");
+        Policy policy = Ladder(EvidenceKind.Score, 0.6, 0.9);
+
+        // Three stored successes carry nothing to cut on: no list at all, a null entry, and an entry with no
+        // values. Replay reads each as no evidence and hands the row to the failure behaviour, so the sweep
+        // has to read them the same way rather than stop on them.
+        ProviderResult answered = Answer(EvidenceKind.Score, 0.5);
+        ProviderResult[] unusable =
+        [
+            answered with { Evidence = null! },
+            answered with { Evidence = [null!] },
+            answered with { Evidence = [new Evidence(EvidenceKind.Score, null!)] },
+        ];
+        (ReplaySet set, IReadOnlyList<DatasetRow> rows) = await LoadAsync(
+            file,
+            policy,
+            [
+                .. _values.Select((value, index) => (
+                    _labels[index],
+                    new[] { index < unusable.Length ? unusable[index] : Answer(EvidenceKind.Score, value) })),
+            ]);
+
+        IReadOnlyList<RungCurve> curves = ThresholdCurve.Compute(set, policy, 0, rows);
+
+        curves.Should().AllSatisfy(curve =>
+        {
+            curve.Points.Select(point => point.Threshold).Should().Equal(_values[unusable.Length..]);
+            curve.Points.Should().AllSatisfy(point => point.Outcomes.Failed.Should().Be(unusable.Length));
+        });
+    }
+
     private static Policy Ladder(EvidenceKind kind, double warn, double deny, double? gate = null)
     {
         BooleanRule rule = Samples.Flagged();
