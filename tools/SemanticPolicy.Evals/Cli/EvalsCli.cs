@@ -7,11 +7,16 @@ public static class EvalsCli
 {
     /// <summary>Builds the root command with every verb attached.</summary>
     /// <param name="io">Where output goes; the console when omitted.</param>
-    public static RootCommand Build(CliIo? io = null)
+    /// <param name="configureProviders">
+    /// Registers the providers <c>run</c> may call, as an application would on its own builder; none when omitted.
+    /// </param>
+    public static RootCommand Build(CliIo? io = null, Action<ISemanticPolicyBuilder>? configureProviders = null)
     {
         CliIo writers = io ?? CliIo.ForConsole();
         RootCommand root = new("Evaluates a SemanticPolicy policy against a labelled JSONL dataset.");
         root.SetAction(_ => WithoutVerb(root, writers));
+        root.Subcommands.Add(RunCommand.Create(writers, configureProviders));
+        root.Subcommands.Add(ReportCommand.Create(writers));
         return root;
     }
 
@@ -33,6 +38,24 @@ public static class EvalsCli
         catch (EvalsException failure)
         {
             io.Error.WriteLine(failure.Message);
+            return failure.ExitCode;
+        }
+    }
+
+    /// <summary>The asynchronous form of <see cref="Guard"/>, for a verb that awaits.</summary>
+    /// <param name="io">Where the message goes.</param>
+    /// <param name="body">The verb's work, returning its exit code.</param>
+    public static async Task<int> GuardAsync(CliIo io, Func<Task<int>> body)
+    {
+        ArgumentNullException.ThrowIfNull(io);
+        ArgumentNullException.ThrowIfNull(body);
+        try
+        {
+            return await body().ConfigureAwait(false);
+        }
+        catch (EvalsException failure)
+        {
+            await io.Error.WriteLineAsync(failure.Message).ConfigureAwait(false);
             return failure.ExitCode;
         }
     }

@@ -10,7 +10,8 @@
        compatible with Apache-2.0 - check before adding one. -->
   <ItemGroup Label="Runtime">
     <!-- The abstractions are the one package Core references: IServiceCollection and TryAdd for
-         AddSemanticPolicy(). The container itself is a test-only reference, below. Both are MIT. -->
+         AddSemanticPolicy(). The container itself is not a Core dependency; its pin is in its own group,
+         below. Both are MIT. -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
   </ItemGroup>
 
@@ -20,11 +21,17 @@
     <PackageVersion Include="System.CommandLine" Version="2.0.12" />
   </ItemGroup>
 
+  <ItemGroup Label="Container">
+    <!-- The DI container (MIT), for the two projects that build one over AddSemanticPolicy():
+         tools/SemanticPolicy.Evals resolves the providers its run verb calls through it, and
+         tests/SemanticPolicy.Core.Tests tests the registration itself. Nothing under src/ references it. -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
+  </ItemGroup>
+
   <ItemGroup Label="Testing">
     <!-- AwesomeAssertions is the Apache-2.0 fork of FluentAssertions 7. FluentAssertions 8+ is
          commercially licensed and must not be referenced here. -->
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
