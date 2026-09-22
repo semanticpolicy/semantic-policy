@@ -40,8 +40,18 @@ public sealed class TypeSafeJevOptions
     /// </summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(10);
 
-    /// <summary>The provider's id, the name a policy binds to. <c>typesafe-jev</c> by default.</summary>
-    public string Id { get; set; } = "typesafe-jev";
+    /// <summary>
+    /// The id a provider built straight from these options reports, when nothing sets <see cref="Id"/>.
+    /// A registration defaults the id to its own name instead, so the two never silently disagree.
+    /// </summary>
+    public const string DefaultId = "typesafe-jev";
+
+    /// <summary>
+    /// The id the provider reports on every verdict, as <c>ProviderMetadata.Id</c>. It is not what a
+    /// policy binds to — a binding names the registration — so <c>AddTypeSafeJev</c> defaults this to the
+    /// registration's name, and only a provider built directly falls back to <see cref="DefaultId"/>.
+    /// </summary>
+    public string Id { get; set; } = DefaultId;
 
     /// <summary>
     /// Checks the options before a provider is built from them. A violation is a mistake in the host's

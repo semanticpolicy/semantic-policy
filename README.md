@@ -65,6 +65,10 @@ services.AddSemanticPolicy()
     .AddPolicy(policy);
 ```
 
+That name does three jobs: a policy's bindings refer to it, the factory creates the `HttpClient` under
+it, and every verdict reports it as the provider's id, so the two registrations above stay apart in
+telemetry. Only the last of the three moves, if you set `o.Id`.
+
 There is no default route, because choosing one would choose where your content is sent. The key is
 read when the evaluator is first resolved, from the environment variable the route names —
 `TYPESAFE_API_KEY` for the vendor's endpoint, `OPENROUTER_API_KEY` for the gateway — or from
