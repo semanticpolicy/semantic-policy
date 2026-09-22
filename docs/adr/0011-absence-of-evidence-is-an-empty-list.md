@@ -52,8 +52,6 @@ changes nothing else.
 - A provider without numeric evidence still answers Boolean, Choice and Score questions by value. A
   Boolean rule always thresholds evidence, so it cannot be bound to such a provider; a Choice or
   Score rule reads evidence only through its margin gate and can be bound to one without a gate.
-- A reader of 0003 has to know this record exists. The directory has no index, so the pairing is
-  carried by this record's title and by the protocol document, which was already right.
 
 ## Alternatives considered
 
