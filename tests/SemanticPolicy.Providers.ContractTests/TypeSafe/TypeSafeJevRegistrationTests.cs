@@ -83,6 +83,26 @@ public sealed class TypeSafeJevRegistrationTests
         gateway.RequestCount.Should().Be(1);
     }
 
+    // The registration's name, the named client's name and the id on the verdict are one name unless
+    // configure sets another. Two registrations that both kept the type's own default would report the
+    // same provider on every verdict, and nothing downstream could tell which route answered.
+    [Fact]
+    public async Task Registration_Name_Is_The_Provider_Id_By_Default()
+    {
+        ScriptedHttpMessageHandler handler = Answering(0.91);
+        ServiceCollection services = new();
+        services.AddSemanticPolicy()
+            .AddTypeSafeJev("jev-direct", Preset())
+            .AddPolicy(Define("p", "jev-direct"));
+        services.AddHttpClient("jev-direct").ConfigurePrimaryHttpMessageHandler(() => handler);
+
+        await using ServiceProvider container = services.BuildServiceProvider();
+        PolicyVerdict verdict = await container.GetRequiredService<IPolicyEvaluator>()
+            .EvaluateAsync("p", _context, TestContext.Current.CancellationToken);
+
+        ProviderIdOf(verdict).Should().Be("jev-direct");
+    }
+
     [Fact]
     public void Missing_Key_Variable_Throws_PolicyConfigurationException_Naming_The_Variable_At_First_Resolve()
     {
