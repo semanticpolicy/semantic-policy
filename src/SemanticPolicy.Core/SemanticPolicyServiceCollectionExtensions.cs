@@ -32,11 +32,19 @@ public static class SemanticPolicyServiceCollectionExtensions
     {
         public IServiceCollection Services { get; } = services;
 
+        // The container disposes what it built and nothing it was handed, and it tracks only the object a
+        // registration returns. An adapter the factory builds is therefore registered as a service of its
+        // own — keyed, under a key nothing outside this call holds, so the registration can find its
+        // adapter and nothing else can — and the wrapper is built over that service. An instance passed
+        // in stays the caller's to dispose, the same as any instance given to AddSingleton.
         public ISemanticPolicyBuilder AddProvider(string name, Func<IServiceProvider, IDecisionProvider> factory)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(name);
             ArgumentNullException.ThrowIfNull(factory);
-            Services.AddSingleton(container => new ProviderRegistration(name, factory(container)));
+            object key = new();
+            Services.AddKeyedSingleton<IDecisionProvider>(key, (container, _) => factory(container));
+            Services.AddSingleton(container =>
+                new ProviderRegistration(name, container.GetRequiredKeyedService<IDecisionProvider>(key)));
             return this;
         }
 

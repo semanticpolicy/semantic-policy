@@ -95,6 +95,32 @@ public sealed class PolicyEvaluatorTelemetryTests
         aOnSecond.Duration.Should().BeLessThan(TimeSpan.FromSeconds(5));
     }
 
+    // A provider that throws ends the evaluation, not the trace: the sibling that had already answered
+    // reaches the listener stopped, the same as the attempt that failed, and the exception is the
+    // provider's own.
+    [Fact]
+    public async Task A_Faulted_Attempt_Leaves_Its_Answered_Siblings_Spans_Stopped()
+    {
+        InvalidOperationException fault = new("scripted fault");
+        ScriptedProvider provider = new ScriptedProvider("one").Returns(request =>
+            request.Question == "question-a" ? Answer(0.1) : throw fault);
+        PolicyEvaluator evaluator = Evaluator(("first", provider), ("second", provider));
+        Policy policy = Cascade("tel-faulted-round");
+        using ActivityRecorder recorder = new();
+
+        Func<Task> evaluate = () => evaluator.EvaluateAsync(policy, _context, TestContext.Current.CancellationToken);
+
+        (await evaluate.Should().ThrowAsync<InvalidOperationException>()).Which.Should().BeSameAs(fault);
+        Activity parent = recorder.Stopped.Should().ContainSingle(activity =>
+            activity.OperationName == EvaluateActivity && Equals(activity.GetTagItem(PolicyIdTag), "tel-faulted-round"))
+            .Subject;
+        Activity[] children = [.. recorder.Stopped.Where(activity => activity.Parent == parent)];
+        children.Should().HaveCount(2);
+        children.Should().ContainSingle(child => Is(child, "a", "first"));
+        children.Should().ContainSingle(child => Is(child, "b", "first"));
+        Activity.Current.Should().BeNull();
+    }
+
     [Fact]
     public async Task Evaluation_Without_A_Listener_Starts_No_Activity()
     {

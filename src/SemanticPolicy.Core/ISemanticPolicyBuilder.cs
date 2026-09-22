@@ -17,8 +17,10 @@ public interface ISemanticPolicyBuilder
 
     /// <summary>
     /// Registers a provider under the name a policy's bindings refer to it by, built from the container
-    /// when the evaluator is first resolved. One adapter class registered twice under two names is two
-    /// providers — the way one adapter serves two endpoints.
+    /// when the evaluator is first resolved. The container owns what the factory builds: an adapter
+    /// that is <see cref="IDisposable"/> or <see cref="IAsyncDisposable"/> is disposed with the
+    /// container, as any service it built is. One adapter class registered twice under two names is
+    /// two providers — the way one adapter serves two endpoints.
     /// </summary>
     /// <param name="name">The name a binding's provider id refers to; distinct across registrations.</param>
     /// <param name="factory">Builds the adapter from the container.</param>
@@ -28,7 +30,9 @@ public interface ISemanticPolicyBuilder
 
     /// <summary>
     /// Registers an adapter instance, under <paramref name="name"/> when one is given and otherwise
-    /// under the adapter's own <see cref="IDecisionProvider.Id"/>.
+    /// under the adapter's own <see cref="IDecisionProvider.Id"/>. The instance stays the caller's:
+    /// the container does not dispose an instance it was handed, so an adapter that needs disposing
+    /// is disposed by whoever built it, after the container is gone.
     /// </summary>
     /// <param name="provider">The adapter.</param>
     /// <param name="name">

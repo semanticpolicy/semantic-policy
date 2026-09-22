@@ -210,8 +210,26 @@ public sealed class PolicyEvaluator : IPolicyEvaluator
                     Dispatch(policy, context, step.Required, budgetToken, callerToken);
 
                 // WhenAll completes only once every attempt has, so a provider that faults or is cancelled never
-                // leaves a sibling's call unobserved; the first exception then surfaces as itself.
-                await Task.WhenAll(round.Select(attempt => attempt.Answer)).ConfigureAwait(false);
+                // leaves a sibling's call unobserved; the first exception then surfaces as itself. A sibling that
+                // answered before the failure has a span nobody else will stop: it joins the others, so that
+                // the finally below stops it, before the exception goes on.
+                try
+                {
+                    await Task.WhenAll(round.Select(attempt => attempt.Answer)).ConfigureAwait(false);
+                }
+                catch
+                {
+                    foreach ((AttemptKey key, Task<Answered> answered) in round)
+                    {
+                        if (answered.IsCompletedSuccessfully && answered.Result.Span is { } span)
+                        {
+                            spans[key] = span;
+                        }
+                    }
+
+                    throw;
+                }
+
                 foreach ((AttemptKey key, Task<Answered> answered) in round)
                 {
                     (ProviderResult result, Activity? span) = answered.Result;

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using SemanticPolicy.Core.Tests.Support;
 using SemanticPolicy.Evaluation;
 using SemanticPolicy.Protocol;
+using SemanticPolicy.Providers;
 
 namespace SemanticPolicy.Core.Tests;
 
@@ -84,6 +85,31 @@ public sealed class SemanticPolicyServiceCollectionExtensionsTests
         error.PolicyId.Should().Be(duplicated == "policy" ? "p" : null);
     }
 
+    // What the container built, the container disposes; what it was handed, it does not — the rule
+    // AddSingleton itself follows, seen through the two AddProvider overloads.
+    [Fact]
+    public async Task Disposing_The_Container_Disposes_A_Factory_Built_Provider_And_Leaves_An_Instance_Alone()
+    {
+        DisposableProvider? built = null;
+        DisposableProvider given = new("given");
+        ServiceCollection services = new();
+        services.AddSemanticPolicy()
+            .AddProvider("built", _ => built = new DisposableProvider("built"))
+            .AddProvider(given)
+            .AddPolicy(Define("p", "built"));
+        ServiceProvider container = services.BuildServiceProvider();
+        IPolicyEvaluator evaluator = container.GetRequiredService<IPolicyEvaluator>();
+        PolicyVerdict verdict = await evaluator.EvaluateAsync("p", _context, TestContext.Current.CancellationToken);
+
+        await container.DisposeAsync();
+
+        verdict.Rules.Should().ContainSingle().Which.Attempts.Should().ContainSingle()
+            .Which.ProviderId.Should().Be("built");
+        built.Should().NotBeNull();
+        built!.Disposed.Should().BeTrue();
+        given.Disposed.Should().BeFalse();
+    }
+
     private static ProviderResult Flagged(double probability) =>
         ScriptedProvider.Success(
             new BooleanValue(probability >= 0.5),
@@ -98,4 +124,28 @@ public sealed class SemanticPolicyServiceCollectionExtensionsTests
             .Using(provider, b => b.WarnAboveProbability(0.6).DenyAboveProbability(0.9))
             .OnFailure(FailureBehavior.Deny)
             .Build();
+
+    // An adapter with something to release: answers as the scripted provider does, and records whether
+    // it was disposed, by either route the container may take.
+    private sealed class DisposableProvider(string id) : IDecisionProvider, IDisposable, IAsyncDisposable
+    {
+        private readonly ScriptedProvider _inner = new ScriptedProvider(id).Returns(Flagged(0.95));
+
+        public string Id => id;
+
+        public ProviderCapabilities Capabilities => _inner.Capabilities;
+
+        public bool Disposed { get; private set; }
+
+        public Task<ProviderResult> DecideAsync(DecisionRequest request, CancellationToken cancellationToken = default) =>
+            _inner.DecideAsync(request, cancellationToken);
+
+        public void Dispose() => Disposed = true;
+
+        public ValueTask DisposeAsync()
+        {
+            Disposed = true;
+            return ValueTask.CompletedTask;
+        }
+    }
 }
