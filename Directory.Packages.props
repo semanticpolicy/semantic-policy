@@ -8,10 +8,17 @@
   <!-- A package lands here when a task file says which project needs it and why; the version is
        pinned here and nowhere else, so two projects cannot disagree. Every package is under a licence
        compatible with Apache-2.0 - check before adding one. -->
+  <ItemGroup Label="Runtime">
+    <!-- The abstractions are the one package Core references: IServiceCollection and TryAdd for
+         AddSemanticPolicy(). The container itself is a test-only reference, below. Both are MIT. -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+  </ItemGroup>
+
   <ItemGroup Label="Testing">
     <!-- AwesomeAssertions is the Apache-2.0 fork of FluentAssertions 7. FluentAssertions 8+ is
          commercially licensed and must not be referenced here. -->
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
