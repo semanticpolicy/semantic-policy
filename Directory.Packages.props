@@ -19,7 +19,8 @@
     <!-- The container itself, which the abstractions do not carry: BuildServiceProvider and
          ServiceProvider. No project under src/ references it - an application brings its own container -
          but every example under examples/ builds one, because an agent guarded by a policy id resolves
-         the evaluator from the container it was built with. The test projects reference it too. MIT. -->
+         the evaluator from the container it was built with, and tools/SemanticPolicy.Evals builds one to
+         resolve the providers its run verb calls. The test projects reference it too. MIT. -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <!-- SemanticPolicy.AgentFramework hangs its policy checks on AIAgentBuilder and the function-calling
          middleware, which live in this package and not in the abstractions. MIT. -->

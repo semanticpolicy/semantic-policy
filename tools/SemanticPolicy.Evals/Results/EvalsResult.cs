@@ -19,6 +19,7 @@ namespace SemanticPolicy.Evals.Results;
 /// <param name="DecisionType">The kind of question that rule asks, which says which sections are filled.</param>
 /// <param name="Rows">How the rows were arrived at, from the dataset down to what was scored.</param>
 /// <param name="Report">The measurements, or <see langword="null"/> for a verb that takes none.</param>
+/// <param name="RecordingPath">The recording the numbers were replayed from, as it was given.</param>
 public sealed record EvalsResult(
     string Format,
     string Verb,
@@ -29,7 +30,8 @@ public sealed record EvalsResult(
     string RuleId,
     DecisionType DecisionType,
     RowSelection Rows,
-    ReportSection? Report)
+    ReportSection? Report,
+    string? RecordingPath = null)
 {
     /// <summary>The format of a result file this tool writes.</summary>
     public const string FormatV0 = "semanticpolicy/evals-result/v0";
@@ -68,6 +70,10 @@ public sealed record RowSelection(
 /// <param name="Calibration">Whether the probabilities mean what they say.</param>
 /// <param name="Providers">What each provider was asked and what it cost.</param>
 /// <param name="Notes">What a reader should know before trusting the numbers above.</param>
+/// <param name="SweptProvider">
+/// The binding whose threshold the discrimination curves move, by provider name; every other binding stays
+/// at its file thresholds. <see langword="null"/> when there is no discrimination section.
+/// </param>
 public sealed record ReportSection(
     OutcomeCounts Outcomes,
     IReadOnlyDictionary<string, int> Verdicts,
@@ -76,7 +82,8 @@ public sealed record ReportSection(
     IReadOnlyList<RungDiscrimination>? Discrimination,
     Calibration Calibration,
     IReadOnlyList<ProviderStats> Providers,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<string> Notes,
+    string? SweptProvider = null);
 
 /// <summary>One rung's discrimination, paired with the rung it was measured on.</summary>
 /// <param name="Rung">The ladder rung.</param>
