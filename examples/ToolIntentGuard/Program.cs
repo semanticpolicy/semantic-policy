@@ -7,6 +7,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using SemanticPolicy;
 using SemanticPolicy.Evaluation;
+using SemanticPolicy.Providers.TypeSafe;
 using ToolIntentGuard;
 
 const string Instructions =
@@ -32,8 +33,10 @@ Policy enforce = shadow with { Id = "tool-intent-enforce", Mode = PolicyMode.Enf
 
 ServiceCollection services = new();
 services.AddSemanticPolicy()
-    // The decision provider is registered here; none is yet, so the first resolve of IPolicyEvaluator
-    // checks the bindings, finds nothing named "jev", and says so before an agent runs.
+    // Jev through OpenRouter's gateway; the decision model is the route's pin. This demo's chat client is
+    // scripted and needs no key, so the route is the only reader of OPENROUTER_API_KEY here: it reads it
+    // when the evaluator is first resolved, and a missing one is the configuration error caught below.
+    .AddTypeSafeJev("jev", o => o.Route = TypeSafeJevRoute.OpenRouter)
     .AddPolicy(shadow)
     .AddPolicy(enforce);
 
@@ -44,7 +47,7 @@ try
 }
 catch (PolicyConfigurationException error)
 {
-    Console.Error.WriteLine($"provider not configured: {error.Message}");
+    Console.Error.WriteLine($"configuration error: {error.Message}");
     return 2;
 }
 

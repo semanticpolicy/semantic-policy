@@ -9,6 +9,7 @@ using OpenAI;
 using OpenAI.Chat;
 using SemanticPolicy;
 using SemanticPolicy.Evaluation;
+using SemanticPolicy.Providers.TypeSafe;
 
 const string Instructions =
     "You answer questions about software projects from what the user gives you. Keep answers to a few sentences.";
@@ -48,8 +49,9 @@ Policy enforce = shadow with { Id = "prompt-injection-enforce", Mode = PolicyMod
 
 ServiceCollection services = new();
 services.AddSemanticPolicy()
-    // The decision provider is registered here; none is yet, so the first resolve of IPolicyEvaluator
-    // checks the bindings, finds nothing named "jev", and says so before an agent runs.
+    // Jev through OpenRouter's gateway. The route reads OPENROUTER_API_KEY itself when the evaluator is
+    // first resolved, so the key checked above is never handed to it; the decision model is the route's pin.
+    .AddTypeSafeJev("jev", o => o.Route = TypeSafeJevRoute.OpenRouter)
     .AddPolicy(shadow)
     .AddPolicy(enforce);
 
@@ -60,7 +62,7 @@ try
 }
 catch (PolicyConfigurationException error)
 {
-    Console.Error.WriteLine($"provider not configured: {error.Message}");
+    Console.Error.WriteLine($"configuration error: {error.Message}");
     return 2;
 }
 

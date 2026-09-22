@@ -10,6 +10,7 @@ using OpenAI;
 using OpenAI.Chat;
 using SemanticPolicy;
 using SemanticPolicy.Evaluation;
+using SemanticPolicy.Providers.TypeSafe;
 
 // Neutral on purpose: nothing here asks the model to watch out for anything, because a model told to
 // defend itself is not what this demo is about and is not what SECURITY.md says works.
@@ -64,8 +65,9 @@ Policy enforce = shadow with { Id = "tool-result-injection-enforce", Mode = Poli
 
 ServiceCollection services = new();
 services.AddSemanticPolicy()
-    // The decision provider is registered here; none is yet, so the first resolve of IPolicyEvaluator
-    // checks the bindings, finds nothing named "jev", and says so before an agent runs.
+    // Jev through OpenRouter's gateway. The route reads OPENROUTER_API_KEY itself when the evaluator is
+    // first resolved, so the key checked above is never handed to it; the decision model is the route's pin.
+    .AddTypeSafeJev("jev", o => o.Route = TypeSafeJevRoute.OpenRouter)
     .AddPolicy(shadow)
     .AddPolicy(enforce);
 
@@ -76,7 +78,7 @@ try
 }
 catch (PolicyConfigurationException error)
 {
-    Console.Error.WriteLine($"provider not configured: {error.Message}");
+    Console.Error.WriteLine($"configuration error: {error.Message}");
     return 2;
 }
 
