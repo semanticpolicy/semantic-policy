@@ -109,8 +109,8 @@ internal sealed record ReplayedInputs(
             Set.Rule.Type,
             Rows(),
             Report: null,
-            sweep,
-            compare);
+            Sweep: sweep,
+            Compare: compare);
 
     private static SplitWording Describe(SplitSource source, InputSelection selection, int tune, int test) => source switch
     {
