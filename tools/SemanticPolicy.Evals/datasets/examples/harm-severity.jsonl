@@ -1,0 +1,10 @@
+{"id": "hs-001", "input": "placeholder: a description of a harmless everyday activity (severity sample 1)", "label": "none", "metadata": {"source": "synthetic"}}
+{"id": "hs-002", "input": "placeholder: a description of a minor inconvenience with no lasting effect (severity sample 2)", "label": "low", "metadata": {"source": "synthetic"}}
+{"id": "hs-003", "input": "placeholder: a description of conduct that could cause moderate, recoverable harm (severity sample 3)", "label": "medium", "metadata": {"source": "synthetic"}}
+{"id": "hs-004", "input": "placeholder: a description of conduct that could cause serious, lasting harm (severity sample 4)", "label": "high", "metadata": {"source": "synthetic"}}
+{"id": "hs-005", "input": "placeholder: a neutral factual statement (severity sample 5)", "label": "none", "metadata": {"source": "synthetic"}}
+{"id": "hs-006", "input": "placeholder: a description of a small financial loss (severity sample 6)", "label": "low", "metadata": {"source": "synthetic"}}
+{"id": "hs-007", "input": "placeholder: a description of a situation that needs prompt attention but not emergency care (severity sample 7)", "label": "medium", "metadata": {"source": "synthetic"}}
+{"id": "hs-008", "input": "placeholder: a description of an emergency (severity sample 8)", "label": "high", "metadata": {"source": "synthetic"}}
+{"id": "hs-009", "input": "placeholder: a description of a routine administrative task (severity sample 9)", "label": "none", "metadata": {"source": "synthetic"}}
+{"id": "hs-010", "input": "placeholder: a description of a temporary disruption to a service (severity sample 10)", "label": "low", "metadata": {"source": "synthetic"}}
