@@ -55,6 +55,7 @@ public sealed class ReplaySet
     /// <exception cref="EvalsException">
     /// The datasets changed and <paramref name="force"/> is <see langword="false"/>, the recording's policy
     /// has no such rule, or its rule asks a different question; the message names the rule and the field.
+    /// Two selected rows share an id, which no recorded result can be matched to; the message names the id.
     /// </exception>
     public static ReplaySet Load(Recording recording, LoadedInputs inputs, bool force)
     {
@@ -73,8 +74,19 @@ public sealed class ReplaySet
         }
 
         List<ReplayRow> rows = [];
+        HashSet<string> selectedIds = new(inputs.Selected.Count, StringComparer.Ordinal);
         foreach (DatasetRow row in inputs.Selected)
         {
+            // A row id is unique within its file, not across the pair --tune and --test read, and the join is
+            // by id alone. Two selected rows sharing one id would both take the same recorded result and be
+            // scored against their own labels, which is a wrong number rather than an error.
+            if (!selectedIds.Add(row.Id))
+            {
+                throw new EvalsException(
+                    $"Row '{row.Id}' is among the selected rows twice, so a recorded result cannot be matched "
+                    + "to one of them. Give the rows distinct ids across the files being read.");
+            }
+
             if (byId.TryGetValue(row.Id, out RecordedRow? recorded))
             {
                 rows.Add(new ReplayRow(row, AttemptsFor(recorded, inputs.Rule.Id)));

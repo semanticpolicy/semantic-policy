@@ -47,7 +47,18 @@ public sealed class RecordingWriter : IAsyncDisposable
         }
 
         RecordingWriter writer = new(stream, path);
-        await writer.WriteLineAsync(header, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await writer.WriteLineAsync(header, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // The file is already created and truncated at this point, so a writer nobody can dispose would
+            // hold the handle open until the finalizer runs and a retry would not be able to replace the file.
+            await writer.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+
         return writer;
     }
 
@@ -61,12 +72,8 @@ public sealed class RecordingWriter : IAsyncDisposable
         return WriteLineAsync(row, cancellationToken, row.Id);
     }
 
-    /// <summary>Flushes what is left and closes the file.</summary>
-    public async ValueTask DisposeAsync()
-    {
-        await _writer.FlushAsync(CancellationToken.None).ConfigureAwait(false);
-        await _writer.DisposeAsync().ConfigureAwait(false);
-    }
+    /// <summary>Closes the file; every line was already flushed as it was written.</summary>
+    public ValueTask DisposeAsync() => _writer.DisposeAsync();
 
     private async Task WriteLineAsync<T>(T value, CancellationToken cancellationToken, string? rowId = null)
     {

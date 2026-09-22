@@ -53,6 +53,27 @@ public sealed class ReplaySetLoadTests
         forced.Rows.Should().ContainSingle().Which.Row.Id.Should().Be("a");
     }
 
+    [Fact]
+    public async Task Loader_Rejects_Selected_Rows_That_Share_An_Id_Naming_The_Id()
+    {
+        using TempFile file = TempFile.Write("");
+        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+        Recording recording = await Samples.RecordAsync(
+            file.Path,
+            Samples.Header(policy),
+            Samples.Recorded("a", (Samples.Injection, "local", Samples.BooleanAnswer(0.95))));
+
+        // The shape --tune and --test produce: two files each numbering their rows from the same sequence,
+        // concatenated into one selection, so the same id carries two different labels.
+        LoadedInputs inputs = Samples.Inputs(
+            policy,
+            Samples.Dataset(Samples.Row("a", "true"), Samples.Row("a", "false", 2)));
+
+        Action load = () => ReplaySet.Load(recording, inputs, force: false);
+
+        load.Should().Throw<EvalsException>().Which.Message.Should().Contain("'a'");
+    }
+
     public static TheoryData<string, Rule, Rule> DifferingRules
     {
         get
