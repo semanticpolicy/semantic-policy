@@ -152,8 +152,8 @@ static ValueTask<PostToolOutcome> OnToolResult(
         case Verdict.Deny:
             Console.WriteLine("application: replaced the result with a note that it was withheld.");
             return ValueTask.FromResult(PostToolOutcome.Replace(
-                $"The {verdict.PolicyId} policy withheld this result because it carried instructions aimed at the "
-                + "assistant. Tell the user it was withheld and why."));
+                $"The {verdict.PolicyId} policy withheld this result: it read as carrying instructions aimed at "
+                + "the assistant. Tell the user it was withheld and why."));
         case Verdict.Escalate:
             Console.WriteLine(
                 "application: replaced the result and would ask a person - this demo prints the note instead.");
