@@ -1,7 +1,11 @@
 using System.Diagnostics;
+using System.Diagnostics.Metrics;
+using System.Text.Json;
 using SemanticPolicy.Evaluation;
 using SemanticPolicy.Protocol;
 using SemanticPolicy.Providers;
+using SemanticPolicy.Telemetry;
+using static SemanticPolicy.Telemetry.SemanticPolicyTelemetry;
 
 namespace SemanticPolicy;
 
@@ -10,10 +14,30 @@ namespace SemanticPolicy;
 /// against real providers. Each round it builds one request per attempt the step function requires,
 /// dispatches them all at once, adds the results and asks again, until there is a verdict. It holds the
 /// providers by registration name and the policies by id, both fixed at construction, and it is safe
-/// to share: one evaluation carries no state past its own call.
+/// to share: one evaluation carries no state past its own call. It is also where every span and every
+/// measurement comes from — an activity per evaluation with a child per attempt, under
+/// <see cref="SemanticPolicyTelemetry.ActivitySourceName"/> and <see cref="SemanticPolicyTelemetry.MeterName"/> —
+/// tagged with identifiers, numbers and the policy's vocabulary and never with the content it judged.
 /// </summary>
 public sealed class PolicyEvaluator : IPolicyEvaluator
 {
+    // Adapters create no spans of their own: every span comes from here, so the field list is written
+    // once. Static, so a second evaluator — or a second container — adds no second instrument.
+    private static readonly ActivitySource _activitySource = new(ActivitySourceName);
+    private static readonly Meter _meter = new(MeterName);
+    private static readonly Counter<long> _evaluations = _meter.CreateCounter<long>(
+        EvaluationsInstrument,
+        unit: "{evaluation}",
+        description: "Evaluations that reached a verdict.");
+    private static readonly Counter<long> _attempts = _meter.CreateCounter<long>(
+        AttemptsInstrument,
+        unit: "{attempt}",
+        description: "Provider attempts, as evaluation acted on them.");
+    private static readonly Histogram<double> _duration = _meter.CreateHistogram<double>(
+        EvaluationDurationInstrument,
+        unit: "s",
+        description: "The duration of an evaluation.");
+
     private readonly Dictionary<string, IDecisionProvider> _providers = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Policy> _policies = new(StringComparer.Ordinal);
 
@@ -155,29 +179,81 @@ public sealed class PolicyEvaluator : IPolicyEvaluator
 
     private async Task<PolicyVerdict> RunAsync(Policy policy, SemanticContext context, CancellationToken callerToken)
     {
-        using CancellationTokenSource? budget = StartBudget(policy, callerToken);
-        CancellationToken budgetToken = budget?.Token ?? callerToken;
-
-        Dictionary<AttemptKey, ProviderResult> attempts = [];
-        EvaluationStep step = PolicyEvaluation.Evaluate(policy, attempts);
-        while (!step.IsComplete)
+        long started = Stopwatch.GetTimestamp();
+        using Activity? evaluation = _activitySource.StartActivity(EvaluateActivity);
+        if (evaluation is not null)
         {
-            callerToken.ThrowIfCancellationRequested();
-            (AttemptKey Key, Task<ProviderResult> Result)[] round =
-                Dispatch(policy, context, step.Required, budgetToken, callerToken);
-
-            // WhenAll completes only once every attempt has, so a provider that faults or is cancelled never
-            // leaves a sibling's call unobserved; the first exception then surfaces as itself.
-            await Task.WhenAll(round.Select(attempt => attempt.Result)).ConfigureAwait(false);
-            foreach ((AttemptKey key, Task<ProviderResult> result) in round)
+            evaluation.SetTag(PolicyIdTag, policy.Id);
+            evaluation.SetTag(PolicyModeTag, Name(policy.Mode));
+            if (context.CorrelationId is { } correlationId)
             {
-                attempts[key] = result.Result;
+                evaluation.SetTag(CorrelationIdTag, correlationId);
             }
-
-            step = PolicyEvaluation.Evaluate(policy, attempts);
         }
 
-        return step.Verdict!;
+        // An attempt's span stays open until the verdict exists, because what the attempt did to the
+        // chain — the margin, the rung, whether and where the chain moved on — is only known then. Its end
+        // time was set when the provider answered, so its duration is still the call's; if the evaluation
+        // throws instead, the spans are stopped as they are.
+        Dictionary<AttemptKey, Activity> spans = [];
+        try
+        {
+            using CancellationTokenSource? budget = StartBudget(policy, callerToken);
+            CancellationToken budgetToken = budget?.Token ?? callerToken;
+
+            Dictionary<AttemptKey, ProviderResult> attempts = [];
+            EvaluationStep step = PolicyEvaluation.Evaluate(policy, attempts);
+            while (!step.IsComplete)
+            {
+                callerToken.ThrowIfCancellationRequested();
+                (AttemptKey Key, Task<Answered> Answer)[] round =
+                    Dispatch(policy, context, step.Required, budgetToken, callerToken);
+
+                // WhenAll completes only once every attempt has, so a provider that faults or is cancelled never
+                // leaves a sibling's call unobserved; the first exception then surfaces as itself. A sibling that
+                // answered before the failure has a span nobody else will stop: it joins the others, so that
+                // the finally below stops it, before the exception goes on.
+                try
+                {
+                    await Task.WhenAll(round.Select(attempt => attempt.Answer)).ConfigureAwait(false);
+                }
+                catch
+                {
+                    foreach ((AttemptKey key, Task<Answered> answered) in round)
+                    {
+                        if (answered.IsCompletedSuccessfully && answered.Result.Span is { } span)
+                        {
+                            spans[key] = span;
+                        }
+                    }
+
+                    throw;
+                }
+
+                foreach ((AttemptKey key, Task<Answered> answered) in round)
+                {
+                    (ProviderResult result, Activity? span) = answered.Result;
+                    attempts[key] = result;
+                    if (span is not null)
+                    {
+                        spans[key] = span;
+                    }
+                }
+
+                step = PolicyEvaluation.Evaluate(policy, attempts);
+            }
+
+            PolicyVerdict verdict = step.Verdict!;
+            Report(policy, verdict, spans, evaluation, Stopwatch.GetElapsedTime(started));
+            return verdict;
+        }
+        finally
+        {
+            foreach (Activity span in spans.Values)
+            {
+                span.Dispose();
+            }
+        }
     }
 
     // The budget is a token linked to the caller's, cancelled after the policy's span, and that token is
@@ -197,7 +273,7 @@ public sealed class PolicyEvaluator : IPolicyEvaluator
 
     // Every request of the round is built and checked before the first provider is called, so a request
     // the protocol rejects stops the round with no provider asked, not one provider asked and one not.
-    private (AttemptKey Key, Task<ProviderResult> Result)[] Dispatch(
+    private (AttemptKey Key, Task<Answered> Answer)[] Dispatch(
         Policy policy,
         SemanticContext context,
         IReadOnlyList<AttemptKey> required,
@@ -216,7 +292,7 @@ public sealed class PolicyEvaluator : IPolicyEvaluator
             prepared[i] = (rule, binding, request);
         }
 
-        var round = new (AttemptKey Key, Task<ProviderResult> Result)[required.Count];
+        var round = new (AttemptKey Key, Task<Answered> Answer)[required.Count];
         for (int i = 0; i < required.Count; i++)
         {
             (Rule rule, ProviderBinding binding, DecisionRequest request) = prepared[i];
@@ -227,7 +303,40 @@ public sealed class PolicyEvaluator : IPolicyEvaluator
         return round;
     }
 
-    private static async Task<ProviderResult> AttemptAsync(
+    // The span is the provider call: it is the ambient activity the adapter sees, so an adapter that
+    // traces its own I/O nests under it. What it carries here is known before the call; what the attempt
+    // did to the chain is tagged by the caller from the trace, once there is one.
+    private static async Task<Answered> AttemptAsync(
+        IDecisionProvider provider,
+        Rule rule,
+        ProviderBinding binding,
+        DecisionRequest request,
+        CancellationToken budgetToken,
+        CancellationToken callerToken)
+    {
+        Activity? span = _activitySource.StartActivity(AttemptActivity);
+        if (span is not null)
+        {
+            span.SetTag(RuleIdTag, rule.Id);
+            span.SetTag(ProviderIdTag, binding.ProviderId);
+            span.SetTag(DecisionTypeTag, Name(rule.Type));
+        }
+
+        try
+        {
+            ProviderResult result = await CallAsync(provider, rule, binding, request, budgetToken, callerToken)
+                .ConfigureAwait(false);
+            span?.SetEndTime(DateTime.UtcNow);
+            return new Answered(result, span);
+        }
+        catch
+        {
+            span?.Dispose();
+            throw;
+        }
+    }
+
+    private static async Task<ProviderResult> CallAsync(
         IDecisionProvider provider,
         Rule rule,
         ProviderBinding binding,
@@ -273,4 +382,141 @@ public sealed class PolicyEvaluator : IPolicyEvaluator
             FailureKind.Timeout,
             message,
             new ProviderMetadata(providerId, Model: null, latencyMs));
+
+    // Everything that says what an attempt did to the chain is read off the trace, never off the request
+    // or the raw response, so the tags cannot carry content the trace does not. Each attempt's span is
+    // tagged and stopped here, before the parent, which is the moment an exporter reads it.
+    private static void Report(
+        Policy policy,
+        PolicyVerdict verdict,
+        Dictionary<AttemptKey, Activity> spans,
+        Activity? evaluation,
+        TimeSpan elapsed)
+    {
+        bool measuring = _evaluations.Enabled || _attempts.Enabled || _duration.Enabled;
+        if (evaluation is null && spans.Count == 0 && !measuring)
+        {
+            return;
+        }
+
+        if (evaluation is not null)
+        {
+            evaluation.SetTag(EffectiveVerdictTag, Name(verdict.Effective));
+            evaluation.SetTag(EvaluatedVerdictTag, Name(verdict.Evaluated));
+        }
+
+        foreach (RuleVerdict rule in verdict.Rules)
+        {
+            Rule definition = policy.Rules.First(
+                candidate => string.Equals(candidate.Id, rule.RuleId, StringComparison.Ordinal));
+            foreach (Attempt attempt in rule.Attempts)
+            {
+                if (spans.TryGetValue(new AttemptKey(rule.RuleId, attempt.BindingIndex), out Activity? span))
+                {
+                    Tag(span, policy, rule, attempt);
+                    span.Dispose();
+                }
+
+                if (_attempts.Enabled)
+                {
+                    _attempts.Add(1, AttemptTags(definition, attempt));
+                }
+            }
+        }
+
+        if (_evaluations.Enabled)
+        {
+            _evaluations.Add(
+                1,
+                new KeyValuePair<string, object?>(PolicyIdTag, policy.Id),
+                new KeyValuePair<string, object?>(PolicyModeTag, Name(policy.Mode)),
+                new KeyValuePair<string, object?>(EvaluatedVerdictTag, Name(verdict.Evaluated)));
+        }
+
+        if (_duration.Enabled)
+        {
+            _duration.Record(
+                elapsed.TotalSeconds,
+                new KeyValuePair<string, object?>(PolicyIdTag, policy.Id),
+                new KeyValuePair<string, object?>(PolicyModeTag, Name(policy.Mode)));
+        }
+    }
+
+    private static void Tag(Activity span, Policy policy, RuleVerdict rule, Attempt attempt)
+    {
+        if (attempt.Result.Provider.Model is { } model)
+        {
+            span.SetTag(ProviderModelTag, model);
+        }
+
+        ProviderOutcome outcome = attempt.EffectiveOutcome;
+        span.SetTag(OutcomeStatusTag, Name(outcome.Status));
+        if (outcome.Kind is { } kind)
+        {
+            span.SetTag(OutcomeFailureKindTag, Name(kind));
+        }
+
+        // The reading behind a decided rule belongs to the attempt that decided it; the margin belongs to
+        // every attempt a gate was applied to, whether or not it passed.
+        if (attempt.BindingIndex == rule.DecidingBinding)
+        {
+            if (rule.EvidenceKind is { } evidenceKind)
+            {
+                span.SetTag(EvidenceKindTag, Name(evidenceKind));
+            }
+
+            if (rule.EvidenceValue is { } evidenceValue)
+            {
+                span.SetTag(EvidenceValueTag, evidenceValue);
+            }
+
+            if (rule.RungCrossed is { } rung)
+            {
+                span.SetTag(ThresholdCrossedTag, Name(rung));
+            }
+        }
+
+        if (attempt.Margin is { } margin)
+        {
+            span.SetTag(MarginTag, margin);
+        }
+
+        string? movedBy = attempt.Disposition switch
+        {
+            AttemptDisposition.MovedOnByGate => "gate",
+            AttemptDisposition.MovedOnByFailure => "failure",
+            _ => null,
+        };
+        if (movedBy is not null)
+        {
+            span.SetTag(ChainMovedByTag, movedBy);
+            span.SetTag(FallbackToTag, policy.Bindings[attempt.BindingIndex + 1].ProviderId);
+        }
+    }
+
+    private static TagList AttemptTags(Rule rule, Attempt attempt)
+    {
+        TagList tags = new()
+        {
+            { ProviderIdTag, attempt.ProviderId },
+            { DecisionTypeTag, Name(rule.Type) },
+            { OutcomeStatusTag, Name(attempt.EffectiveOutcome.Status) },
+        };
+        if (attempt.EffectiveOutcome.Kind is { } kind)
+        {
+            tags.Add(OutcomeFailureKindTag, Name(kind));
+        }
+
+        return tags;
+    }
+
+    // A tag value from the policy's vocabulary is spelled as the protocol writes it on the wire —
+    // camelCase — so a stored result and a dashboard read alike. Only called once a listener exists.
+    private static string Name<TEnum>(TEnum value)
+        where TEnum : struct, Enum =>
+        JsonNamingPolicy.CamelCase.ConvertName(value.ToString());
+
+    // What one attempt came back with: the provider's result and the span that timed the call, still
+    // open so the trace can tag it, or null when nothing listens.
+    private readonly record struct Answered(ProviderResult Result, Activity? Span);
 }
