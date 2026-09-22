@@ -5,11 +5,12 @@
 Guard prompts, tool calls and tool results with a decision model — hosted or local — without tying
 your application to one provider.
 
-> **Status: pre-alpha.** `SemanticPolicy.Core` — the policy model, the evaluation engine, telemetry
-> and DI registration — is implemented and tested, and so is the TypeSafe Jev provider. The local
-> provider, the Agent Framework integration, the evaluation CLI and the examples are still
-> skeletons. There is no released package, and every part of the API can still change. Watch the
-> repository rather than depending on it.
+> **Status: pre-alpha.** Two pieces are implemented and tested: `SemanticPolicy.Core` — the policy
+> model, the evaluation engine, telemetry and DI registration — and the TypeSafe Jev provider, so a
+> policy can be evaluated against a real decision model today. The local provider, the Agent
+> Framework integration, the evaluation CLI and the examples are still skeletons. There is no
+> released package, and every part of the API can still change. Watch the repository rather than
+> depending on it.
 
 ## The idea
 
@@ -55,8 +56,8 @@ handling and least-privilege tools. `SECURITY.md` and `docs/THREAT_MODEL.md` say
 ## Providers
 
 `SemanticPolicy.Providers.TypeSafe` answers a rule's question with the TypeSafe Jev decision model,
-either at the vendor's own endpoint or through OpenRouter's gateway. Register it under the name a
-policy's bindings refer to, once per endpoint you want to reach:
+at the vendor's own endpoint or through OpenRouter's gateway. It answers boolean, choice and score
+rules, and returns a probability for the policy to threshold.
 
 ```csharp
 services.AddSemanticPolicy()
@@ -65,34 +66,37 @@ services.AddSemanticPolicy()
     .AddPolicy(policy);
 ```
 
-That name does three jobs: a policy's bindings refer to it, the factory creates the `HttpClient` under
-it, and every verdict reports it as the provider's id, so the two registrations above stay apart in
-telemetry. Only the last of the three moves, if you set `o.Id`.
+The name you register under does three jobs: a policy's bindings refer to it (`.Using("jev", …)`),
+the factory creates the `HttpClient` under it, and every verdict reports it as the provider's id — so
+the two registrations above stay apart in telemetry. Set `o.Id` to change the last one only.
 
-There is no default route, because choosing one would choose where your content is sent. The key is
-read when the evaluator is first resolved, from the environment variable the route names —
-`TYPESAFE_API_KEY` for the vendor's endpoint, `OPENROUTER_API_KEY` for the gateway — or from
-`o.ApiKeyVariable` to read another variable, or from `o.ApiKey` to supply it yourself.
+There is no default route, because choosing one would choose where your content is sent.
 
-Each preset pins an exact model version, `jev-1.13.0` direct and `typesafe/jev-1.13` through the
-gateway, which `o.Model` overrides and which never moves on its own, because a threshold is measured
-against one model. A `TypeSafeJevRoute` you construct yourself reaches any other gateway or proxy that
-speaks the same wire. Every call goes through the named `HttpClient` that `IHttpClientFactory` creates
-for `"jev"`, so `services.AddHttpClient("jev")` is where a proxy, a resilience handler or a timeout of
-your own belongs. The registration removes that client's loggers, so the factory logs nothing about
-this traffic until you add logging back with `AddDefaultLogger()`.
+| Option | |
+|---|---|
+| `o.Route` | Required. `TypeSafeJevRoute.TypeSafe` or `TypeSafeJevRoute.OpenRouter`; construct your own to reach another gateway or proxy with the same request and response shape. |
+| `o.ApiKey` | The key. Leave it unset and it is read from the environment variable the route names — `TYPESAFE_API_KEY` or `OPENROUTER_API_KEY` — or from the one `o.ApiKeyVariable` names. Read once, when the evaluator is first resolved. |
+| `o.Model` | Overrides the model the route pins. A route pins a named version rather than a floating alias, because a threshold is measured against one model: `jev-1.13.0` direct, `typesafe/jev-1.13` through the gateway. |
+| `o.Timeout` | How long one call may take, ten seconds by default. Past it the provider reports a timeout, and the policy's `OnFailure` decides what that means. |
 
-A decision model is probabilistic. The provider reports what the model estimated and decides nothing:
-a denied verdict is not proof of an attack, an allowed verdict is not proof of safety, and both are
-inputs to a decision your application still owns.
+Every call goes through the named `HttpClient`, so `services.AddHttpClient("jev")` is where a proxy
+or a resilience handler of your own belongs. Leave that client's own `Timeout` infinite and use
+`o.Timeout` instead: the provider keeps its own timer, and a shorter client timeout surfaces as a
+cancellation the evaluator reads as a bug. The registration also strips that client's loggers, so no
+log line can print the `Authorization` header; `AddDefaultLogger()` puts the factory's logging back
+under your own redaction.
+
+The provider reports what the model estimated and decides nothing: a denied verdict is not proof of
+an attack, and an allowed one is not proof of safety. See
+[Not a security boundary](#not-a-security-boundary) above.
 
 ## Layout
 
 ```
 src/
   SemanticPolicy.Core/                  policies, rules, verdicts, decisions — no provider knowledge
-  SemanticPolicy.Providers.TypeSafe/    hosted decision provider
-  SemanticPolicy.Providers.Local/       local decision model provider
+  SemanticPolicy.Providers.TypeSafe/    hosted decision provider — TypeSafe Jev
+  SemanticPolicy.Providers.Local/       local decision model provider — skeleton
   SemanticPolicy.AgentFramework/        Microsoft Agent Framework integration
 tools/
   SemanticPolicy.Evals/                 the evaluation CLI
