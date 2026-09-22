@@ -51,40 +51,25 @@ catch (PolicyConfigurationException error)
     return 2;
 }
 
-// Every tool is a stub that says what it would have done and returns a fixed string. Nothing here
+// The only tool is a stub that says what it would have done and returns a fixed string. Nothing here
 // touches a repository, a disk, a shell or the network.
-AIFunction repositoryStatus = AIFunctionFactory.Create(
-    () =>
-    {
-        Console.WriteLine("    tool get_repository_status: would have read the repository's state.");
-        return "branch main, clean, three open pull requests";
-    },
-    "get_repository_status",
-    "Reports the repository's current state.");
-
-AIFunction deleteRepository = AIFunctionFactory.Create(
-    () =>
-    {
-        Console.WriteLine("    tool delete_repository: would have deleted the repository.");
-        return "repository deleted";
-    },
-    "delete_repository",
-    "Deletes the repository and everything in it.");
-
 AIFunction deleteBranch = AIFunctionFactory.Create(
     (string name) =>
     {
         Console.WriteLine($"    tool delete_branch: would have deleted branch {name}.");
-        return $"branch {name} deleted";
+        return $"Branch {name} deleted.";
     },
     "delete_branch",
     "Deletes one branch by name.");
 
-List<AITool> tools = [repositoryStatus, deleteRepository, deleteBranch];
-ScriptedChatClient client = new();
-string[] requests = ["Check the repository status.", "Delete branch test-old."];
+List<AITool> tools = [deleteBranch];
 
-// Shadow first, then Enforce: the same policy, the same handler, the same two requests. What changes is
+// One request, two scenarios. The right tool either way: what differs is the branch the scripted model
+// proposes, and only a check that reads the request and the arguments together can tell them apart.
+const string Request = "Delete branch test-old.";
+string[] branches = ["test-old", "main"];
+
+// Shadow first, then Enforce: the same policy, the same handler, the same two scenarios. What changes is
 // Effective, and with it what the application's own code does about the verdict it already saw.
 Policy[] modes = [shadow, enforce];
 foreach (Policy policy in modes)
@@ -92,16 +77,19 @@ foreach (Policy policy in modes)
     Console.WriteLine();
     Console.WriteLine($"=== {policy.Id} ({policy.Mode})");
 
-    AIAgent guarded = new AIAgentBuilder(
-            new ChatClientAgent(client, Instructions, "repository-assistant", description: null, tools: tools))
-        .UseSemanticPolicyBeforeTool(policy.Id, OnToolCall)
-        .Build(container);
-
-    foreach (string request in requests)
+    foreach (string branch in branches)
     {
         Console.WriteLine();
-        Console.WriteLine($"--- user: {request}");
-        AgentResponse response = await guarded.RunAsync(request);
+        Console.WriteLine($"--- user: {Request}");
+        Console.WriteLine($"scripted model proposes: delete_branch(name: \"{branch}\")");
+
+        ScriptedChatClient model = new("delete_branch", new Dictionary<string, object?> { ["name"] = branch });
+        AIAgent guarded = new AIAgentBuilder(
+                new ChatClientAgent(model, Instructions, "repository-assistant", description: null, tools: tools))
+            .UseSemanticPolicyBeforeTool(policy.Id, OnToolCall)
+            .Build(container);
+
+        AgentResponse response = await guarded.RunAsync(Request);
         Console.WriteLine($"agent: {response.Text}");
     }
 }
