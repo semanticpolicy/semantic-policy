@@ -39,12 +39,7 @@ public static class ThresholdCurve
 
         BooleanRule rule = Swept(policy, set.Rule.Id);
         ProviderBinding binding = policy.Bindings[bindingIndex];
-        RuleOperatingPoint point =
-            binding.OperatingPoints.FirstOrDefault(candidate =>
-                string.Equals(candidate.RuleId, rule.Id, StringComparison.Ordinal))
-            ?? throw new ArgumentException(
-                $"Binding '{binding.ProviderId}' carries no operating point for rule '{rule.Id}'.",
-                nameof(policy));
+        RuleOperatingPoint point = OperatingPoint(binding, rule);
         HashSet<string> selected = new(rows.Select(row => row.Id), StringComparer.Ordinal);
         List<(double Threshold, bool Observed)> candidates =
             Candidates(set, binding.ProviderId, rule, point.Thresholds[0].Kind, selected);
@@ -59,19 +54,78 @@ public static class ThresholdCurve
             List<CurvePoint> points = new(candidates.Count);
             foreach ((double threshold, bool observed) in candidates)
             {
-                IReadOnlyList<RowOutcome> outcomes =
-                    Outcomes(set, Variant(policy, single, bindingIndex, threshold), single, selected);
-                points.Add(new CurvePoint(
-                    threshold,
-                    observed,
-                    RungMetrics.Compute(outcomes, single)[0].Matrix,
-                    OutcomeCounts.Compute(outcomes)));
+                points.Add(Point(set, policy, single, bindingIndex, threshold, observed, selected));
             }
 
             curves.Add(new RungCurve(rung, points));
         }
 
         return curves;
+    }
+
+    /// <summary>
+    /// One point of a rung's curve at a given threshold, on any rows: how a threshold chosen on one split does on
+    /// another, where it need not be a value that split ever produced. The variant is the same single-rung policy
+    /// <see cref="Compute"/> builds for that threshold.
+    /// </summary>
+    /// <param name="set">The replay set, loaded on the rule to sweep.</param>
+    /// <param name="policy">The policy the threshold is set on; every binding of it is kept.</param>
+    /// <param name="bindingIndex">The binding in <paramref name="policy"/> whose threshold is set.</param>
+    /// <param name="rows">The rows to score; the replay is filtered to them.</param>
+    /// <param name="rung">The ladder rung to cut.</param>
+    /// <param name="threshold">The threshold, on the binding's declared evidence kind.</param>
+    /// <exception cref="ArgumentException">
+    /// As for <see cref="Compute"/>, or the rule's ladder has no such rung.
+    /// </exception>
+    public static CurvePoint At(
+        ReplaySet set,
+        Policy policy,
+        int bindingIndex,
+        IReadOnlyCollection<DatasetRow> rows,
+        Verdict rung,
+        double threshold)
+    {
+        ArgumentNullException.ThrowIfNull(set);
+        ArgumentNullException.ThrowIfNull(policy);
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentOutOfRangeException.ThrowIfNegative(bindingIndex);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(bindingIndex, policy.Bindings.Count);
+
+        BooleanRule rule = Swept(policy, set.Rule.Id);
+        if (!rule.Ladder.Contains(rung))
+        {
+            throw new ArgumentException($"Rule '{rule.Id}' has no {rung} rung on its ladder.", nameof(rung));
+        }
+
+        ProviderBinding binding = policy.Bindings[bindingIndex];
+        RuleOperatingPoint point = OperatingPoint(binding, rule);
+        HashSet<string> selected = new(rows.Select(row => row.Id), StringComparer.Ordinal);
+        bool observed = Observed(set, binding.ProviderId, rule, point.Thresholds[0].Kind, selected).Contains(threshold);
+        return Point(set, policy, rule with { Ladder = [rung] }, bindingIndex, threshold, observed, selected);
+    }
+
+    private static RuleOperatingPoint OperatingPoint(ProviderBinding binding, BooleanRule rule) =>
+        binding.OperatingPoints.FirstOrDefault(candidate =>
+            string.Equals(candidate.RuleId, rule.Id, StringComparison.Ordinal))
+        ?? throw new ArgumentException(
+            $"Binding '{binding.ProviderId}' carries no operating point for rule '{rule.Id}'.",
+            "policy");
+
+    private static CurvePoint Point(
+        ReplaySet set,
+        Policy policy,
+        BooleanRule single,
+        int bindingIndex,
+        double threshold,
+        bool observed,
+        HashSet<string> selected)
+    {
+        IReadOnlyList<RowOutcome> outcomes = Outcomes(set, Variant(policy, single, bindingIndex, threshold), single, selected);
+        return new CurvePoint(
+            threshold,
+            observed,
+            RungMetrics.Compute(outcomes, single)[0].Matrix,
+            OutcomeCounts.Compute(outcomes));
     }
 
     private static BooleanRule Swept(Policy policy, string ruleId)
@@ -86,6 +140,38 @@ public static class ThresholdCurve
     }
 
     private static List<(double Threshold, bool Observed)> Candidates(
+        ReplaySet set,
+        string providerId,
+        BooleanRule rule,
+        EvidenceKind kind,
+        HashSet<string> selected)
+    {
+        SortedSet<double> observed = Observed(set, providerId, rule, kind, selected);
+        List<(double Threshold, bool Observed)> candidates = [.. observed.Select(value => (value, true))];
+        if (kind != EvidenceKind.Probability)
+        {
+            // A score or a logit is on the provider's own scale, where a fixed grid is an arbitrary set of
+            // numbers; only values some attempt actually reported say anything there.
+            return candidates;
+        }
+
+        // Rounded to two decimals so a grid point does not land beside an observed value it is meant to be:
+        // a recorded 0.35 and 7/20 are not always the same double.
+        HashSet<double> covered = [.. observed.Select(value => Math.Round(value, 2))];
+        for (int step = 0; step <= _gridSteps; step++)
+        {
+            double value = (double)step / _gridSteps;
+            if (covered.Add(Math.Round(value, 2)))
+            {
+                candidates.Add((value, false));
+            }
+        }
+
+        candidates.Sort((left, right) => left.Threshold.CompareTo(right.Threshold));
+        return candidates;
+    }
+
+    private static SortedSet<double> Observed(
         ReplaySet set,
         string providerId,
         BooleanRule rule,
@@ -114,28 +200,7 @@ public static class ThresholdCurve
             }
         }
 
-        List<(double Threshold, bool Observed)> candidates = [.. observed.Select(value => (value, true))];
-        if (kind != EvidenceKind.Probability)
-        {
-            // A score or a logit is on the provider's own scale, where a fixed grid is an arbitrary set of
-            // numbers; only values some attempt actually reported say anything there.
-            return candidates;
-        }
-
-        // Rounded to two decimals so a grid point does not land beside an observed value it is meant to be:
-        // a recorded 0.35 and 7/20 are not always the same double.
-        HashSet<double> covered = [.. observed.Select(value => Math.Round(value, 2))];
-        for (int step = 0; step <= _gridSteps; step++)
-        {
-            double value = (double)step / _gridSteps;
-            if (covered.Add(Math.Round(value, 2)))
-            {
-                candidates.Add((value, false));
-            }
-        }
-
-        candidates.Sort((left, right) => left.Threshold.CompareTo(right.Threshold));
-        return candidates;
+        return observed;
     }
 
     private static Policy Variant(Policy policy, BooleanRule single, int bindingIndex, double threshold)
