@@ -5,8 +5,10 @@
 Guard prompts, tool calls and tool results with a decision model — hosted or local — without tying
 your application to one provider.
 
-> **Status: pre-alpha.** The repository holds the solution skeleton and nothing else yet. There is no
-> released package, the API below is the shape being built toward, and every part of it can still
+> **Status: pre-alpha.** `SemanticPolicy.Core` — the policy model, the evaluation engine, telemetry
+> and DI registration — is implemented and tested. The provider packages, the Agent Framework
+> integration, the evaluation CLI and the examples are still skeletons, so nothing here runs against
+> a real decision model yet. There is no released package, and every part of the API can still
 > change. Watch the repository rather than depending on it.
 
 ## The idea
