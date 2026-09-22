@@ -11,6 +11,7 @@ public sealed class TypeSafeJevOptionsTests
     [InlineData("route absent", "Route")]
     [InlineData("timeout zero", "Timeout")]
     [InlineData("timeout negative", "Timeout")]
+    [InlineData("timeout beyond what a timer can wait", "Timeout")]
     [InlineData("model empty over a preset", "Model")]
     [InlineData("relative base url", "BaseUrl")]
     [InlineData("http to a remote host", "BaseUrl")]
@@ -29,6 +30,9 @@ public sealed class TypeSafeJevOptionsTests
                 break;
             case "timeout negative":
                 options.Timeout = TimeSpan.FromSeconds(-1);
+                break;
+            case "timeout beyond what a timer can wait":
+                options.Timeout = TimeSpan.MaxValue;
                 break;
             case "model empty over a preset":
                 options.Model = "";

@@ -9,6 +9,10 @@ namespace SemanticPolicy.Providers.TypeSafe;
 /// </summary>
 public sealed class TypeSafeJevOptions
 {
+    // CancellationTokenSource.CancelAfter takes at most 0xFFFFFFFE ms, about 49.7 days; a longer
+    // timeout would pass here and then throw from every call instead.
+    private static readonly TimeSpan _maxTimeout = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
+
     /// <summary>
     /// Where calls go. Required; <see cref="TypeSafeJevRoute.TypeSafe"/> and
     /// <see cref="TypeSafeJevRoute.OpenRouter"/> are the presets.
@@ -44,10 +48,10 @@ public sealed class TypeSafeJevOptions
     /// configuration, so it is an exception naming the property rather than a provider outcome.
     /// </summary>
     /// <exception cref="ArgumentException">
-    /// <see cref="Route"/> is absent; <see cref="Timeout"/> is not greater than zero; the model,
-    /// <see cref="Model"/> or else the route's, is empty; the route's base URL is not absolute, or is
-    /// not <c>https</c> on a host other than loopback; the route's path does not start with <c>/</c>;
-    /// or <see cref="Id"/> is empty.
+    /// <see cref="Route"/> is absent; <see cref="Timeout"/> is not greater than zero, or longer than
+    /// a timer can wait (about 49 days); the model, <see cref="Model"/> or else the route's, is
+    /// empty; the route's base URL is not absolute, or is not <c>https</c> on a host other than
+    /// loopback; the route's path does not start with <c>/</c>; or <see cref="Id"/> is empty.
     /// </exception>
     public void EnsureValid()
     {
@@ -59,6 +63,11 @@ public sealed class TypeSafeJevOptions
         if (Timeout <= TimeSpan.Zero)
         {
             throw new ArgumentException("The timeout is not greater than zero.", nameof(Timeout));
+        }
+
+        if (Timeout > _maxTimeout)
+        {
+            throw new ArgumentException("The timeout is longer than a timer can wait, about 49 days.", nameof(Timeout));
         }
 
         if (string.IsNullOrWhiteSpace(Model ?? Route.Model))
