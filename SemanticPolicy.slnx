@@ -12,6 +12,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SemanticPolicy.Core.Tests/SemanticPolicy.Core.Tests.csproj" />
+    <Project Path="tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj" />
     <Project Path="tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj" />
   </Folder>
   <Folder Name="/tools/">
