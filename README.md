@@ -105,7 +105,8 @@ AIAgent guarded = new AIAgentBuilder(agent)
 static ValueTask<PostToolOutcome> OnToolResult(
     ToolResult result, PolicyVerdict verdict, CancellationToken cancellationToken) =>
     ValueTask.FromResult(verdict.Effective == Verdict.Deny
-        ? PostToolOutcome.Replace("Withheld: this result carried instructions aimed at the assistant.")
+        ? PostToolOutcome.Replace(
+            $"The {verdict.PolicyId} policy did not pass this result on. Answer from what you already have.")
         : PostToolOutcome.Proceed);
 ```
 

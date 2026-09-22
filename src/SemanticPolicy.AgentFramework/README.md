@@ -49,12 +49,15 @@ static ValueTask<PostToolOutcome> OnToolResult(
     // In Shadow, Effective is always Allow; Evaluated says what enforcing would have done.
     Console.WriteLine($"{result.Call.Name}: evaluated {verdict.Evaluated}, effective {verdict.Effective}");
     return ValueTask.FromResult(verdict.Effective == Verdict.Deny
-        ? PostToolOutcome.Replace("Withheld: this result carried instructions aimed at the assistant.")
+        ? PostToolOutcome.Replace(
+            $"The {verdict.PolicyId} policy did not pass this result on. Answer from what you already have.")
         : PostToolOutcome.Proceed);
 }
 ```
 
-The four programs under `examples/` are complete, runnable versions of this, one per point.
+Three of the four programs under `examples/` — PromptInjectionGuard, ToolIntentGuard and
+ToolResultGuard — are complete, runnable versions of this, one per point. The fourth, AgentRouter,
+calls `IPolicyEvaluator` directly and uses no guard.
 
 ## Not a security boundary
 
@@ -173,9 +176,9 @@ There is no `Transform`: an outcome cannot rewrite a call's arguments or a run's
 
 There is no tool filter or allow-list: every tool call the loop makes reaches the policy, including
 several proposed in one step. To skip a harmless tool, say so in your handler or narrow the question
-with the context delegate. Each evaluation is one call to the decision provider, and the run waits
-for it; the policy's `Budget` caps how long it may take, and its `OnFailure` says what running out
-means.
+with the context delegate. Each evaluation calls the decision provider once for every rule and
+binding it tries, and the run waits for it; a policy's `Budget`, when set, caps how long that may
+take, and its `OnFailure` says what running out means.
 
 ## Telemetry
 
