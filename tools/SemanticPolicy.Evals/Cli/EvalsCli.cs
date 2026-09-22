@@ -14,6 +14,8 @@ public static class EvalsCli
     {
         CliIo writers = io ?? CliIo.ForConsole();
         RootCommand root = new("Evaluates a SemanticPolicy policy against a labelled JSONL dataset.");
+        root.Subcommands.Add(SweepVerb.Build(writers));
+        root.Subcommands.Add(CompareVerb.Build(writers));
         root.SetAction(_ => WithoutVerb(root, writers));
         root.Subcommands.Add(RunCommand.Create(writers, configureProviders));
         root.Subcommands.Add(ReportCommand.Create(writers));
