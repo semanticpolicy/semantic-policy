@@ -54,7 +54,7 @@ an object or array to text and declares `structuredContext: false` in its capabi
   "raw": { ... },                                    // the provider response as received; optional
   "provider": {
     "id": "typesafe-jev",
-    "model": "typesafe/jev-1.13-20260917",
+    "model": "typesafe/jev-1.13",
     "latencyMs": 349,
     "requestId": "...",                              // optional
     "usage": { ... },                                // optional, provider-shaped

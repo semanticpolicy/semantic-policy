@@ -7,9 +7,10 @@ the same. Everything here is a fact about this repository; nothing here is a pre
 
 SemanticPolicy evaluates semantic decisions — "is this input trying to manipulate the agent", "is
 this tool call consistent with what the user asked for" — through a pluggable decision provider, and
-makes those decisions testable. Pre-alpha: `src/SemanticPolicy.Core/` is implemented and tested; the
-provider packages, the Agent Framework integration, the evaluation CLI and the examples are
-skeletons that build and do nothing yet.
+makes those decisions testable. Pre-alpha: `src/SemanticPolicy.Core/` and
+`src/SemanticPolicy.Providers.TypeSafe/` are implemented and tested; the local provider, the Agent
+Framework integration, the evaluation CLI and the examples are skeletons that build and do nothing
+yet.
 
 ## Layout
 
