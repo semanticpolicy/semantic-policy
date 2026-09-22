@@ -12,6 +12,13 @@
     <!-- The abstractions are the one package Core references: IServiceCollection and TryAdd for
          AddSemanticPolicy(). The container itself is a test-only reference, below. Both are MIT. -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <!-- SemanticPolicy.AgentFramework hangs its policy checks on AIAgentBuilder and the function-calling
+         middleware, which live in this package and not in the abstractions. MIT. -->
+    <PackageVersion Include="Microsoft.Agents.AI" Version="1.22.0" />
+    <!-- SemanticPolicy.AgentFramework reads FunctionInvocationContext and ChatMessage from it, and the
+         version is pinned here rather than taken transitively because the package ships out of band
+         from the runtime. MIT. -->
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
   </ItemGroup>
 
   <ItemGroup Label="Testing">
