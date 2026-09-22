@@ -22,6 +22,13 @@ public sealed record ConversationMessage(string Role, string Text)
     public string Text { get; } = Text ?? throw new ArgumentNullException(nameof(Text));
 
     /// <summary>
+    /// Who spoke and nothing that was said. A message that lands in a log line, an exception message
+    /// or an assertion failure names its role, never its text, so the printing a record would
+    /// otherwise synthesize is replaced here.
+    /// </summary>
+    public override string ToString() => $"ConversationMessage {{ Role = {Role} }}";
+
+    /// <summary>
     /// The messages' texts in order, one blank line between them, skipping any that is white space
     /// only: every message when <paramref name="role"/> is <see langword="null"/>, otherwise those of
     /// that role. The join is the layer's; a frontend hands over the messages and never joins them.

@@ -52,4 +52,13 @@ public sealed record ToolCall(
     /// over turns, which is why the last user message alone is not enough.
     /// </summary>
     public string UserRequest => ConversationMessage.Join(Conversation, "user");
+
+    /// <summary>
+    /// The call's shape and nothing it carries: the tool's name, the JSON kind of its arguments, how
+    /// many messages came before it and the id it is judged under — never the arguments themselves,
+    /// the conversation or the request read out of it.
+    /// </summary>
+    public override string ToString() =>
+        $"ToolCall {{ Name = {Name}, Arguments = {Arguments.ValueKind}, Conversation = {Conversation.Count}, "
+        + $"CorrelationId = {CorrelationId} }}";
 }

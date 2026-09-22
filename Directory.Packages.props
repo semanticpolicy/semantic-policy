@@ -21,12 +21,6 @@
     <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
   </ItemGroup>
 
-  <ItemGroup Label="Tools">
-    <!-- System.CommandLine (MIT) parses the verbs and options of tools/SemanticPolicy.Evals. Nothing
-         under src/ references it. -->
-    <PackageVersion Include="System.CommandLine" Version="2.0.12" />
-  </ItemGroup>
-
   <ItemGroup Label="Testing">
     <!-- AwesomeAssertions is the Apache-2.0 fork of FluentAssertions 7. FluentAssertions 8+ is
          commercially licensed and must not be referenced here. -->

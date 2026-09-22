@@ -25,4 +25,12 @@ public sealed record ModelInput(IReadOnlyList<ConversationMessage> Messages, str
     /// default pre-model context asks the policy about.
     /// </summary>
     public string Text => ConversationMessage.Join(Messages, role: null);
+
+    /// <summary>
+    /// The input's shape and nothing it carries: how many messages it has and the id they are judged
+    /// under, never their text. An input that lands in a log line, an exception message or an
+    /// assertion failure is safe to print.
+    /// </summary>
+    public override string ToString() =>
+        $"ModelInput {{ Messages = {Messages.Count}, CorrelationId = {CorrelationId} }}";
 }
