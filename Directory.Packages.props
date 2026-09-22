@@ -10,8 +10,13 @@
        compatible with Apache-2.0 - check before adding one. -->
   <ItemGroup Label="Runtime">
     <!-- The abstractions are the one package Core references: IServiceCollection and TryAdd for
-         AddSemanticPolicy(). The container itself is a test-only reference, below. Both are MIT. -->
+         AddSemanticPolicy(). MIT. -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <!-- The container itself, which the abstractions do not carry: BuildServiceProvider and
+         ServiceProvider. No project under src/ references it - an application brings its own container -
+         but every example under examples/ builds one, because an agent guarded by a policy id resolves
+         the evaluator from the container it was built with. The test projects reference it too. MIT. -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <!-- SemanticPolicy.AgentFramework hangs its policy checks on AIAgentBuilder and the function-calling
          middleware, which live in this package and not in the abstractions. MIT. -->
     <PackageVersion Include="Microsoft.Agents.AI" Version="1.22.0" />
@@ -19,13 +24,17 @@
          version is pinned here rather than taken transitively because the package ships out of band
          from the runtime. MIT. -->
     <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
+    <!-- The examples/PromptInjectionGuard, examples/ToolResultGuard and examples/AgentRouter demos run a
+         real chat model through the OpenAI SDK pointed at OpenRouter, and this package is what turns that
+         SDK's chat client into an agent. examples/ToolIntentGuard scripts its client instead and does not
+         reference it. MIT. -->
+    <PackageVersion Include="Microsoft.Agents.AI.OpenAI" Version="1.22.0" />
   </ItemGroup>
 
   <ItemGroup Label="Testing">
     <!-- AwesomeAssertions is the Apache-2.0 fork of FluentAssertions 7. FluentAssertions 8+ is
          commercially licensed and must not be referenced here. -->
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />

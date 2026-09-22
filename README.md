@@ -6,10 +6,11 @@ Guard prompts, tool calls and tool results with a decision model — hosted or l
 your application to one provider.
 
 > **Status: pre-alpha.** `SemanticPolicy.Core` — the policy model, the evaluation engine, telemetry
-> and DI registration — is implemented and tested. The provider packages, the Agent Framework
-> integration, the evaluation CLI and the examples are still skeletons, so nothing here runs against
-> a real decision model yet. There is no released package, and every part of the API can still
-> change. Watch the repository rather than depending on it.
+> and DI registration — is implemented and tested. The Agent Framework integration is implemented and
+> tested, and the four examples build, but no decision provider is registered in them yet, so they do
+> not run against a decision model. The provider packages and the evaluation CLI are still skeletons.
+> There is no released package, and every part of the API can still change. Watch the repository
+> rather than depending on it.
 
 ## The idea
 
@@ -63,7 +64,7 @@ src/
 tools/
   SemanticPolicy.Evals/                 the evaluation CLI
 examples/
-  PromptInjectionGuard/ ToolIntentGuard/ AgentRouter/
+  PromptInjectionGuard/ ToolIntentGuard/ ToolResultGuard/ AgentRouter/
 tests/
   SemanticPolicy.Core.Tests/            unit tests
   SemanticPolicy.Providers.ContractTests/  one suite every provider must pass

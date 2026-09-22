@@ -19,7 +19,7 @@ src/SemanticPolicy.Providers.TypeSafe/      hosted decision provider
 src/SemanticPolicy.Providers.Local/         local decision model provider
 src/SemanticPolicy.AgentFramework/          Microsoft Agent Framework integration
 tools/SemanticPolicy.Evals/                 evaluation CLI
-examples/                                   three demos, stubs today
+examples/                                   four demos: PromptInjectionGuard, ToolIntentGuard, ToolResultGuard, AgentRouter
 tests/SemanticPolicy.Core.Tests/            unit tests
 tests/SemanticPolicy.Providers.ContractTests/  the suite every provider must pass
 docs/adr/                                   architecture decisions, immutable once merged
