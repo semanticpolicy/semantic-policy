@@ -8,6 +8,11 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
+    <ProjectReference Include="..\..\src\SemanticPolicy.AgentFramework\SemanticPolicy.AgentFramework.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
 
 </Project>

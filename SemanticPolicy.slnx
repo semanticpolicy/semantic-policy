@@ -3,6 +3,7 @@
     <Project Path="examples/AgentRouter/AgentRouter.csproj" />
     <Project Path="examples/PromptInjectionGuard/PromptInjectionGuard.csproj" />
     <Project Path="examples/ToolIntentGuard/ToolIntentGuard.csproj" />
+    <Project Path="examples/ToolResultGuard/ToolResultGuard.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/SemanticPolicy.AgentFramework/SemanticPolicy.AgentFramework.csproj" />
