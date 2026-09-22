@@ -96,6 +96,25 @@ public sealed class SweepVerbTests
     }
 
     [Fact]
+    public async Task A_Recommended_Threshold_Is_Printed_Exactly_So_Copying_It_Selects_The_Chosen_Rows()
+    {
+        // Positives at 0.6, 0.7, 0.8807970779778823, 0.9 and 0.95: min-recall=0.6 needs three of them, so the
+        // highest cut that keeps it is the full-precision value. Rounded to 0.8808 it would flag only two, recall 0.4.
+        double[] flagged = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8807970779778823, 0.9, 0.95];
+        string[] labels = ["false", "false", "false", "false", "false", "true", "true", "true", "true", "true"];
+        using CliFixture fixture = await CliFixture.CreateAsync(
+            Guard(),
+            [.. flagged.Select((value, index) => Row(labels[index], value))]);
+
+        CliRun run = await fixture.RunAsync("sweep", "--warn", "min-recall=0.6");
+
+        run.ExitCode.Should().Be(ExitCodes.Success);
+        run.Output.Should().Contain("warn: min-recall=0.6 → threshold 0.8807970779778823, chosen and reported on the same data");
+        Rung(fixture.ReadOut().GetProperty("sweep"), "warn").GetProperty("recommendation").GetProperty("threshold")
+            .GetDouble().Should().Be(0.8807970779778823);
+    }
+
+    [Fact]
     public async Task Without_A_Split_The_Recommendation_Says_Chosen_And_Reported_On_The_Same_Data()
     {
         using CliFixture fixture = await CliFixture.CreateAsync(Guard(), Graded());

@@ -45,7 +45,7 @@ public static class SweepRenderer
             TextTable table = new(["threshold", "point", .. _matrixHeaders]);
             foreach (CurvePoint point in rung.Curve.Points)
             {
-                table.AddRow([Number(point.Threshold), point.Observed ? "observed" : "grid", .. MatrixCells(point.Matrix)]);
+                table.AddRow([Rounded(point.Threshold), point.Observed ? "observed" : "grid", .. MatrixCells(point.Matrix)]);
             }
 
             table.Write(writer);
@@ -204,7 +204,7 @@ public static class SweepRenderer
         foreach (GatePoint point in gate.Curve.Points)
         {
             table.AddRow(
-                point.Below is { } below ? Number(below) : "none",
+                point.Below is { } below ? Rounded(below) : "none",
                 Count(point.Abstained),
                 Rate(point.AbstentionRate),
                 Count(point.Decided),
@@ -338,9 +338,14 @@ public static class SweepRenderer
     private static string Rate(double? value) =>
         value is { } rate ? rate.ToString("0.000", CultureInfo.InvariantCulture) : "n/a";
 
-    // A threshold or a gate to at most four places. A margin is computed, so it carries noise such as
-    // 0.30000000000000004 that says nothing; the JSON result keeps every number exactly.
-    private static string Number(double value) => value.ToString("0.####", CultureInfo.InvariantCulture);
+    // A threshold or a gate someone may copy into a policy file, exactly. Core compares with >= and <, so a rounded
+    // number can flag or gate different rows from the point that was measured; a margin's noise such as
+    // 0.30000000000000004 is the price of that.
+    private static string Number(double value) => value.ToString("R", CultureInfo.InvariantCulture);
+
+    // A curve table's threshold or gate column to at most four places: it shows the curve's shape, not a number
+    // to copy.
+    private static string Rounded(double value) => value.ToString("0.####", CultureInfo.InvariantCulture);
 
     private static string Latency(double? milliseconds) =>
         milliseconds is { } value ? value.ToString("0.0", CultureInfo.InvariantCulture) : "n/a";
