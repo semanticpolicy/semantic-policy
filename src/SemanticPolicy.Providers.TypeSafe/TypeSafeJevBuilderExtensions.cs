@@ -18,7 +18,11 @@ public static class TypeSafeJevBuilderExtensions
     /// <see cref="TypeSafeJevOptions.Route"/>, because a default would choose where content is sent.
     /// </summary>
     /// <param name="builder">The builder <c>services.AddSemanticPolicy()</c> returned.</param>
-    /// <param name="name">The registration's name, distinct across registrations.</param>
+    /// <param name="name">
+    /// The registration's name, distinct across registrations: what a policy's bindings refer to, the
+    /// name of the <see cref="HttpClient"/> the factory creates, and the provider's
+    /// <see cref="TypeSafeJevOptions.Id"/> unless <paramref name="configure"/> sets another.
+    /// </param>
     /// <param name="configure">Fills the options: the route at least.</param>
     /// <returns><paramref name="builder"/>, for chaining.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="builder"/> or <paramref name="configure"/> is <see langword="null"/>.</exception>
@@ -35,7 +39,10 @@ public static class TypeSafeJevBuilderExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(configure);
 
-        TypeSafeJevOptions configured = new();
+        // The id starts as the registration's name, so the name a policy binds to, the name of the client
+        // the factory creates and the id every verdict carries are one name. Two registrations that both
+        // kept TypeSafeJevOptions.DefaultId would be indistinguishable on a verdict. configure still wins.
+        TypeSafeJevOptions configured = new() { Id = name };
         configure(configured);
         TypeSafeJevOptions snapshot = Copy(configured);
         snapshot.EnsureValid();
