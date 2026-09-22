@@ -16,6 +16,13 @@
          host can attach a proxy, a resilience handler or its own logging under the registration's
          name. Brings Logging and Options transitively. MIT. -->
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
+    <!-- SemanticPolicy.AgentFramework hangs its policy checks on AIAgentBuilder and the function-calling
+         middleware, which live in this package and not in the abstractions. MIT. -->
+    <PackageVersion Include="Microsoft.Agents.AI" Version="1.22.0" />
+    <!-- SemanticPolicy.AgentFramework reads FunctionInvocationContext and ChatMessage from it, and the
+         version is pinned here rather than taken transitively because the package ships out of band
+         from the runtime. MIT. -->
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
   </ItemGroup>
 
   <ItemGroup Label="Testing">
