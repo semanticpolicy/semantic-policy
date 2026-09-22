@@ -5,13 +5,11 @@
 Guard prompts, tool calls and tool results with a decision model — hosted or local — without tying
 your application to one provider.
 
-> **Status: pre-alpha.** Three pieces are implemented and tested: `SemanticPolicy.Core` — the policy
-> model, the evaluation engine, telemetry and DI registration — the TypeSafe Jev provider, so a
-> policy can be evaluated against a real decision model today, and the Agent Framework integration.
-> The four examples run on Jev through OpenRouter, with one OpenRouter key for the chat model and the
-> decision model. The local provider and the evaluation CLI are still skeletons. There is
-> no released package, and every part of the API can still change. Watch the repository rather than
-> depending on it.
+> **Status: pre-alpha.** Implemented and tested: `SemanticPolicy.Core` (policies, the evaluation
+> engine, telemetry, DI registration), the TypeSafe Jev provider and the Microsoft Agent Framework
+> integration. The four [examples](examples/README.md) run on Jev through OpenRouter. Not yet: the
+> local provider and the evaluation CLI. There is no released package, and every part of the API can
+> still change — watch the repository rather than depending on it.
 
 ## The idea
 
@@ -91,6 +89,46 @@ The provider reports what the model estimated and decides nothing: a denied verd
 an attack, and an allowed one is not proof of safety. See
 [Not a security boundary](#not-a-security-boundary) above.
 
+## Guarding an agent
+
+`SemanticPolicy.AgentFramework` asks a policy at three points of a Microsoft Agent Framework agent's
+loop — before the model reads the input, before a tool the model chose runs, and after the tool
+returns — and hands the verdict to a handler you write. The handler decides what happens; the library
+does not.
+
+```csharp
+// agent: any Agent Framework AIAgent; serviceProvider: the container built from the registration above.
+AIAgent guarded = new AIAgentBuilder(agent)
+    .UseSemanticPolicyAfterTool("tool-guard", OnToolResult)
+    .Build(serviceProvider);
+
+static ValueTask<PostToolOutcome> OnToolResult(
+    ToolResult result, PolicyVerdict verdict, CancellationToken cancellationToken) =>
+    ValueTask.FromResult(verdict.Effective == Verdict.Deny
+        ? PostToolOutcome.Replace("Withheld: this result carried instructions aimed at the assistant.")
+        : PostToolOutcome.Proceed);
+```
+
+`Effective` is always `Allow` while a policy runs in Shadow mode, and the evaluated verdict once it
+enforces. [The adapter's README](src/SemanticPolicy.AgentFramework/README.md) covers the three
+points, what each one asks the policy, and every outcome a handler can return.
+
+## Examples
+
+Four programs, each a single `dotnet run` on TypeSafe Jev through OpenRouter. Set
+`OPENROUTER_API_KEY` — one key covers both the chat model and the decision model — then:
+
+```bash
+dotnet run --project examples/PromptInjectionGuard   # an instruction planted in the user's input
+dotnet run --project examples/ToolIntentGuard        # a tool call that does not match the request
+dotnet run --project examples/ToolResultGuard        # an instruction planted in a tool's result
+dotnet run --project examples/AgentRouter            # the same runtime choosing a specialist
+```
+
+Each security example runs twice, in Shadow and then in Enforce, and prints what the policy concluded
+and what the application did about it. [examples/README.md](examples/README.md) says what each one
+shows and what two live runs of it returned.
+
 ## Layout
 
 ```
@@ -106,6 +144,7 @@ examples/
 tests/
   SemanticPolicy.Core.Tests/            unit tests
   SemanticPolicy.Providers.ContractTests/  one suite every provider must pass
+  SemanticPolicy.AgentFramework.Tests/  the adapter's tests, no key needed
 docs/
   adr/                                  architecture decisions, immutable once merged
   protocol-v0.md                        the request and result shape every provider speaks
