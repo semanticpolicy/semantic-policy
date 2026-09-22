@@ -43,6 +43,7 @@ Run the narrowest command that reads what you changed. All three must pass befor
 | `src/SemanticPolicy.Core/**` | `dotnet test tests/SemanticPolicy.Core.Tests/SemanticPolicy.Core.Tests.csproj` |
 | `src/SemanticPolicy.Providers.**` | `dotnet test tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj` |
 | `src/SemanticPolicy.AgentFramework/**` | `dotnet test tests/SemanticPolicy.AgentFramework.Tests/SemanticPolicy.AgentFramework.Tests.csproj` |
+| `tools/SemanticPolicy.Evals/**` | `dotnet test tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj` |
 | any `.cs` — whitespace and `.editorconfig` style only | `dotnet format --verify-no-changes` |
 
 CI runs the same commands on a pull request into `main`. The examples need `OPENROUTER_API_KEY` and a

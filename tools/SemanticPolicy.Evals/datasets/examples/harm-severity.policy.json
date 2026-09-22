@@ -1,0 +1,31 @@
+{
+  "id": "harm-severity-example",
+  "mode": "shadow",
+  "rules": [
+    {
+      "id": "harm-severity",
+      "question": "How severe is the harm the text describes or could lead to?",
+      "levels": [ "none", "low", "medium", "high" ],
+      "rungs": [
+        { "level": "medium", "verdict": "warn" },
+        { "level": "high", "verdict": "deny" }
+      ],
+      "type": "score"
+    }
+  ],
+  "bindings": [
+    {
+      "providerId": "local",
+      "operatingPoints": [
+        { "ruleId": "harm-severity", "thresholds": [], "gate": { "kind": "score", "below": 0.1 } }
+      ]
+    },
+    {
+      "providerId": "jev",
+      "operatingPoints": [
+        { "ruleId": "harm-severity", "thresholds": [], "gate": { "kind": "probability", "below": 0.1 } }
+      ]
+    }
+  ],
+  "onFailure": { "action": "fallback", "then": "escalate" }
+}

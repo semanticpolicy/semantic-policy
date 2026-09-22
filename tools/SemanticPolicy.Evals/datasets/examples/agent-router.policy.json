@@ -1,0 +1,31 @@
+{
+  "id": "agent-router-example",
+  "mode": "shadow",
+  "rules": [
+    {
+      "id": "route",
+      "question": "How should the assistant handle this message?",
+      "options": [
+        { "key": "answer", "description": "The assistant can answer this itself.", "verdict": "allow" },
+        { "key": "handoff", "description": "A person should take over the conversation.", "verdict": "escalate" },
+        { "key": "refuse", "description": "The request is outside what the assistant may do.", "verdict": "deny" }
+      ],
+      "type": "choice"
+    }
+  ],
+  "bindings": [
+    {
+      "providerId": "local",
+      "operatingPoints": [
+        { "ruleId": "route", "thresholds": [], "gate": { "kind": "score", "below": 0.1 } }
+      ]
+    },
+    {
+      "providerId": "jev",
+      "operatingPoints": [
+        { "ruleId": "route", "thresholds": [], "gate": { "kind": "probability", "below": 0.1 } }
+      ]
+    }
+  ],
+  "onFailure": { "action": "fallback", "then": "escalate" }
+}
