@@ -12,6 +12,10 @@
     <!-- The abstractions are the one package Core references: IServiceCollection and TryAdd for
          AddSemanticPolicy(). The container itself is a test-only reference, below. Both are MIT. -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+    <!-- Providers.TypeSafe sends every call through the named HttpClient of IHttpClientFactory, so a
+         host can attach a proxy, a resilience handler or its own logging under the registration's
+         name. Brings Logging and Options transitively. MIT. -->
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup Label="Testing">
