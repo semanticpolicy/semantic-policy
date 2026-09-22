@@ -10,8 +10,11 @@ tested. You will get an acknowledgement, and a fix or an explanation of why it i
 
 ## What this library is, in security terms
 
-SemanticPolicy evaluates **probabilistic** decisions. A rule returns a verdict and a confidence, and
-both can be wrong in either direction on an input nobody anticipated.
+SemanticPolicy evaluates **probabilistic** decisions. A provider answers a rule's question with a
+value and with evidence of a declared kind — a calibrated probability, a provider-scaled score, a
+logit or a margin, each on its own scale — and the policy thresholds that evidence into a verdict.
+There is no universal confidence: a number means what its kind says and nothing more, and both the
+evidence and the verdict can be wrong in either direction on an input nobody anticipated.
 
 That has consequences worth stating plainly:
 
@@ -24,6 +27,9 @@ That has consequences worth stating plainly:
   are inputs to a decision your application still owns.
 - **Thresholds are a product decision.** The evaluation tooling exists so they are chosen from
   measured precision and recall on your own data, not from a default that looked reasonable.
+
+`docs/THREAT_MODEL.md` lists the threats the library is designed around, what a rule can do about
+each, and what stays with the application.
 
 ## Content handling
 
