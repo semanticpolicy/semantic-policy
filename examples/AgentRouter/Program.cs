@@ -11,6 +11,7 @@ using OpenAI.Chat;
 using SemanticPolicy;
 using SemanticPolicy.Evaluation;
 using SemanticPolicy.Protocol;
+using SemanticPolicy.Providers.TypeSafe;
 
 string? key = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY");
 if (string.IsNullOrWhiteSpace(key))
@@ -46,8 +47,9 @@ Policy router = Policy.Define("agent-router")
 
 ServiceCollection services = new();
 services.AddSemanticPolicy()
-    // The decision provider is registered here; none is yet, so the first resolve of IPolicyEvaluator
-    // checks the bindings, finds nothing named "jev", and says so before an agent runs.
+    // Jev through OpenRouter's gateway. The route reads OPENROUTER_API_KEY itself when the evaluator is
+    // first resolved, so the key checked above is never handed to it; the decision model is the route's pin.
+    .AddTypeSafeJev("jev", o => o.Route = TypeSafeJevRoute.OpenRouter)
     .AddPolicy(router);
 
 using ServiceProvider container = services.BuildServiceProvider();
@@ -58,7 +60,7 @@ try
 }
 catch (PolicyConfigurationException error)
 {
-    Console.Error.WriteLine($"provider not configured: {error.Message}");
+    Console.Error.WriteLine($"configuration error: {error.Message}");
     return 2;
 }
 

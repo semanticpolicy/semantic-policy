@@ -8,8 +8,8 @@ your application to one provider.
 > **Status: pre-alpha.** Three pieces are implemented and tested: `SemanticPolicy.Core` — the policy
 > model, the evaluation engine, telemetry and DI registration — the TypeSafe Jev provider, so a
 > policy can be evaluated against a real decision model today, and the Agent Framework integration.
-> The four examples build, but no decision provider is registered in them yet, so they do not run
-> against a decision model. The local provider and the evaluation CLI are still skeletons. There is
+> The four examples run on Jev through OpenRouter, with one OpenRouter key for the chat model and the
+> decision model. The local provider and the evaluation CLI are still skeletons. There is
 > no released package, and every part of the API can still change. Watch the repository rather than
 > depending on it.
 
