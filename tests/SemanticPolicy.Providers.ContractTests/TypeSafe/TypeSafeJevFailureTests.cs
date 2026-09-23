@@ -133,7 +133,9 @@ public sealed class TypeSafeJevFailureTests
             caller.Token);
 
         result.Outcome.Should().Be(ProviderOutcome.Failure(FailureKind.Timeout, "no response within 200 ms"));
-        result.Provider.LatencyMs.Should().BeGreaterThanOrEqualTo(200).And.BeLessThan(5000);
+        // Not 200: the timer runs on a coarse millisecond clock and can fire a few milliseconds before the stopwatch
+        // that measures the latency reads 200, and on a Linux runner it does.
+        result.Provider.LatencyMs.Should().BeGreaterThanOrEqualTo(190).And.BeLessThan(5000);
         caller.Token.IsCancellationRequested.Should().BeFalse();
         harness.LastRequest.Token.IsCancellationRequested.Should().BeTrue();
     }
