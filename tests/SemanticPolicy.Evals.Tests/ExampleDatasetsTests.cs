@@ -86,8 +86,11 @@ public sealed class ExampleDatasetsTests
             new(@"\bxox[abpr]-"),
             new(@"\beyJ[A-Za-z0-9_-]{10,}\."),
             new("-----BEGIN"),
-            new(@"(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{40,}"),
         ];
+
+        // Any long run of token characters, for a key of no known shape. Not applied to a recording: it carries no
+        // input by design, and its header holds each dataset's SHA-256 and a tool version ending in a commit hash.
+        Regex longToken = new(@"(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{40,}");
 
         // By extension: on a case-insensitive file system this folder is also the one that holds the dataset
         // reader's source files.
@@ -101,7 +104,10 @@ public sealed class ExampleDatasetsTests
         foreach (string file in files)
         {
             string text = File.ReadAllText(file);
-            foreach (Regex pattern in forbidden)
+            Regex[] patterns = file.EndsWith(".recording.jsonl", StringComparison.Ordinal)
+                ? forbidden
+                : [.. forbidden, longToken];
+            foreach (Regex pattern in patterns)
             {
                 Match match = pattern.Match(text);
                 match.Success.Should().BeFalse(

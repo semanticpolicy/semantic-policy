@@ -372,8 +372,9 @@ Sweeps one binding's thresholds and margin gate on a recording, and recommends t
 constraints you give. Every candidate is a variant of the policy replayed through the library's own
 evaluation step, so a candidate is read — complement, gate, fallback and all — exactly as it would
 be in production. Threshold candidates are the distinct values of the flagged answer's evidence the
-binding returned on its declared kind, plus a 0.05 grid for probability evidence; gate candidates
-are the margins observed, plus no gate at all. The curves are computed on the tune split and the
+binding returned on its declared kind; for probability evidence the curve also prints a 0.05 grid,
+which shows its shape between those values and is never recommended. Gate candidates are the
+margins observed, plus no gate at all. The curves are computed on the tune split and the
 recommendations reported on the test split.
 
 | Option | Meaning |
@@ -395,9 +396,9 @@ recommendations reported on the test split.
 
 A rung constraint is one of:
 
-- `min-recall=<v>` — the highest threshold whose recall is at least `v`;
-- `max-fpr=<v>` — the lowest threshold whose false-positive rate is at most `v`;
-- `min-precision=<v>` — the lowest threshold whose precision is at least `v`.
+- `min-recall=<v>` — the highest candidate threshold whose recall is at least `v`;
+- `max-fpr=<v>` — the lowest candidate threshold whose false-positive rate is at most `v`;
+- `min-precision=<v>` — the lowest candidate threshold whose precision is at least `v`.
 
 A gate constraint is one of:
 
@@ -468,8 +469,10 @@ dotnet run --project tools/SemanticPolicy.Evals -- compare \
 
 ## Reading the output
 
-Rates carry three decimals; thresholds and margins up to four; latency is in milliseconds with one
-decimal. A rate with nothing to divide by — recall on a selection with no positive rows, say — is
+Rates carry three decimals; latency is in milliseconds with one decimal. The curve tables round
+thresholds and margins to at most four decimals, to show a curve's shape; a recommended or kept
+threshold or gate prints exactly, wherever it appears, so it can be copied into a policy file as
+printed. A rate with nothing to divide by — recall on a selection with no positive rows, say — is
 `n/a`, never 0.
 
 ### The report of `run` and `report`
@@ -525,9 +528,10 @@ Sections in the order they are printed:
 
 ### The output of `sweep`
 
-- **Curves**, one per rung, on the tune split: every candidate threshold with TP, FP, TN, FN and the
-  six rates. `point` says where the candidate came from — `observed`, a value the binding returned,
-  or `grid`, a step of the 0.05 grid printed for probability evidence. Each curve holds one rung on
+- **Curves**, one per rung, on the tune split: every point with TP, FP, TN, FN and the six rates.
+  `point` says where it came from — `observed`, a value the binding returned and a candidate for the
+  recommendation, or `grid`, a step of the 0.05 grid printed for probability evidence to show the
+  curve's shape, never recommended. Each curve holds one rung on
   its own, with the other bindings at their file numbers, so a row counts as positive exactly when
   the real cascade would put it at or above that rung.
 - **The gate curve**: for each candidate gate, and for `none`, the abstained rows, the abstention
@@ -599,8 +603,9 @@ report. The envelope, from `report` on the test split:
   its sweep, its discrimination and outcomes on the test split, and its provider statistics — and
   `feasible`.
 
-A member that does not apply is left out rather than empty. A rate with nothing to divide by is
-`null` — never 0 and never `NaN` — so a script cannot mistake "no positives" for "zero recall". Enum
+A member that does not apply is left out rather than empty, and so is a rate with nothing to divide
+by — never 0 and never `NaN`, so a script cannot mistake "no positives" for "zero recall". Read a
+missing rate as undefined, not as an error in the file. Enum
 values are camel-case, and maps keyed by a verdict, an evidence kind or a class have string keys.
 The file is written before the text is printed, and on exit code 2 as well.
 
