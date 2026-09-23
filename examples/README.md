@@ -36,11 +36,13 @@ dotnet run --project examples/AgentRouter
 Without the key, every demo prints one line naming the variable and exits with code 2, before an agent
 runs and before anything is sent.
 
-The first line of every run names both models:
+The first line of every run names both models. In A, C and D:
 
 ```
 chat model: openai/gpt-4.1-mini   decision model: typesafe/jev-1.13   both through OpenRouter
 ```
+
+B scripts its chat model, so its line starts `chat model: scripted, no model`.
 
 `OPENROUTER_MODEL` picks the chat model for A, C and D. It never changes the decision model: every
 demo registers the decision provider with
@@ -209,8 +211,9 @@ calls the provider once for each rule and binding it tries; its `Budget` caps th
 ## Worth knowing
 
 **The thresholds and the gate are illustrative.** The right numbers depend on the rule, the decision
-model and your data, so measure them on labelled examples of your own. The evaluation CLI,
-`tools/SemanticPolicy.Evals`, is planned for that. Copying `0.90` out of an example copies a guess.
+model and your data, so measure them on labelled examples of your own. The evaluation CLI in
+[`tools/SemanticPolicy.Evals`](../tools/SemanticPolicy.Evals/README.md) is the tool for that.
+Copying `0.90` out of an example copies a guess.
 
 **Every tool is an in-memory stub.** `web_search` returns a canned page; `send_email` and
 `delete_branch` print what they would have done and return a fixed string. Nothing touches a disk, a
