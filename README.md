@@ -37,26 +37,35 @@ var policy = Policy.Define("tool-guard")
 
 A *binding*, the `.Using("jev", …)` line, names the provider that answers and holds the numbers for
 it. The provider answers the question with a probability of *yes*, and
-`WhenTrue(Verdict.Warn, Verdict.Deny)` turns it into a verdict in two steps: above 0.60 `Warn`, above
-0.90 `Deny`, anything lower `Allow`. The numbers are illustrative: the same rule needs different ones
-on a different model, so measure them per provider on labelled examples (ADR 0005).
+`WhenTrue(Verdict.Warn, Verdict.Deny)` turns it into a verdict in two steps: `Warn` at 0.60 or
+above, `Deny` at 0.90 or above, `Allow` below 0.60. The numbers are illustrative: the same rule
+needs different ones on a different model, so measure them per provider on labelled examples
+([ADR 0005][adr-0005]).
+
+`Allow`, `Warn` and `Deny` are three of the five verdicts. From least to most severe: `Allow`,
+nothing found; `Warn`, worth knowing about; `Abstain`, could not decide; `Escalate`, for a person or
+another system to decide; and `Deny`. No rule names `Abstain`: a rule ends there when a binding's
+margin gate finds the answer too close to call and no binding is left to ask. A policy's verdict is
+the most severe of its rules'. *Evidence* is what a provider returns with its answer, such as a
+probability, or a score on the provider's own scale. A binding's thresholds and margin gate read it.
 
 - **Provider-agnostic.** The rule says what to decide; a provider decides it. Swap the provider
   without touching the rule, or bind several in order and move on to the next when the *margin*, the
-  gap between a provider's two likeliest answers, is too thin to call. A cheap local model to put
-  first in that chain is planned.
+  gap between a provider's two likeliest answers, is too thin to call.
 - **Testable.** The evaluation CLI measures a rule on labelled examples like any classifier:
-  precision, recall, a threshold sweep and a comparison between providers. It runs on Jev today; a
-  second provider to compare it with comes with the local one.
+  precision, recall, a threshold sweep and a comparison between providers. It registers one
+  provider, Jev, so for now a comparison measures a single binding.
 - **Shippable gradually.** Shadow mode records what a policy *would* have decided while the runtime
-  behaves as before, so thresholds are calibrated on production traffic before anything is enforced.
+  behaves as before, so thresholds are checked against production traffic before anything is
+  enforced.
 
 ## Not a security boundary
 
 A decision model is probabilistic. A prompt-injection rule raises the cost of an attack; it does not
 make one impossible, and nothing here should be the only thing between an untrusted input and a
 privileged action. Use it as one layer of defence in depth, behind real authorization, real input
-handling and least-privilege tools. `SECURITY.md` and `docs/THREAT_MODEL.md` say more.
+handling and least-privilege tools. [`SECURITY.md`][security] and
+[`docs/THREAT_MODEL.md`][threat-model] say more.
 
 ## Install
 
@@ -72,6 +81,16 @@ The provider and the Agent Framework package each depend on `SemanticPolicy.Core
 brings it along. The evaluation CLI is not a package yet: run it from a clone, as [Evals][evals]
 shows.
 
+The snippets on this page assume these `using` directives:
+
+```csharp
+using Microsoft.Agents.AI;                      // AIAgentBuilder and UseSemanticPolicyAfterTool
+using Microsoft.Extensions.DependencyInjection; // ServiceCollection and AddSemanticPolicy
+using SemanticPolicy;                           // Policy, Verdict, the evaluator and handler types
+using SemanticPolicy.Evaluation;                // PolicyVerdict
+using SemanticPolicy.Providers.TypeSafe;        // TypeSafeJevRoute
+```
+
 ## Providers
 
 `SemanticPolicy.Providers.TypeSafe` answers a rule's question with the TypeSafe Jev decision model,
@@ -79,6 +98,7 @@ at the vendor's own endpoint or through OpenRouter's gateway. It answers boolean
 rules, and returns a probability for the policy to threshold.
 
 ```csharp
+ServiceCollection services = new(); // or the host's builder.Services
 services.AddSemanticPolicy()
     .AddTypeSafeJev("jev", o => o.Route = TypeSafeJevRoute.OpenRouter) // reads OPENROUTER_API_KEY
     .AddPolicy(policy);
@@ -109,6 +129,7 @@ The provider reports what the model estimated and decides nothing; the policy de
 probability means. Ask it about a piece of text through the evaluator the registration adds:
 
 ```csharp
+using ServiceProvider serviceProvider = services.BuildServiceProvider();
 IPolicyEvaluator evaluator = serviceProvider.GetRequiredService<IPolicyEvaluator>();
 PolicyVerdict verdict = await evaluator.EvaluateAsync("tool-guard", SemanticContext.FromText(input));
 ```
@@ -121,10 +142,11 @@ library's.
 `SemanticPolicy.AgentFramework` asks a policy at three points of a Microsoft Agent Framework agent's
 loop — before the model reads the input, before a tool the model chose runs, and after the tool
 returns — and hands the verdict to a handler you write. The handler decides what happens; the library
-does not.
+does not. The agent comes from Agent Framework, and its chat model from a package you add yourself:
+the examples use `Microsoft.Agents.AI.OpenAI`, pointed at OpenRouter.
 
 ```csharp
-// agent: any Agent Framework AIAgent; serviceProvider: the container built from the registration above.
+// agent: any AIAgent, such as chatClient.AsAIAgent(...); serviceProvider: the container built above.
 AIAgent guarded = new AIAgentBuilder(agent)
     .UseSemanticPolicyAfterTool("tool-guard", OnToolResult)
     .Build(serviceProvider);
@@ -203,7 +225,7 @@ the point of the library, and a change that blurs it needs an ADR before it need
 
 ## Building
 
-Requires the .NET 10 SDK.
+Requires the .NET 10 SDK, 10.0.300 or later (see `global.json`).
 
 ```bash
 dotnet build
@@ -213,14 +235,20 @@ dotnet format --verify-no-changes
 
 ## Contributing
 
-Issues and pull requests are welcome — see `CONTRIBUTING.md`. Bug reports, feature requests and
-questions belong in this repository's issue tracker.
+Issues and pull requests are welcome — see [`CONTRIBUTING.md`][contributing]. Bug reports, feature
+requests and questions belong in this repository's [issue tracker][issues].
 
 ## Licence
 
-Apache-2.0. See `LICENSE`.
+Apache-2.0. See [`LICENSE`][licence].
 
 [examples]: https://github.com/semanticpolicy/semantic-policy/blob/main/examples/README.md
+[adr-0005]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/adr/0005-evaluation-and-threshold-ownership.md
+[security]: https://github.com/semanticpolicy/semantic-policy/blob/main/SECURITY.md
+[threat-model]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/THREAT_MODEL.md
 [evals]: https://github.com/semanticpolicy/semantic-policy#evals
 [adapter-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/src/SemanticPolicy.AgentFramework/README.md
 [evals-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md
+[contributing]: https://github.com/semanticpolicy/semantic-policy/blob/main/CONTRIBUTING.md
+[issues]: https://github.com/semanticpolicy/semantic-policy/issues
+[licence]: https://github.com/semanticpolicy/semantic-policy/blob/main/LICENSE
