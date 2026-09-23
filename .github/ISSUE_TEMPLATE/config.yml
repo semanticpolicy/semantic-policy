@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/pWiklacz/semantic-policy/security/advisories/new
+    url: https://github.com/semanticpolicy/semantic-policy/security/advisories/new
     about: Report privately through a security advisory, never as a public issue.

@@ -8,7 +8,7 @@ one provider.
 > **Status: alpha.** `0.1.0-alpha.1` is the first release: the core library (policies, the evaluation
 > engine, telemetry, DI registration), the TypeSafe Jev provider and the Microsoft Agent Framework
 > integration, as prerelease packages on NuGet. The evaluation CLI runs from this repository, and the
-> four [examples](examples/README.md) run on Jev through OpenRouter. Not yet: the local provider, and
+> four [examples][examples] run on Jev through OpenRouter. Not yet: the local provider, and
 > a provider registered with the evaluation CLI. Every part of the API can still change between alpha
 > releases.
 
@@ -70,7 +70,7 @@ dotnet add package SemanticPolicy.AgentFramework --prerelease      # for a Micro
 ```
 
 The provider and the Agent Framework package each depend on `SemanticPolicy.Core`, so either one
-brings it along. The evaluation CLI is not a package yet: run it from a clone, as [Evals](#evals)
+brings it along. The evaluation CLI is not a package yet: run it from a clone, as [Evals][evals]
 shows.
 
 ## Providers
@@ -139,7 +139,7 @@ static ValueTask<PostToolOutcome> OnToolResult(
 ```
 
 `Effective` is always `Allow` while a policy runs in Shadow mode, and the evaluated verdict once it
-enforces. [The adapter's README](src/SemanticPolicy.AgentFramework/README.md) covers the three
+enforces. [The adapter's README][adapter-readme] covers the three
 points, what each one asks the policy, and every outcome a handler can return.
 
 ## Examples
@@ -155,7 +155,7 @@ dotnet run --project examples/AgentRouter            # the same runtime routing 
 ```
 
 Each security example runs twice, in Shadow and then in Enforce, and prints what the policy concluded
-and what the application did about it. [examples/README.md](examples/README.md) says what each one
+and what the application did about it. [examples/README.md][examples] says what each one
 shows, what five live runs of it returned, where the rules get it wrong, and how long a check takes.
 
 ## Evals
@@ -172,7 +172,7 @@ dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy policy.json --
 ```
 
 No provider is registered with the tool in this release, so it cannot be used end to end yet.
-[Its README](tools/SemanticPolicy.Evals/README.md) explains the dataset format, the four commands and
+[Its README][evals-readme] explains the dataset format, the four commands and
 how to read their output.
 
 ## Layout
@@ -219,3 +219,8 @@ questions belong in this repository's issue tracker.
 ## Licence
 
 Apache-2.0. See `LICENSE`.
+
+[examples]: https://github.com/semanticpolicy/semantic-policy/blob/main/examples/README.md
+[evals]: https://github.com/semanticpolicy/semantic-policy#evals
+[adapter-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/src/SemanticPolicy.AgentFramework/README.md
+[evals-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md
