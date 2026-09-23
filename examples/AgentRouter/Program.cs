@@ -1,6 +1,6 @@
-// Demo D - routing: a Choice policy picks which specialist answers, with no guard adapter anywhere in
-// this program. The other three demos judge content; this one shows the same runtime making an ordinary
-// product decision, which is the point - it is not a security library.
+// Demo D - routing: a Choice policy picks which support team's agent answers a customer, with no guard
+// adapter anywhere in this program. The other three demos judge content; this one shows the same runtime
+// making an ordinary product decision, which is the point - it is not a security library.
 // A probabilistic check is one layer of defence in depth, never a security boundary on its own; a
 // verdict here decides nothing more than which agent gets the request.
 using System.ClientModel;
@@ -28,19 +28,22 @@ ChatClient chat = new OpenAIClient(
         new OpenAIClientOptions { Endpoint = new Uri("https://openrouter.ai/api/v1") })
     .GetChatClient(model);
 
+// Illustrative, not measured: when the two likeliest teams are closer than this, the rule abstains instead
+// of picking one. tools/SemanticPolicy.Evals is what measures a number like this on labelled requests.
+const double MarginGate = 0.20;
+
 Policy router = Policy.Define("agent-router")
     .Enforce()
     .Rule(Policy.Rule("route")
-        .Choice("Which specialist should answer this request?")
-        .Option("coding", "Writing, reading, debugging or reviewing software.", Verdict.Allow)
-        .Option("research", "Finding, comparing or summarising information about something.", Verdict.Allow)
-        .Option("general", "Everyday requests that fit none of the other routes.", Verdict.Allow)
-        .Option("finance", "Money: invoices, budgets, pricing, tax.", Verdict.Allow)
+        .Choice("Which team should handle this support request?")
+        .Option("billing", "Invoices, charges, refunds, payment methods and tax.", Verdict.Allow)
+        .Option("technical", "Builds, errors, integrations and anything that doesn't work as it should.", Verdict.Allow)
+        .Option("account", "Signing in, passwords, two-factor authentication, members and permissions.", Verdict.Allow)
+        .Option("sales", "Plans, prices, discounts and trials for teams choosing or changing a plan.", Verdict.Allow)
         .Build())
-    // A Choice binding carries no thresholds: the option the provider picks is the answer, and the rule
-    // maps each option to a verdict. Every option here is Allow, because a route is not a judgement
-    // about the request - the policy says who answers, not whether anyone should.
-    .Using("jev", _ => { })
+    // Every option is Allow, because a route is not a judgement about the request - the policy says who
+    // answers, not whether anyone should. A Choice binding carries no thresholds; the gate is all it has.
+    .Using("jev", binding => binding.WhenProbabilityMarginBelow(MarginGate))
     .OnFailure(FailureBehavior.Allow)
     .Budget(TimeSpan.FromSeconds(5))
     .Build();
@@ -64,53 +67,74 @@ catch (PolicyConfigurationException error)
     return 2;
 }
 
-// Four agents over one chat client, differing only in what they are told to be. Each answers in two
-// sentences at most, so the output stays about the route rather than the answer.
-const string Brief = " Answer in at most two sentences.";
-Dictionary<string, AIAgent> specialists = new(StringComparer.Ordinal)
+Console.WriteLine(
+    $"chat model: {model}   decision model: {TypeSafeJevRoute.OpenRouter.Model}   both through OpenRouter");
+
+// Brindle, the hosted build service these customers write to, is made up. Each team's agent is told the
+// few facts that team would know, so a request that reaches the right team is answered from them, and the
+// same request at another team's desk would not be.
+const string Reply = " Reply to the customer in at most two sentences, using only these facts.";
+Dictionary<string, AIAgent> teams = new(StringComparer.Ordinal)
 {
-    ["coding"] = chat.AsAIAgent(
-        instructions: "You are a software engineer." + Brief,
-        name: "coding-specialist"),
-    ["research"] = chat.AsAIAgent(
-        instructions: "You summarise and compare information, and say plainly when you do not know." + Brief,
-        name: "research-specialist"),
-    ["general"] = chat.AsAIAgent(
-        instructions: "You are a helpful assistant, and you ask when a request is unclear." + Brief,
-        name: "general-assistant"),
-    ["finance"] = chat.AsAIAgent(
-        instructions: "You answer questions about invoices, budgets, pricing and tax in general terms." + Brief,
-        name: "finance-specialist"),
+    ["billing"] = chat.AsAIAgent(
+        instructions: "You answer for Brindle's billing team. A duplicate charge is refunded within five working "
+            + "days of the team confirming it. When a card payment fails, deploys pause until the open invoice is "
+            + "paid, and they resume within minutes of payment." + Reply,
+        name: "billing-agent"),
+    ["technical"] = chat.AsAIAgent(
+        instructions: "You answer for Brindle's technical support team. Since 06:00 UTC today, build runners fail "
+            + "to pull images with the error 'runner image not found'; a fix is rolling out, and "
+            + "status.brindle.example has updates." + Reply,
+        name: "technical-agent"),
+    ["account"] = chat.AsAIAgent(
+        instructions: "You answer for Brindle's account team. A lost two-factor device is replaced by signing in "
+            + "with a recovery code; without one, the team confirms the owner's identity by email before it "
+            + "resets two-factor." + Reply,
+        name: "account-agent"),
+    ["sales"] = chat.AsAIAgent(
+        instructions: "You answer for Brindle's sales team. Paying yearly takes 20% off any plan, and teams of 25 "
+            + "or more can ask for a quote with a volume discount." + Reply,
+        name: "sales-agent"),
 };
 
+// Four requests that name their team plainly; one whose words point at the technical team although only
+// billing can help; and one that sits between two teams.
 string[] requests =
 [
-    "Why does this method throw a null reference when the list comes back empty?",
-    "Summarise what changed in project X between version 1.4 and version 2.0.",
-    "Draft a short note to the team about Friday's release.",
-    "What is the VAT on a EUR 1,200 invoice to a client in Ireland?",
-    "Can you take a look at the numbers for project X?",
+    "I was charged twice for September. Can you refund one of the charges?",
+    "Since this morning every build fails with 'runner image not found'.",
+    "I changed phones and can't get past the two-factor prompt anymore.",
+    "We are a team of 40. Is there a discount if we pay for a year up front?",
+    "Our deploys stopped after we switched the card on file.",
+    "The invoices page shows an error when I try to download last month's invoice.",
 ];
 
 foreach (string request in requests)
 {
     Console.WriteLine();
-    Console.WriteLine($"--- user: {request}");
+    Console.WriteLine($"--- customer: {request}");
 
     PolicyVerdict verdict = await evaluator.EvaluateAsync("agent-router", SemanticContext.FromText(request));
-    string? chosen = ChosenRoute(verdict);
-    Report(verdict, chosen);
+    string? team = ChosenRoute(verdict);
+    Report(verdict, team);
 
-    string route = chosen ?? "general";
-    AgentResponse response = await specialists[route].RunAsync(request);
-    Console.WriteLine($"{route}: {response.Text}");
+    if (team is null)
+    {
+        // Nothing decided the rule - the two likeliest teams were too close to call, or the decision model gave
+        // no answer - and the application does not guess: a person reads the request and picks the team.
+        Console.WriteLine("application: put the request in front of a person to pick the team; no agent answers it.");
+        continue;
+    }
+
+    AgentResponse response = await teams[team].RunAsync(request);
+    Console.WriteLine($"{team}: {response.Text}");
 }
 
 return 0;
 
 // Core does not yet expose a Choice rule's chosen option on the verdict, so the router reads it out of
-// the attempt that decided the rule. Null when nothing decided - a provider failure, say - and the
-// application routes that to the general agent rather than dropping the request.
+// the attempt that decided the rule. Null when nothing decided - the gate abstained, or the provider
+// failed - and the application hands that request to a person rather than guessing.
 static string? ChosenRoute(PolicyVerdict verdict) =>
     (Deciding(verdict.Rules[0])?.Result.Value as ChoiceValue)?.Option;
 
@@ -119,27 +143,36 @@ static Attempt? Deciding(RuleVerdict rule) =>
         ? rule.Attempts.FirstOrDefault(attempt => attempt.BindingIndex == index)
         : null;
 
-static void Report(PolicyVerdict verdict, string? chosen)
+static void Report(PolicyVerdict verdict, string? team)
 {
     RuleVerdict rule = verdict.Rules[0];
     Console.WriteLine(
         $"policy: {verdict.PolicyId}  mode: {verdict.Mode}  "
         + $"evaluated: {verdict.Evaluated}  effective: {verdict.Effective}");
-    Console.WriteLine($"  route: {chosen ?? "none, so the request falls back to general"}  source: {rule.Source}");
+    Console.WriteLine($"  route: {team ?? "none"}  source: {rule.Source}");
 
-    Attempt? deciding = Deciding(rule);
-    if (deciding is null)
+    // The last attempt is the one that ended the rule: it decided, its margin fell under the gate, or it failed.
+    Attempt? last = rule.Attempts.LastOrDefault();
+    if (last is null)
     {
-        Console.WriteLine("    no attempt decided it");
+        Console.WriteLine("    no attempt was made");
         return;
     }
 
-    Console.WriteLine($"    decided by {deciding.ProviderId} in {deciding.Result.Provider.LatencyMs:F0} ms");
-    foreach (Evidence evidence in deciding.Result.Evidence)
+    string latency = $"{last.Result.Provider.LatencyMs:F0} ms";
+    string margin = last.Margin is { } value ? $"margin {value:F2}" : "no margin";
+    ProviderOutcome outcome = last.EffectiveOutcome;
+    Console.WriteLine(last.Disposition switch
+    {
+        AttemptDisposition.Decided => $"    decided by {last.ProviderId} in {latency}, {margin}",
+        AttemptDisposition.ExhaustedByGate =>
+            $"    {last.ProviderId} answered in {latency}, but its {margin} is under the gate, so the rule abstained",
+        _ => $"    {last.ProviderId} gave no answer: {outcome.Kind?.ToString() ?? outcome.Status.ToString()}",
+    });
+    foreach (Evidence evidence in last.Result.Evidence)
     {
         // Keyed by option and printed highest first, the provider's own numbers on its own scale: nothing
-        // here is calibrated, and a route with the highest number is not a route the provider is confident
-        // about.
+        // here is calibrated, and the top number is the provider's pick, not a measure of how often it is right.
         string perOption = string.Join(
             "  ",
             evidence.Values.OrderByDescending(pair => pair.Value).Select(pair => $"{pair.Key} {pair.Value:F2}"));
