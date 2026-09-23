@@ -35,7 +35,7 @@ public sealed class ExampleDatasetsTests
         loaded.Splits.Tune.Should().HaveCount(tuneRows);
         loaded.Splits.Test.Should().HaveCount(testRows);
         loaded.Selected.Count(row => row.Label.Kind == RowLabelKind.Ambiguous).Should().Be(ambiguousRows);
-        loaded.Policy.Bindings.Select(binding => binding.ProviderId).Should().Equal("local", "jev");
+        loaded.Policy.Bindings.Select(binding => binding.ProviderId).Should().Equal("jev");
     }
 
     // A structural guard: the README's examples run on this file, and a set that stopped parsing, or lost its
@@ -65,7 +65,7 @@ public sealed class ExampleDatasetsTests
 
         loaded.Selected.Should().OnlyContain(row =>
             row.Metadata.ContainsKey("set") && row.Metadata["set"].GetString() == "smoke, not a benchmark");
-        loaded.Policy.Bindings.Select(binding => binding.ProviderId).Should().Equal("local", "jev");
+        loaded.Policy.Bindings.Select(binding => binding.ProviderId).Should().Equal("jev");
     }
 
     // A structural guard: a real address, key or endpoint committed in a dataset is a content-policy breach with
