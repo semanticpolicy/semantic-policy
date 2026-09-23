@@ -2,15 +2,15 @@
 
 **SemanticPolicy adds testable semantic decisions to AI agent workflows.**
 
-Guard prompts, tool calls and tool results with a decision model — hosted or local — without tying
-your application to one provider.
+Guard prompts, tool calls and tool results with a decision model, without tying your application to
+one provider.
 
-> **Status: pre-alpha.** Implemented and tested: `SemanticPolicy.Core` (policies, the evaluation
-> engine, telemetry, DI registration), the TypeSafe Jev provider, the Microsoft Agent Framework
-> integration and the evaluation CLI. The four [examples](examples/README.md) run on Jev through
-> OpenRouter. Not yet: the local provider, and a provider registered with the evaluation CLI. There
-> is no released package, and every part of the API can still change — watch the repository rather
-> than depending on it.
+> **Status: alpha.** `0.1.0-alpha.1` is the first release: the core library (policies, the evaluation
+> engine, telemetry, DI registration), the TypeSafe Jev provider and the Microsoft Agent Framework
+> integration, as prerelease packages on NuGet. The evaluation CLI runs from this repository, and the
+> four [examples](examples/README.md) run on Jev through OpenRouter. Not yet: the local provider, and
+> a provider registered with the evaluation CLI. Every part of the API can still change between alpha
+> releases.
 
 ## The idea
 
@@ -59,6 +59,20 @@ make one impossible, and nothing here should be the only thing between an untrus
 privileged action. Use it as one layer of defence in depth, behind real authorization, real input
 handling and least-privilege tools. `SECURITY.md` and `docs/THREAT_MODEL.md` say more.
 
+## Install
+
+The packages are prereleases, so `dotnet add package` needs `--prerelease`. All three target .NET 10.
+
+```bash
+dotnet add package SemanticPolicy.Core --prerelease                # policies, rules and the evaluator
+dotnet add package SemanticPolicy.Providers.TypeSafe --prerelease  # the TypeSafe Jev provider
+dotnet add package SemanticPolicy.AgentFramework --prerelease      # for a Microsoft Agent Framework agent
+```
+
+The provider and the Agent Framework package each depend on `SemanticPolicy.Core`, so either one
+brings it along. The evaluation CLI is not a package yet: run it from a clone, as [Evals](#evals)
+shows.
+
 ## Providers
 
 `SemanticPolicy.Providers.TypeSafe` answers a rule's question with the TypeSafe Jev decision model,
@@ -93,7 +107,15 @@ log line can print the `Authorization` header; `AddDefaultLogger()` puts the fac
 under your own redaction.
 
 The provider reports what the model estimated and decides nothing; the policy decides what a
-probability means.
+probability means. Ask it about a piece of text through the evaluator the registration adds:
+
+```csharp
+IPolicyEvaluator evaluator = serviceProvider.GetRequiredService<IPolicyEvaluator>();
+PolicyVerdict verdict = await evaluator.EvaluateAsync("tool-guard", SemanticContext.FromText(input));
+```
+
+`verdict.Effective` is the verdict to act on, and acting on it is your application's job, not the
+library's.
 
 ## Guarding an agent
 
