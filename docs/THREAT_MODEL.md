@@ -155,7 +155,7 @@ A false negative lets an attack through. A false positive blocks a legitimate re
 them teach the operator to switch the rule off. Both are threats.
 
 - **The library** ships no recommended threshold and requires every policy to name its mode; the
-  guard examples in `examples/` start in Shadow, where the verdict is reported and the application's
+  guard examples in `examples/` start in Shadow, where the verdict is recorded and the application's
   behaviour is unchanged ([ADR 0007](adr/0007-per-policy-failure-behaviour.md)); and the evaluation
   tool reports both error rates for every rule it measures.
 - **The application still** owns the asymmetry: what a missed injection costs against what a blocked
