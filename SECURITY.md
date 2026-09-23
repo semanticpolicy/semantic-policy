@@ -33,9 +33,9 @@ each, and what stays with the application.
 
 ## Content handling
 
-The library does not log prompts, tool arguments, tool results or any customer content by default.
-Debug content logging is opt-in and must stay off in production unless the data classification of
-what passes through the policy allows it.
+The library does not log prompts, tool arguments, tool results or any other content it evaluates, and
+it has no setting that turns content logging on. Its telemetry carries identifiers, outcomes,
+evidence values, verdicts and durations, never the text that was judged.
 
 A provider sends the content it evaluates to whatever endpoint it is configured with. Which provider
 runs a rule is therefore a data-residency decision as much as a cost decision, and the library will
