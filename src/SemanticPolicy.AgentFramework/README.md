@@ -99,12 +99,14 @@ Two properties of the verdict, and the difference matters:
 The adapter never reads either. A handler that returns `Stop` in Shadow stops the run, because the
 handler decided so — there is no mode in which the library overrides you.
 
-**Handle `Abstain`.** It is the policy's answer when the evidence was too close to call, and
-only a binding that sets `WhenProbabilityMarginBelow` produces it. The margin is how far apart the
-provider put its two likeliest answers:
+**Handle `Abstain`.** It is the policy's answer when the evidence was too close to call, and only a
+binding with a margin gate, `WhenProbabilityMarginBelow` or `WhenScoreMarginBelow`, produces it.
+The margin is how far apart the provider put its two likeliest answers. On the quick start's
+binding:
 
 ```csharp
-.Using("jev", binding => binding.DenyAboveProbability(0.90).WhenProbabilityMarginBelow(0.15))
+.Using("jev", b => b.WarnAboveProbability(0.60).DenyAboveProbability(0.90)
+    .WhenProbabilityMarginBelow(0.15))
 ```
 
 Without that gate a near-even answer is read against the thresholds like any other and comes back as
@@ -125,6 +127,8 @@ carries, fails there rather than on the first run.
 **The policy itself**, with an evaluator in hand and no container at all:
 
 ```csharp
+using SemanticPolicy.Providers; // ProviderRegistration and IDecisionProvider, beside the quick start's
+
 // decisionProvider: any IDecisionProvider, such as new TypeSafeJevProvider(httpClient, options).
 IPolicyEvaluator evaluator = new PolicyEvaluator(
     [new ProviderRegistration("jev", decisionProvider)],
@@ -208,8 +212,3 @@ contract surfaces as the exception the evaluator threw.
   model's next request carries it with `FunctionResultContent.Exception` set to the exception, and
   the run answers from there. A misconfigured policy is therefore reported to the model, not to you —
   which is why a guard given a policy id checks it at `Build(serviceProvider)` instead.
-
-## What comes next
-
-Planned next: handing these verdicts to the `Microsoft.AgentGovernance` package. The checks under the
-three methods do not depend on Agent Framework, so they need no change for it.
