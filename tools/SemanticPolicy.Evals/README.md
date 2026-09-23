@@ -334,8 +334,8 @@ under the same goals and prints one table on the test rows. `--recording` and `-
 
 If any binding cannot meet its goals, `compare` still prints everything and exits with code 2.
 
-The tool registers one provider, so for now `compare` measures a single binding; a second one
-arrives with the local provider. Step 3 of the quick start, shortened:
+The tool registers one provider, so for now `compare` measures a single binding. Step 3 of the quick
+start, shortened:
 
 ```text
 compare of rule 'prompt-injection', policy 'prompt-injection-smoke': binding 'jev', alone
