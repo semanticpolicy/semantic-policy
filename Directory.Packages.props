@@ -5,8 +5,8 @@
     <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
   </PropertyGroup>
 
-  <!-- A package lands here when a task file says which project needs it and why; the version is
-       pinned here and nowhere else, so two projects cannot disagree. Every package is under a licence
+  <!-- A package lands here with a note on which project needs it and why; the version is pinned
+       here and nowhere else, so two projects cannot disagree. Every package is under a licence
        compatible with Apache-2.0 - check before adding one. -->
   <ItemGroup Label="Runtime">
     <!-- The abstractions are the one package Core references: IServiceCollection and TryAdd for
