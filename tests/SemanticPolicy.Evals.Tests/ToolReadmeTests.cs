@@ -12,12 +12,16 @@ public sealed partial class ToolReadmeTests
     // Added by the command-line library to every command; the README names it once for all of them.
     private const string _help = "--help";
 
+    // The options every verb takes are documented once, under this heading, and not repeated under each verb.
+    private const string _commonHeading = "### Options every command takes";
+
     private static readonly string[] _verbs = [.. EvalsCli.Build().Subcommands.Select(command => command.Name)];
 
     public static TheoryData<string> Verbs { get; } = new(_verbs);
 
     // A structural guard: the README is written by hand against the verbs' definitions, so an option renamed,
-    // added or removed on either side would leave the README describing a tool that does not exist.
+    // added or removed on either side would leave the README describing a tool that does not exist. A verb's
+    // options are those its own section names plus those of the section every verb shares.
     [Theory]
     [MemberData(nameof(Verbs))]
     public async Task Every_Option_The_Tool_Readme_Names_Exists_In_Help_And_Every_Help_Option_Is_In_The_Readme(string verb)
@@ -33,9 +37,11 @@ public sealed partial class ToolReadmeTests
         }
 
         IEnumerable<string> helpOptions = Options(await HelpAsync(verb)).Where(option => option != _help);
-        IEnumerable<string> sectionOptions = Options(Section(readme, verb)).Where(option => option != _help);
+        IEnumerable<string> sectionOptions = Options(Section(readme, $"### `{verb}`") + "\n" + Section(readme, _commonHeading))
+            .Where(option => option != _help);
 
-        sectionOptions.Should().BeEquivalentTo(helpOptions, "the README's '{0}' section documents that verb's options", verb);
+        sectionOptions.Should().BeEquivalentTo(helpOptions,
+            "the README documents the '{0}' verb's options in its own section and in '{1}'", verb, _commonHeading);
         Options(readme).Should().Contain(_help).And.BeSubsetOf(everyHelpOption);
     }
 
@@ -53,12 +59,12 @@ public sealed partial class ToolReadmeTests
         return output.ToString();
     }
 
-    // From the verb's own heading to the next heading at the same level or above.
-    private static string Section(string readme, string verb)
+    // From the heading to the next heading at the same level or above.
+    private static string Section(string readme, string heading)
     {
         string[] lines = readme.ReplaceLineEndings("\n").Split('\n');
-        int start = Array.IndexOf(lines, $"### `{verb}`");
-        start.Should().BeGreaterThanOrEqualTo(0, "the README has a '### `{0}`' section", verb);
+        int start = Array.IndexOf(lines, heading);
+        start.Should().BeGreaterThanOrEqualTo(0, "the README has a '{0}' section", heading);
         int end = Array.FindIndex(lines, start + 1, line => SectionHeading().IsMatch(line));
         return string.Join('\n', lines[start..(end < 0 ? lines.Length : end)]);
     }

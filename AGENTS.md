@@ -9,8 +9,9 @@ SemanticPolicy evaluates semantic decisions — "is this input trying to manipul
 this tool call consistent with what the user asked for" — through a pluggable decision provider, and
 makes those decisions testable. Pre-alpha: `src/SemanticPolicy.Core/`,
 `src/SemanticPolicy.Providers.TypeSafe/` and `src/SemanticPolicy.AgentFramework/` are implemented and
-tested, and the four examples run on them; the local provider and the evaluation CLI are skeletons
-that build and do nothing yet.
+tested, and the four examples run on them; `tools/SemanticPolicy.Evals/` is implemented and tested
+but has no provider registered yet, so its `run` verb cannot call one; the local provider is a
+skeleton that builds and does nothing yet.
 
 ## Layout
 
@@ -24,6 +25,7 @@ examples/                                   four demos: PromptInjectionGuard, To
 tests/SemanticPolicy.Core.Tests/            unit tests
 tests/SemanticPolicy.Providers.ContractTests/  the suite every provider must pass
 tests/SemanticPolicy.AgentFramework.Tests/  the adapter's tests, on a scripted model and provider
+tests/SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, on a scripted provider
 docs/adr/                                   architecture decisions, immutable once merged
 docs/protocol-v0.md                         the language-neutral request/result shape
 docs/THREAT_MODEL.md                        the threats the library is designed around

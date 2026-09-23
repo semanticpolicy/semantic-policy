@@ -8,8 +8,9 @@ your application to one provider.
 > **Status: pre-alpha.** Implemented and tested: `SemanticPolicy.Core` (policies, the evaluation
 > engine, telemetry, DI registration), the TypeSafe Jev provider, the Microsoft Agent Framework
 > integration and the evaluation CLI. The four [examples](examples/README.md) run on Jev through
-> OpenRouter. Not yet: the local provider. There is no released package, and every part of the API
-> can still change — watch the repository rather than depending on it.
+> OpenRouter. Not yet: the local provider, and a provider registered with the evaluation CLI. There
+> is no released package, and every part of the API can still change — watch the repository rather
+> than depending on it.
 
 ## The idea
 
@@ -45,8 +46,9 @@ on a different model, so measure them per provider on labelled examples (ADR 000
   without touching the rule, or bind several in order and move on to the next when the *margin*, the
   gap between a provider's two likeliest answers, is too thin to call. A cheap local model to put
   first in that chain is planned.
-- **Testable (planned).** The evaluation CLI will measure a rule against a labelled dataset like any
-  classifier: accuracy, precision, recall, a threshold sweep, and a comparison between providers.
+- **Testable (in progress).** The evaluation CLI measures a rule on labelled examples like any
+  classifier: precision, recall, a threshold sweep and a comparison between providers. No provider is
+  registered with it yet.
 - **Shippable gradually.** Shadow mode records what a policy *would* have decided while the runtime
   behaves as before, so thresholds are calibrated on production traffic before anything is enforced.
 
@@ -136,16 +138,20 @@ shows, what five live runs of it returned, where the rules get it wrong, and how
 
 ## Evals
 
-`tools/SemanticPolicy.Evals` measures a rule against a labelled dataset the way any classifier is
-measured: both error rates at every verdict rung, provider failures and abstentions counted apart,
-a threshold sweep against a constraint you name, and a comparison between providers on the same
-data. Its numbers describe the dataset they were measured on and nothing more; the dataset schema,
-every verb and what each report section means are in
-[its README](tools/SemanticPolicy.Evals/README.md).
+`tools/SemanticPolicy.Evals` tells you how well a rule works on examples you labelled yourself: how
+often it flags safe inputs, how often it misses bad ones, and which thresholds meet a goal such as
+"deny must be right 95% of the time". `run` asks the providers once and saves their answers;
+`report`, `sweep` and `compare` replay them without calling anything. The numbers hold for that
+dataset only.
 
 ```bash
+dotnet run --project tools/SemanticPolicy.Evals -- run --policy policy.json --dataset dataset.jsonl --record run.recording.jsonl
 dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy policy.json --dataset dataset.jsonl --recording run.recording.jsonl --deny min-precision=0.95
 ```
+
+No provider is registered with the tool in this release, so it cannot be used end to end yet.
+[Its README](tools/SemanticPolicy.Evals/README.md) explains the dataset format, the four commands and
+how to read their output.
 
 ## Layout
 
@@ -156,13 +162,14 @@ src/
   SemanticPolicy.Providers.Local/       local decision model provider — skeleton
   SemanticPolicy.AgentFramework/        Microsoft Agent Framework integration
 tools/
-  SemanticPolicy.Evals/                 the evaluation CLI — skeleton
+  SemanticPolicy.Evals/                 the evaluation CLI — no provider registered yet
 examples/
   PromptInjectionGuard/ ToolIntentGuard/ ToolResultGuard/ AgentRouter/
 tests/
   SemanticPolicy.Core.Tests/            unit tests
   SemanticPolicy.Providers.ContractTests/  one suite every provider must pass
   SemanticPolicy.AgentFramework.Tests/  the adapter's tests, no key needed
+  SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, no key needed
 docs/
   adr/                                  architecture decisions, immutable once merged
   protocol-v0.md                        the request and result shape every provider speaks
