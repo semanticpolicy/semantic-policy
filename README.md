@@ -6,10 +6,10 @@ Guard prompts, tool calls and tool results with a decision model — hosted or l
 your application to one provider.
 
 > **Status: pre-alpha.** Implemented and tested: `SemanticPolicy.Core` (policies, the evaluation
-> engine, telemetry, DI registration), the TypeSafe Jev provider and the Microsoft Agent Framework
-> integration. The four [examples](examples/README.md) run on Jev through OpenRouter. Not yet: the
-> local provider and the evaluation CLI. There is no released package, and every part of the API can
-> still change — watch the repository rather than depending on it.
+> engine, telemetry, DI registration), the TypeSafe Jev provider, the Microsoft Agent Framework
+> integration and the evaluation CLI. The four [examples](examples/README.md) run on Jev through
+> OpenRouter. Not yet: the local provider. There is no released package, and every part of the API
+> can still change — watch the repository rather than depending on it.
 
 ## The idea
 
@@ -133,6 +133,19 @@ dotnet run --project examples/AgentRouter            # the same runtime routing 
 Each security example runs twice, in Shadow and then in Enforce, and prints what the policy concluded
 and what the application did about it. [examples/README.md](examples/README.md) says what each one
 shows, what five live runs of it returned, where the rules get it wrong, and how long a check takes.
+
+## Evals
+
+`tools/SemanticPolicy.Evals` measures a rule against a labelled dataset the way any classifier is
+measured: both error rates at every verdict rung, provider failures and abstentions counted apart,
+a threshold sweep against a constraint you name, and a comparison between providers on the same
+data. Its numbers describe the dataset they were measured on and nothing more; the dataset schema,
+every verb and what each report section means are in
+[its README](tools/SemanticPolicy.Evals/README.md).
+
+```bash
+dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy policy.json --dataset dataset.jsonl --recording run.recording.jsonl --deny min-precision=0.95
+```
 
 ## Layout
 
