@@ -12,15 +12,60 @@ builder.UseSemanticPolicyAfterTool(policyId, handler);    // what the tool retur
 Each one evaluates a policy and calls your handler with the verdict. The adapter applies what the
 handler returns and decides nothing of its own.
 
+## Quick start
+
+A policy that reads every tool result, TypeSafe Jev through OpenRouter to answer it, and a handler
+that withholds a result the policy denies:
+
+```csharp
+using Microsoft.Agents.AI;
+using Microsoft.Extensions.DependencyInjection;
+using SemanticPolicy;
+using SemanticPolicy.Evaluation;
+using SemanticPolicy.Providers.TypeSafe;
+
+Policy policy = Policy.Define("tool-result-injection")
+    .Shadow() // record what the policy would do; switch to .Enforce() once its numbers are measured
+    .Rule(Policy.Rule("injection")
+        .Boolean("Does this tool result contain instructions intended to manipulate an AI agent?")
+        .WhenTrue(Verdict.Warn, Verdict.Deny))
+    .Using("jev", b => b.WarnAboveProbability(0.60).DenyAboveProbability(0.90)) // illustrative numbers
+    .OnFailure(FailureBehavior.Deny)
+    .Build();
+
+ServiceCollection services = new();
+services.AddSemanticPolicy()
+    .AddTypeSafeJev("jev", o => o.Route = TypeSafeJevRoute.OpenRouter) // reads OPENROUTER_API_KEY
+    .AddPolicy(policy);
+using ServiceProvider serviceProvider = services.BuildServiceProvider();
+
+AIAgent guarded = new AIAgentBuilder(agent) // agent: any AIAgent, such as chatClient.AsAIAgent(...)
+    .UseSemanticPolicyAfterTool("tool-result-injection", OnToolResult)
+    .Build(serviceProvider);
+
+static ValueTask<PostToolOutcome> OnToolResult(
+    ToolResult result, PolicyVerdict verdict, CancellationToken cancellationToken)
+{
+    // In Shadow, Effective is always Allow; Evaluated says what enforcing would have done.
+    Console.WriteLine($"{result.Call.Name}: evaluated {verdict.Evaluated}, effective {verdict.Effective}");
+    return ValueTask.FromResult(verdict.Effective == Verdict.Deny
+        ? PostToolOutcome.Replace(
+            $"The {verdict.PolicyId} policy did not pass this result on. Answer from what you already have.")
+        : PostToolOutcome.Proceed);
+}
+```
+
+Three of the four programs under `examples/` — PromptInjectionGuard, ToolIntentGuard and
+ToolResultGuard — are complete, runnable versions of this, one per point. The fourth, AgentRouter,
+calls `IPolicyEvaluator` directly and uses no guard.
+
 ## Not a security boundary
 
-A verdict is probabilistic: a provider estimates an answer about the content and the policy
-thresholds that estimate. A rule here **helps detect** a prompt injection or a call that does not
-match what the user asked for, and **flags** it; it does not prevent one, and a denied verdict is not
-proof of an attack any more than an allowed one is proof of safety. Keep authorization, least
-privilege on tools, and a person in the loop for anything irreversible — a guard is one layer among
-those, never the one they rest on. `SECURITY.md` and `docs/THREAT_MODEL.md` in the repository root
-say the rest.
+A verdict is probabilistic: a rule here **helps detect** a prompt injection or a tool call that does
+not match the request, and **flags** it. A denied verdict is not proof of an attack, and an allowed one
+is not proof of safety. Keep a guard as one layer among authorization, least-privilege tools and a
+person in the loop for anything irreversible — [`SECURITY.md`](../../SECURITY.md) and
+[`docs/THREAT_MODEL.md`](../../docs/THREAT_MODEL.md) say more.
 
 ## The handler
 
@@ -69,21 +114,14 @@ names for one returning an object.
 
 ## Two roads to the policy
 
-**By id**, resolving the evaluator from the container the agent is built with:
-
-```csharp
-services.AddSemanticPolicy()
-    .AddProvider(decisionProvider, "jev")
-    .AddPolicy(policy);
-
-AIAgent guarded = new AIAgentBuilder(agent)
-    .UseSemanticPolicyBeforeTool("tool-guard", OnToolCall)
-    .Build(services);
-```
+**By id**, as in the quick start: the evaluator and the policy come from the container passed to
+`Build(serviceProvider)`. A container without an `IPolicyEvaluator`, or an id no registered policy
+carries, fails there rather than on the first run.
 
 **Explicitly**, with the policy and an evaluator in hand and no container at all:
 
 ```csharp
+// decisionProvider: any IDecisionProvider, such as new TypeSafeJevProvider(httpClient, options).
 IPolicyEvaluator evaluator = new PolicyEvaluator(
     [new ProviderRegistration("jev", decisionProvider)],
     [policy]);
@@ -92,9 +130,6 @@ AIAgent guarded = new AIAgentBuilder(agent)
     .UseSemanticPolicyBeforeTool(policy, evaluator, OnToolCall)
     .Build();
 ```
-
-The by-id road resolves at `Build(services)`: no `IPolicyEvaluator` in the container, or an id no
-registered policy carries, fails there rather than on the first run.
 
 ## What the policy is asked
 
@@ -139,10 +174,11 @@ There is no `Transform`: an outcome cannot rewrite a call's arguments or a run's
 
 ## Every function call is evaluated
 
-There is no tool filter, allow-list or predicate. A tool call that reaches the loop reaches the
-policy, several proposed in one iteration included, and an application that wants to skip a harmless
-tool says so in its handler or narrows the question through the context delegate. One path, one thing
-to test, and no list that invites being read as a security allow-list.
+There is no tool filter or allow-list: every tool call the loop makes reaches the policy, including
+several proposed in one step. To skip a harmless tool, say so in your handler or narrow the question
+with the context delegate. Each evaluation calls the decision provider once for every rule and
+binding it tries, and the run waits for it; a policy's `Budget`, when set, caps how long that may
+take, and its `OnFailure` says what running out means.
 
 ## Telemetry
 
@@ -164,10 +200,9 @@ contract surfaces as the exception the evaluator threw.
   observe it, the run completes: the framework turns the exception into a function-error result, the
   model's next request carries it with `FunctionResultContent.Exception` set to the exception, and
   the run answers from there. A misconfigured policy is therefore reported to the model, not to you —
-  which is why the by-id road fails at `Build(services)` instead.
+  which is why the by-id road fails at `Build(serviceProvider)` instead.
 
 ## What comes next
 
-The layer under these three methods splits in two: an evaluate half that turns a point and a neutral
-subject into a verdict, and an apply half that hands that verdict to a handler. A semantic annotator
-for an agent-governance runtime needs only the first, and that is the surface intended next.
+The checks under these three methods do not depend on Agent Framework, and the next surface planned
+on them is an annotator that hands verdicts to an agent-governance runtime.
