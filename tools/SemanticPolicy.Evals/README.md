@@ -5,10 +5,6 @@ safe inputs, how often it misses bad ones, and which thresholds meet a goal you 
 must be right 95% of the time". Provider errors and "not sure" answers are counted apart, so they
 never hide in the error rates.
 
-> **Not usable end to end yet.** This release registers no provider with the tool and ships no
-> recording, so `run` stops before its first call and the other commands have nothing to read. Both
-> come with the first provider the tool registers.
-
 ## What the numbers are not
 
 - **A verdict is an estimate.** A provider's probabilistic answer, put through your thresholds, can
@@ -48,26 +44,41 @@ A recording holds row ids and answers, never an input or a label. The tool depen
 | margin, gate | The margin is how far the top answer leads the runner-up. Below the binding's gate, the next binding is asked; after the last one, the rule abstains. |
 | tune, test | Two parts of the dataset. Thresholds are chosen on tune and checked on test, so the rows they were chosen on cannot flatter them. |
 
+## The provider
+
+The tool registers one provider, under the name `jev`: TypeSafe's Jev model, reached through
+OpenRouter. A binding's `providerId` refers to that name, and the policies under `datasets/` bind it
+alone.
+
+- **`run` needs `OPENROUTER_API_KEY`** in the environment. Without it, `run` stops before its first
+  call with exit code 1 and a message naming the variable.
+- **`run` sends every dataset input it evaluates to Jev through OpenRouter, a third party.** Run it
+  only on data you may send there. Each row costs one call per rule and binding, billed to the key's
+  account.
+- `report`, `sweep` and `compare` read a recording and call nothing, so they need no key.
+
 ## Quick start
 
-The whole flow on the smoke set that ships with the tool, from the repository root, once a provider
-is registered (see the note at the top):
+The smoke set ships with a recording of one `run` of its policy through Jev, so the three commands
+that read a recording work on a fresh clone, with no key and at no cost. From the repository root:
 
 ```bash
 P=tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.policy.json
 D=tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.smoke.jsonl
+R=tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.recording.jsonl
 
-# 1. Ask every provider about every row and save the answers. The only step that calls a provider.
+# 1. Measure the policy at the thresholds it has.
+dotnet run --project tools/SemanticPolicy.Evals -- report --policy $P --dataset $D --recording $R
+
+# 2. The lowest deny threshold for jev at which at least 95% of denials are right.
+dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy $P --dataset $D --recording $R --provider jev --deny min-precision=0.95
+
+# 3. The same goal for each binding on its own, side by side; this policy has one.
+dotnet run --project tools/SemanticPolicy.Evals -- compare --policy $P --dataset $D --recording $R --deny min-precision=0.95
+
+# 4. Record a run of your own. The only step that calls a provider: it needs OPENROUTER_API_KEY and
+#    sends every input to Jev. It writes a new file, so the committed recording stays as it is.
 dotnet run --project tools/SemanticPolicy.Evals -- run --policy $P --dataset $D --record smoke.recording.jsonl
-
-# 2. Measure the policy at the thresholds it has.
-dotnet run --project tools/SemanticPolicy.Evals -- report --policy $P --dataset $D --recording smoke.recording.jsonl
-
-# 3. The lowest deny threshold for the first provider at which at least 95% of denials are right.
-dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy $P --dataset $D --recording smoke.recording.jsonl --provider local --deny min-precision=0.95
-
-# 4. The same goal for each provider on its own, side by side.
-dotnet run --project tools/SemanticPolicy.Evals -- compare --policy $P --dataset $D --recording smoke.recording.jsonl --deny min-precision=0.95
 ```
 
 Part of the report from a trial run of the smoke set on 23 September 2026, with the Jev provider
@@ -157,19 +168,6 @@ smoke policy, with the question and criteria shortened:
   ],
   "bindings": [
     {
-      "providerId": "local",
-      "operatingPoints": [
-        {
-          "ruleId": "prompt-injection",
-          "thresholds": [
-            { "verdict": "warn", "kind": "score", "atOrAbove": 0.5 },
-            { "verdict": "deny", "kind": "score", "atOrAbove": 0.8 }
-          ],
-          "gate": { "kind": "score", "below": 0.1 }
-        }
-      ]
-    },
-    {
       "providerId": "jev",
       "operatingPoints": [
         {
@@ -189,7 +187,9 @@ smoke policy, with the question and criteria shortened:
 
 - **`bindings`** are asked in order; `providerId` is the name a provider is registered under. A
   Boolean binding has one threshold per rung and an optional `gate`. A Choice or Score binding has
-  only a gate, because the rule itself maps its options or levels to verdicts.
+  only a gate, because the rule itself maps its options or levels to verdicts. The smoke policy has
+  one binding, so a margin below its gate makes the rule abstain; with a second binding, that row
+  would go to the next provider instead.
 - **`mode` and `onFailure`** replay as written; a `budget` does not (see [`run`](#run)). The numbers
   read the rule's own verdict, so shadow and enforce give the same numbers.
 - **Several rules in one file** need `--rule <id>`: every number is about one rule.
@@ -259,12 +259,9 @@ same report as [`report`](#report).
 | `--timeout <seconds>` | How long one call may take before it is recorded as a `timeout`; 30 by default. |
 
 Providers are registered in code, as in an application, and a binding's `providerId` is a
-registration name. This release registers none, so `run` stops before the first call with exit
-code 1:
-
-```text
-Policy 'prompt-injection-smoke' binds provider 'local', which is not registered; registered providers: none.
-```
+registration name. The tool registers `jev` (see [The provider](#the-provider)). A policy that binds
+a name the tool does not register stops `run` before the first call with exit code 1, and the
+message lists the names that are registered.
 
 ### `report`
 
@@ -276,10 +273,10 @@ Replays a recording at the policy file's thresholds and gates and prints what it
 | `--recording <file>` | Required. The recording to read. |
 | `--force` | Read the recording although the dataset changed since it was recorded. Answers are matched to rows by id, and the report notes that they may be about other content. |
 
-The test rows only, with `$P` and `$D` as in the quick start:
+The test rows only, with `$P`, `$D` and `$R` as in the quick start:
 
 ```bash
-dotnet run --project tools/SemanticPolicy.Evals -- report --policy $P --dataset $D --recording smoke.recording.jsonl --where metadata.split=test
+dotnet run --project tools/SemanticPolicy.Evals -- report --policy $P --dataset $D --recording $R --where metadata.split=test
 ```
 
 ### `sweep`
@@ -322,8 +319,8 @@ Warn catches at least 90% of attacks; deny is right at least 95% of the time and
 safe inputs:
 
 ```bash
-dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy $P --dataset $D --recording smoke.recording.jsonl \
-  --provider local --warn min-recall=0.9 --deny min-precision=0.95 --deny max-fpr=0.01
+dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy $P --dataset $D --recording $R \
+  --provider jev --warn min-recall=0.9 --deny min-precision=0.95 --deny max-fpr=0.01
 ```
 
 ### `compare`
@@ -337,6 +334,9 @@ under the same goals and prints one table on the test rows. `--recording` and `-
 | `--provider <name>` | Compare only these bindings. Repeatable; every binding by default. |
 
 If any binding cannot meet its goals, `compare` still prints everything and exits with code 2.
+
+The tool registers one provider, so for now `compare` measures a single binding; a second one
+arrives with the local provider.
 
 ## Reading the report
 
@@ -393,7 +393,8 @@ failure rates, latency and usage.
   chosen at the edge of a goal on tune can miss it on test.
 - **Line endings.** A dataset's digest is taken over its bytes. Git on Windows can check a `.jsonl`
   file out with CRLF endings, and its digest then no longer matches a recording made from LF bytes.
-  Keep datasets LF, for example with `*.jsonl text eol=lf` in `.gitattributes`.
+  Keep datasets LF, for example with `*.jsonl text eol=lf` in `.gitattributes`, as this repository
+  does.
 - **Large datasets.** Each distinct evidence value is a candidate threshold, and each candidate
   replays every row, so with continuous scores the time grows with the square of the row count:
   thousands of rows take minutes, and `sweep` prints a line per candidate.
@@ -462,7 +463,7 @@ Replaying checks that the recording still fits:
 | Code | Meaning |
 |---|---|
 | 0 | Done. A conflict in `sweep` still exits 0, because each recommendation met its goals. |
-| 1 | A usage or data error: a bad option, an unreadable file, a bad row, label or split, a recording that does not fit, a provider that is not registered. The message names the file, the line or the id, never a row's input. |
+| 1 | A usage or data error: a bad option, an unreadable file, a bad row, label or split, a recording that does not fit, a provider that is not registered, a key that is not set. The message names the file, the line or the id, never a row's input. |
 | 2 | A goal that no threshold or gate can meet. Everything is still printed, and `--out` is written. |
 
 ## The JSON result
@@ -505,7 +506,10 @@ public benchmark or holds a real name, address, key, email address or URL.
   (Boolean), `agent-router` (Choice, with two-part inputs) and `harm-severity` (Score). They show the
   format and are far too small to measure anything.
 - **`datasets/smoke/`**: `prompt-injection.smoke.jsonl`, a hundred rows for a Boolean
-  prompt-injection rule, beside `prompt-injection.policy.json`. **Smoke, not a benchmark:** it checks
+  prompt-injection rule, beside `prompt-injection.policy.json` and
+  `prompt-injection.recording.jsonl`, one `run` of that policy over the set through Jev. A test
+  replays the recording, so a change to the dataset or to the rule that stops it fitting fails the
+  tests; the fix is a new run, never an edit to the recording. **Smoke, not a benchmark:** it checks
   that the tool, a provider and a policy fit together, not how a rule does on real traffic. 46 rows
   are labelled `true`, 48 `false` and 6 `ambiguous`; 60 are tune and 40 test rows; 16 have two-part
   inputs. The rows are short, generic phrasing shaped like instruction override, role confusion and
@@ -515,8 +519,6 @@ public benchmark or holds a real name, address, key, email address or URL.
 
 ## Not in this release
 
-- **A registered provider and a recorded run of the smoke set.** Until then `run` stops before any
-  call, and `report`, `sweep` and `compare` have nothing to read.
 - **Per-slice metrics** in one run; filter one slice at a time with `--where`.
 - **A CI gate** that fails a build when a number drops.
 - **Expected cost** from the cost of each kind of error.
