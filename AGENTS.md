@@ -7,10 +7,10 @@ the same. Everything here is a fact about this repository; nothing here is a pre
 
 SemanticPolicy evaluates semantic decisions — "is this input trying to manipulate the agent", "is
 this tool call consistent with what the user asked for" — through a pluggable decision provider, and
-makes those decisions testable. Pre-alpha: `src/SemanticPolicy.Core/` and
-`src/SemanticPolicy.Providers.TypeSafe/` are implemented and tested; the local provider, the Agent
-Framework integration, the evaluation CLI and the examples are skeletons that build and do nothing
-yet.
+makes those decisions testable. Pre-alpha: `src/SemanticPolicy.Core/`,
+`src/SemanticPolicy.Providers.TypeSafe/` and `src/SemanticPolicy.AgentFramework/` are implemented and
+tested, and the four examples run on them; the local provider and the evaluation CLI are skeletons
+that build and do nothing yet.
 
 ## Layout
 
@@ -23,6 +23,7 @@ tools/SemanticPolicy.Evals/                 evaluation CLI
 examples/                                   four demos: PromptInjectionGuard, ToolIntentGuard, ToolResultGuard, AgentRouter
 tests/SemanticPolicy.Core.Tests/            unit tests
 tests/SemanticPolicy.Providers.ContractTests/  the suite every provider must pass
+tests/SemanticPolicy.AgentFramework.Tests/  the adapter's tests, on a scripted model and provider
 docs/adr/                                   architecture decisions, immutable once merged
 docs/protocol-v0.md                         the language-neutral request/result shape
 docs/THREAT_MODEL.md                        the threats the library is designed around
@@ -41,9 +42,11 @@ Run the narrowest command that reads what you changed. All three must pass befor
 | anything under `src/`, `tools/`, `examples/`, `tests/` | `dotnet build` |
 | `src/SemanticPolicy.Core/**` | `dotnet test tests/SemanticPolicy.Core.Tests/SemanticPolicy.Core.Tests.csproj` |
 | `src/SemanticPolicy.Providers.**` | `dotnet test tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj` |
+| `src/SemanticPolicy.AgentFramework/**` | `dotnet test tests/SemanticPolicy.AgentFramework.Tests/SemanticPolicy.AgentFramework.Tests.csproj` |
 | any `.cs` — whitespace and `.editorconfig` style only | `dotnet format --verify-no-changes` |
 
-CI runs the same commands on a pull request into `main`.
+CI runs the same commands on a pull request into `main`. The examples need `OPENROUTER_API_KEY` and a
+live model, so neither CI nor this table runs them; `examples/README.md` says how to run them by hand.
 
 ## Architecture rules
 
