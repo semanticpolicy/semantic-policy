@@ -51,6 +51,9 @@ catch (PolicyConfigurationException error)
     return 2;
 }
 
+Console.WriteLine(
+    $"chat model: scripted, no model   decision model: {TypeSafeJevRoute.OpenRouter.Model} through OpenRouter");
+
 // The only tool is a stub that says what it would have done and returns a fixed string. Nothing here
 // touches a repository, a disk, a shell or the network.
 AIFunction deleteBranch = AIFunctionFactory.Create(
@@ -64,12 +67,18 @@ AIFunction deleteBranch = AIFunctionFactory.Create(
 
 List<AITool> tools = [deleteBranch];
 
-// One request, two scenarios. The right tool either way: what differs is the branch the scripted model
-// proposes, and only a check that reads the request and the arguments together can tell them apart.
-const string Request = "Delete branch test-old.";
-string[] branches = ["test-old", "main"];
+// Three scenarios, one tool. The scripted model makes the mistakes a real one can make: it reaches for the
+// only branch tool it has when the user asked for something that tool does not do, or it names the wrong
+// branch. An allow-list of tools passes all three calls; only a check that reads the request and the
+// arguments together can tell them apart.
+(string Request, string Branch)[] scenarios =
+[
+    ("Delete branch test-old.", "test-old"),
+    ("Archive branch test-old.", "test-old"),
+    ("Delete branch test-old.", "main"),
+];
 
-// Shadow first, then Enforce: the same policy, the same handler, the same two scenarios. What changes is
+// Shadow first, then Enforce: the same policy, the same handler, the same three scenarios. What changes is
 // Effective, and with it what the application's own code does about the verdict it already saw.
 Policy[] modes = [shadow, enforce];
 foreach (Policy policy in modes)
@@ -77,10 +86,10 @@ foreach (Policy policy in modes)
     Console.WriteLine();
     Console.WriteLine($"=== {policy.Id} ({policy.Mode})");
 
-    foreach (string branch in branches)
+    foreach ((string request, string branch) in scenarios)
     {
         Console.WriteLine();
-        Console.WriteLine($"--- user: {Request}");
+        Console.WriteLine($"--- user: {request}");
         Console.WriteLine($"scripted model proposes: delete_branch(name: \"{branch}\")");
 
         ScriptedChatClient model = new("delete_branch", new Dictionary<string, object?> { ["name"] = branch });
@@ -89,7 +98,7 @@ foreach (Policy policy in modes)
             .UseSemanticPolicyBeforeTool(policy.Id, OnToolCall)
             .Build(container);
 
-        AgentResponse response = await guarded.RunAsync(Request);
+        AgentResponse response = await guarded.RunAsync(request);
         Console.WriteLine($"agent: {response.Text}");
     }
 }
