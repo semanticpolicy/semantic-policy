@@ -2,6 +2,9 @@
 
   <PropertyGroup>
     <Description>Decision provider backed by a local decision model endpoint.</Description>
+    <!-- Nothing is implemented here yet, so nothing is published. Remove this line when the
+         provider lands. -->
+    <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
