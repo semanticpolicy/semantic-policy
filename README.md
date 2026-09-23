@@ -7,10 +7,9 @@ one provider.
 
 > **Status: alpha.** `0.1.0-alpha.1` is the first release: the core library (policies, the evaluation
 > engine, telemetry, DI registration), the TypeSafe Jev provider and the Microsoft Agent Framework
-> integration, as prerelease packages on NuGet. The evaluation CLI runs from this repository, and the
-> four [examples][examples] run on Jev through OpenRouter. Not yet: the local provider, and
-> a provider registered with the evaluation CLI. Every part of the API can still change between alpha
-> releases.
+> integration, as prerelease packages on NuGet. The evaluation CLI runs from this repository; it and
+> the four [examples][examples] call Jev through OpenRouter. Not yet: the local provider. Every part
+> of the API can still change between alpha releases.
 
 ## The idea
 
@@ -46,9 +45,9 @@ on a different model, so measure them per provider on labelled examples (ADR 000
   without touching the rule, or bind several in order and move on to the next when the *margin*, the
   gap between a provider's two likeliest answers, is too thin to call. A cheap local model to put
   first in that chain is planned.
-- **Testable (in progress).** The evaluation CLI measures a rule on labelled examples like any
-  classifier: precision, recall, a threshold sweep and a comparison between providers. No provider is
-  registered with it yet.
+- **Testable.** The evaluation CLI measures a rule on labelled examples like any classifier:
+  precision, recall, a threshold sweep and a comparison between providers. It runs on Jev today; a
+  second provider to compare it with comes with the local one.
 - **Shippable gradually.** Shadow mode records what a policy *would* have decided while the runtime
   behaves as before, so thresholds are calibrated on production traffic before anything is enforced.
 
@@ -171,9 +170,10 @@ dotnet run --project tools/SemanticPolicy.Evals -- run --policy policy.json --da
 dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy policy.json --dataset dataset.jsonl --recording run.recording.jsonl --deny min-precision=0.95
 ```
 
-No provider is registered with the tool in this release, so it cannot be used end to end yet.
-[Its README][evals-readme] explains the dataset format, the four commands and
-how to read their output.
+`run` calls Jev through OpenRouter, so it needs `OPENROUTER_API_KEY` and sends every dataset input
+to that third party. A recorded run of the smoke set ships with the tool, so the other three commands
+work on a fresh clone without a key. [Its README][evals-readme] explains the dataset format, the four
+commands and how to read their output.
 
 ## Layout
 
@@ -184,7 +184,7 @@ src/
   SemanticPolicy.Providers.Local/       local decision model provider — skeleton
   SemanticPolicy.AgentFramework/        Microsoft Agent Framework integration
 tools/
-  SemanticPolicy.Evals/                 the evaluation CLI — no provider registered yet
+  SemanticPolicy.Evals/                 the evaluation CLI — runs on TypeSafe Jev
 examples/
   PromptInjectionGuard/ ToolIntentGuard/ ToolResultGuard/ AgentRouter/
 tests/

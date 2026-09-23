@@ -9,9 +9,9 @@ SemanticPolicy evaluates semantic decisions — "is this input trying to manipul
 this tool call consistent with what the user asked for" — through a pluggable decision provider, and
 makes those decisions testable. Pre-alpha: `src/SemanticPolicy.Core/`,
 `src/SemanticPolicy.Providers.TypeSafe/` and `src/SemanticPolicy.AgentFramework/` are implemented and
-tested, and the four examples run on them; `tools/SemanticPolicy.Evals/` is implemented and tested
-but has no provider registered yet, so its `run` verb cannot call one; the local provider is a
-skeleton that builds and does nothing yet.
+tested, and the four examples run on them; `tools/SemanticPolicy.Evals/` is implemented and tested,
+and its `run` verb calls Jev through OpenRouter; the local provider is a skeleton that builds and does
+nothing yet.
 
 ## Layout
 

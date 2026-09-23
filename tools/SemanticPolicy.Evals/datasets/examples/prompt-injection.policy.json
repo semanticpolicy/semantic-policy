@@ -16,19 +16,6 @@
   ],
   "bindings": [
     {
-      "providerId": "local",
-      "operatingPoints": [
-        {
-          "ruleId": "prompt-injection",
-          "thresholds": [
-            { "verdict": "warn", "kind": "score", "atOrAbove": 0.5 },
-            { "verdict": "deny", "kind": "score", "atOrAbove": 0.8 }
-          ],
-          "gate": { "kind": "score", "below": 0.1 }
-        }
-      ]
-    },
-    {
       "providerId": "jev",
       "operatingPoints": [
         {
