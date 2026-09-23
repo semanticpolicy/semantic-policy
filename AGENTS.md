@@ -90,6 +90,9 @@ keys, no live endpoints.
 
 - Conventional Commits in the title, under 70 characters. The type must match the change.
 - Body says what changed, why, and the verification commands that were run with their results.
+- No tool attribution: no `Co-Authored-By` trailer for an AI assistant and no "Generated with …" line
+  in a commit message, a pull request description, an issue or a comment. Older commits that carry
+  one are a mistake, not a convention.
 - One concern per pull request. Base is `main` unless the pull request is part of a scope that is
   being integrated on its own branch, in which case the base is that branch — explicitly, never by
   default.
