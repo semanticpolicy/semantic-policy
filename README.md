@@ -18,7 +18,8 @@ manipulate the agent, is this tool call consistent with what the user asked for,
 should answer this*. Today those decisions are either hardcoded heuristics or a bare model call
 written inline, and neither can be tested, compared across providers, or rolled out gradually.
 
-SemanticPolicy makes them first-class:
+SemanticPolicy writes each one down as a rule: a question for a decision model, and what each answer
+means.
 
 ```csharp
 var injection = Policy.Rule("prompt-injection")
@@ -28,16 +29,17 @@ var injection = Policy.Rule("prompt-injection")
 var policy = Policy.Define("tool-guard")
     .Enforce()
     .Rule(injection)
-    // Illustrative numbers: a threshold is measured, not guessed.
+    // Illustrative numbers.
     .Using("jev", b => b.WarnAboveProbability(0.60).DenyAboveProbability(0.90))
     .OnFailure(FailureBehavior.Deny)
     .Build();
 ```
 
-The rule says what each answer means. A *binding*, the `.Using("jev", …)` line, names the provider
-that answers and holds the numbers for it. Those numbers should be measured per provider on a
-labelled dataset, because a rule's *operating point* — the thresholds at which it trades missed cases
-against false alarms the way you chose — sits at a different value on a different model (ADR 0005).
+A *binding*, the `.Using("jev", …)` line, names the provider that answers and holds the numbers for
+it. The provider answers the question with a probability of *yes*, and
+`WhenTrue(Verdict.Warn, Verdict.Deny)` turns it into a verdict in two steps: above 0.60 `Warn`, above
+0.90 `Deny`, anything lower `Allow`. The numbers are illustrative: the same rule needs different ones
+on a different model, so measure them per provider on labelled examples (ADR 0005).
 
 - **Provider-agnostic.** The rule says what to decide; a provider decides it. Swap the provider
   without touching the rule, or bind several in order and move on to the next when the *margin*, the
@@ -88,9 +90,8 @@ cancellation the evaluator reads as a bug. The registration also strips that cli
 log line can print the `Authorization` header; `AddDefaultLogger()` puts the factory's logging back
 under your own redaction.
 
-The provider reports what the model estimated and decides nothing: a denied verdict is not proof of
-an attack, and an allowed one is not proof of safety. See
-[Not a security boundary](#not-a-security-boundary) above.
+The provider reports what the model estimated and decides nothing; the policy decides what a
+probability means.
 
 ## Guarding an agent
 
@@ -131,7 +132,7 @@ dotnet run --project examples/AgentRouter            # the same runtime routing 
 
 Each security example runs twice, in Shadow and then in Enforce, and prints what the policy concluded
 and what the application did about it. [examples/README.md](examples/README.md) says what each one
-shows and what five live runs of it returned.
+shows, what five live runs of it returned, where the rules get it wrong, and how long a check takes.
 
 ## Layout
 
@@ -142,7 +143,7 @@ src/
   SemanticPolicy.Providers.Local/       local decision model provider — skeleton
   SemanticPolicy.AgentFramework/        Microsoft Agent Framework integration
 tools/
-  SemanticPolicy.Evals/                 the evaluation CLI
+  SemanticPolicy.Evals/                 the evaluation CLI — skeleton
 examples/
   PromptInjectionGuard/ ToolIntentGuard/ ToolResultGuard/ AgentRouter/
 tests/

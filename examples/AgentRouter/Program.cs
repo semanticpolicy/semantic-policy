@@ -1,8 +1,7 @@
 // Demo D - routing: a Choice policy picks which support team's agent answers a customer, with no guard
-// adapter anywhere in this program. The other three demos judge content; this one shows the same runtime
-// making an ordinary product decision, which is the point - it is not a security library.
-// A probabilistic check is one layer of defence in depth, never a security boundary on its own; a
-// verdict here decides nothing more than which agent gets the request.
+// adapter anywhere in this program. The other three demos judge content; this one uses the same library
+// for an ordinary product decision.
+// A verdict is a probabilistic signal, never a security boundary; here it only picks the agent.
 using System.ClientModel;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -29,7 +28,7 @@ ChatClient chat = new OpenAIClient(
     .GetChatClient(model);
 
 // Illustrative, not measured: when the two likeliest teams are closer than this, the rule abstains instead
-// of picking one. tools/SemanticPolicy.Evals is what measures a number like this on labelled requests.
+// of picking one.
 const double MarginGate = 0.20;
 
 Policy router = Policy.Define("agent-router")
