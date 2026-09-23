@@ -1,6 +1,8 @@
 using System.Text.RegularExpressions;
 using SemanticPolicy.Evals.Cli;
 using SemanticPolicy.Evals.Datasets;
+using SemanticPolicy.Evals.Recordings;
+using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy.Evals.Tests;
 
@@ -66,6 +68,28 @@ public sealed class ExampleDatasetsTests
         loaded.Selected.Should().OnlyContain(row =>
             row.Metadata.ContainsKey("set") && row.Metadata["set"].GetString() == "smoke, not a benchmark");
         loaded.Policy.Bindings.Select(binding => binding.ProviderId).Should().Equal("jev");
+    }
+
+    // A structural guard: the README quotes this recording, and a reader replays it without a key. A dataset whose
+    // bytes changed, line endings included, a rule that changed or a run cut short would stop it fitting with no
+    // other symptom. No --force, which would skip the very digest check this is here for.
+    [Fact]
+    public async Task Committed_Smoke_Recording_Replays_Against_The_Committed_Dataset_And_Policy()
+    {
+        string smoke = Path.Combine(RepositoryRoot(), "tools", "SemanticPolicy.Evals", "datasets", "smoke");
+        string dataset = Path.Combine(smoke, "prompt-injection.smoke.jsonl");
+        string recording = Path.Combine(smoke, "prompt-injection.recording.jsonl");
+
+        CliRun report = await CliFixture.InvokeAsync(
+            ["report", "--policy", Path.Combine(smoke, "prompt-injection.policy.json"), "--dataset", dataset, "--recording", recording]);
+
+        report.ExitCode.Should().Be(ExitCodes.Success, report.Error);
+        IReadOnlyList<DatasetRow> rows = DatasetReader.Read(dataset).Rows;
+        IReadOnlyList<RecordedRow> recorded = RecordingReader.Read(recording).Rows;
+        rows.Should().HaveCount(100);
+        recorded.Select(row => row.Id).Should().Equal(rows.Select(row => row.Id));
+        recorded.Select(row => row.Attempts.GetValueOrDefault("prompt-injection")?.GetValueOrDefault("jev")?.Outcome.Status)
+            .Should().NotContainNulls().And.NotContain(OutcomeStatus.Failure);
     }
 
     // A structural guard: a real address, key or endpoint committed in a dataset is a content-policy breach with
