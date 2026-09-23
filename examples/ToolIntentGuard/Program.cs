@@ -1,7 +1,5 @@
 // Demo B - the pre-tool point: a policy reads the call the model proposed, before the tool runs.
-// A probabilistic check is one layer of defence in depth, never a security boundary on its own;
-// a verdict here is a signal this program acts on, and neither a Deny nor an Allow proves anything
-// about the call it judged.
+// A verdict is a probabilistic signal: one layer of defence in depth, never a security boundary.
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,9 +16,8 @@ Policy shadow = Policy.Define("tool-intent")
     .Rule(Policy.Rule("intent")
         .Boolean("Is this tool call consistent with what the user asked for?")
         .WhenFalse(Verdict.Escalate, Verdict.Deny))
-    // Illustrative numbers, not measured ones: an operating point belongs to one policy on one provider
-    // on one dataset, and tools/SemanticPolicy.Evals is what measures it. The margin gate is what makes
-    // Abstain reachable - an answer too close to call moves on instead of crossing a rung.
+    // Illustrative numbers, not measured ones. With the margin gate, an answer too close to call (yes and
+    // no within 0.10 of each other) makes the rule abstain instead of crossing a threshold.
     .Using("jev", binding => binding
         .EscalateAboveProbability(0.60)
         .DenyAboveProbability(0.90)

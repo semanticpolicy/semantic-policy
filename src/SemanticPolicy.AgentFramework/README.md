@@ -69,9 +69,10 @@ person in the loop for anything irreversible — [`SECURITY.md`](../../SECURITY.
 
 ## The handler
 
-A handler takes the neutral subject for its point, the verdict, and the run's cancellation token, and
-returns one of that point's closed outcomes. It sees no Agent Framework type, so the same handler
-moves to another frontend unchanged.
+A handler takes what its point checked — a `ModelInput`, a `ToolCall` or a `ToolResult` — with the
+verdict and the run's cancellation token, and returns one of that point's fixed set of
+[outcomes](#outcomes). None of these types comes from Agent Framework, so a handler is plain code you
+can unit-test without building an agent.
 
 ```csharp
 static ValueTask<PreToolOutcome> OnToolCall(ToolCall call, PolicyVerdict verdict, CancellationToken cancellationToken)
@@ -98,7 +99,7 @@ Two properties of the verdict, and the difference matters:
 The adapter never reads either. A handler that returns `Stop` in Shadow stops the run, because the
 handler decided so — there is no mode in which the library overrides you.
 
-**Handle `Abstain`.** It is the runtime's own outcome when the evidence was too close to call, and
+**Handle `Abstain`.** It is the policy's answer when the evidence was too close to call, and
 only a binding that sets `WhenProbabilityMarginBelow` produces it. The margin is how far apart the
 provider put its two likeliest answers:
 
@@ -181,7 +182,10 @@ There is no tool filter or allow-list: every tool call the loop makes reaches th
 several proposed in one step. To skip a harmless tool, say so in your handler or narrow the question
 with the context delegate. Each evaluation calls the decision provider once for every rule and
 binding it tries, and the run waits for it; a policy's `Budget`, when set, caps how long that may
-take, and its `OnFailure` says what running out means.
+take, and its `OnFailure` says what running out means. In the examples' runs through OpenRouter a
+check took about a third of a second;
+[examples/README.md](../../examples/README.md#how-long-a-check-takes) has the numbers and why yours
+will differ.
 
 ## Telemetry
 
@@ -207,5 +211,5 @@ contract surfaces as the exception the evaluator threw.
 
 ## What comes next
 
-The checks under these three methods do not depend on Agent Framework, and the next surface planned
-on them is an annotator that hands verdicts to an agent-governance runtime.
+Planned next: handing these verdicts to the `Microsoft.AgentGovernance` package. The checks under the
+three methods do not depend on Agent Framework, so they need no change for it.
