@@ -14,11 +14,13 @@ public static class EvalsCli
     {
         CliIo writers = io ?? CliIo.ForConsole();
         RootCommand root = new("Evaluates a SemanticPolicy policy against a labelled JSONL dataset.");
+
+        // In the order they are used, which is the order help lists them: record once, then read the recording.
+        root.Subcommands.Add(RunCommand.Create(writers, configureProviders));
+        root.Subcommands.Add(ReportCommand.Create(writers));
         root.Subcommands.Add(SweepVerb.Build(writers));
         root.Subcommands.Add(CompareVerb.Build(writers));
         root.SetAction(_ => WithoutVerb(root, writers));
-        root.Subcommands.Add(RunCommand.Create(writers, configureProviders));
-        root.Subcommands.Add(ReportCommand.Create(writers));
         return root;
     }
 

@@ -100,4 +100,39 @@ public sealed class RecordingTests
             .Contain("line 1").And.Contain(unknownFormat).And.Contain(RecordingHeader.FormatV0);
         readEmpty.Should().Throw<EvalsException>().Which.Message.Should().Contain(empty.Path);
     }
+
+    [Fact]
+    public async Task Writer_Writes_The_Build_Metadata_Of_The_Tool_Version_Unescaped()
+    {
+        using TempFile file = TempFile.Write("");
+        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+
+        await Samples.RecordAsync(file.Path, Samples.Header(policy) with { ToolVersion = "1.0.0+abc" });
+
+        string[] lines = await File.ReadAllLinesAsync(file.Path, TestContext.Current.CancellationToken);
+        lines[0].Should().Contain("\"toolVersion\":\"1.0.0+abc\"");
+    }
+
+    [Fact]
+    public async Task Replacing_The_Header_Leaves_Every_Row_As_It_Was_Written()
+    {
+        using TempFile file = TempFile.Write("");
+        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+        RecordingHeader header = Samples.Header(policy) with { Providers = [new RecordedProvider("local", Model: null)] };
+        await Samples.RecordAsync(
+            file.Path,
+            header,
+            Samples.Recorded("a", (Samples.Injection, "local", Samples.BooleanAnswer(0.95))),
+            Samples.Recorded("b", (Samples.Injection, "local", Samples.BooleanAnswer(0.1))));
+        string before = await File.ReadAllTextAsync(file.Path, TestContext.Current.CancellationToken);
+
+        await RecordingWriter.ReplaceHeaderAsync(
+            file.Path,
+            header with { Providers = [new RecordedProvider("local", "model-local")] },
+            TestContext.Current.CancellationToken);
+
+        string after = await File.ReadAllTextAsync(file.Path, TestContext.Current.CancellationToken);
+        after[after.IndexOf('\n', StringComparison.Ordinal)..].Should().Be(before[before.IndexOf('\n', StringComparison.Ordinal)..]);
+        RecordingReader.Read(file.Path).Header.Providers.Should().Equal(new RecordedProvider("local", "model-local"));
+    }
 }

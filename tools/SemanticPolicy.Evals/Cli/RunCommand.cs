@@ -83,7 +83,7 @@ internal static class RunCommand
             inputs.Policy,
             RecordedDatasets(inputs.Datasets),
 
-            // The model is left open: an adapter reports it per answer, and the report reads it from there.
+            // An adapter reports its model per answer, so the header leaves it open until every row is in.
             [.. inputs.Policy.Bindings.Select(binding => new RecordedProvider(binding.ProviderId, Model: null))],
             RecordingHeader.CurrentToolVersion,
             DateTimeOffset.UtcNow,
@@ -102,6 +102,11 @@ internal static class RunCommand
                 cancellationToken).ConfigureAwait(false);
         }
 
+        // Only a finished run has heard from every provider; a run cut short keeps the header it started with.
+        Recording recorded = RecordingReader.Read(recordPath);
+        await RecordingWriter.ReplaceHeaderAsync(recordPath, WithModels(header, recorded), cancellationToken)
+            .ConfigureAwait(false);
+
         // The report is built from the file, not from the run's memory, so what is printed is exactly what a
         // later `report` on the same recording prints.
         Recording recording = RecordingReader.Read(recordPath);
@@ -109,6 +114,22 @@ internal static class RunCommand
         ReportCommand.Publish(result, parseResult.GetValue(SharedOptions.Out), io);
         return ExitCodes.Success;
     }
+
+    // Each provider's model is the first one its answers reported, as the report's provider table takes it.
+    private static RecordingHeader WithModels(RecordingHeader header, Recording recording) =>
+        header with
+        {
+            Providers =
+            [
+                .. header.Providers.Select(provider => provider with
+                {
+                    Model = recording.Rows
+                        .SelectMany(row => row.Attempts.Values)
+                        .Select(byProvider => byProvider.GetValueOrDefault(provider.Name)?.Provider.Model)
+                        .FirstOrDefault(model => model is not null),
+                }),
+            ],
+        };
 
     private static void RequireRegistered(Policy policy, IReadOnlyDictionary<string, IDecisionProvider> providers)
     {

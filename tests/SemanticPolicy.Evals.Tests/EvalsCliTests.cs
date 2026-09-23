@@ -37,6 +37,30 @@ public sealed class EvalsCliTests
         error.ToString().Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task Cli_Help_Lists_The_Commands_In_The_Order_They_Are_Used()
+    {
+        string help = await HelpAsync();
+
+        string[] lines = help.ReplaceLineEndings("\n").Split('\n');
+        int start = Array.IndexOf(lines, "Commands:") + 1;
+        int end = Array.FindIndex(lines, start, string.IsNullOrWhiteSpace);
+        lines[start..(end < 0 ? lines.Length : end)].Select(line => line.Trim().Split(' ')[0]).Should()
+            .Equal("run", "report", "sweep", "compare");
+    }
+
+    [Theory]
+    [InlineData("report")]
+    [InlineData("sweep")]
+    [InlineData("compare")]
+    public async Task Cli_Help_Marks_The_Recording_Required_On_Every_Command_That_Reads_One(string verb)
+    {
+        string help = await HelpAsync(verb);
+
+        help.ReplaceLineEndings("\n").Split('\n').Should().ContainSingle(line => line.Contains("--recording", StringComparison.Ordinal))
+            .Which.Should().Contain("(REQUIRED)");
+    }
+
     [Theory]
     [InlineData(ExitCodes.UsageOrData)]
     [InlineData(ExitCodes.InfeasibleConstraint)]
@@ -73,5 +97,19 @@ public sealed class EvalsCliTests
 
         act.Should().Throw<InvalidOperationException>();
         error.ToString().Should().BeEmpty();
+    }
+
+    private static async Task<string> HelpAsync(params string[] verb)
+    {
+        StringWriter output = new();
+        StringWriter error = new();
+        RootCommand root = EvalsCli.Build(new CliIo(output, error));
+
+        int exitCode = await root.Parse([.. verb, "--help"]).InvokeAsync(
+            new InvocationConfiguration { Output = output, Error = error },
+            TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(ExitCodes.Success);
+        return output.ToString();
     }
 }
