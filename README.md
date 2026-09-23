@@ -34,14 +34,17 @@ var policy = Policy.Define("tool-guard")
     .Build();
 ```
 
-The rule says what each answer means; the numbers belong to the binding, and they are measured per
-provider on a dataset, because the same rule reaches its operating point at a different value on a
-different model (ADR 0005).
+The rule says what each answer means. A *binding*, the `.Using("jev", …)` line, names the provider
+that answers and holds the numbers for it. Those numbers should be measured per provider on a
+labelled dataset, because a rule's *operating point* — the thresholds at which it trades missed cases
+against false alarms the way you chose — sits at a different value on a different model (ADR 0005).
 
-- **Provider-agnostic.** The rule says what to decide; a provider decides it. Swap the provider, or
-  cascade from a cheap local model to a hosted one when the margin is thin, without touching the rule.
-- **Testable.** A rule is evaluated against a dataset like any classifier: accuracy, precision,
-  recall, a threshold sweep, and a comparison between providers.
+- **Provider-agnostic.** The rule says what to decide; a provider decides it. Swap the provider
+  without touching the rule, or bind several in order and move on to the next when the *margin*, the
+  gap between a provider's two likeliest answers, is too thin to call. A cheap local model to put
+  first in that chain is planned.
+- **Testable (planned).** The evaluation CLI will measure a rule against a labelled dataset like any
+  classifier: accuracy, precision, recall, a threshold sweep, and a comparison between providers.
 - **Shippable gradually.** Shadow mode records what a policy *would* have decided while the runtime
   behaves as before, so thresholds are calibrated on production traffic before anything is enforced.
 
@@ -60,16 +63,16 @@ rules, and returns a probability for the policy to threshold.
 
 ```csharp
 services.AddSemanticPolicy()
-    .AddTypeSafeJev("jev", o => o.Route = TypeSafeJevRoute.TypeSafe)
-    .AddTypeSafeJev("jev-openrouter", o => o.Route = TypeSafeJevRoute.OpenRouter)
+    .AddTypeSafeJev("jev", o => o.Route = TypeSafeJevRoute.OpenRouter) // reads OPENROUTER_API_KEY
     .AddPolicy(policy);
 ```
 
-The name you register under does three jobs: a policy's bindings refer to it (`.Using("jev", …)`),
-the factory creates the `HttpClient` under it, and every verdict reports it as the provider's id — so
-the two registrations above stay apart in telemetry. Set `o.Id` to change the last one only.
-
+`TypeSafeJevRoute.TypeSafe` goes to the vendor's own endpoint instead, and reads `TYPESAFE_API_KEY`.
 There is no default route, because choosing one would choose where your content is sent.
+
+The name you register under does three jobs: a policy's bindings refer to it (`.Using("jev", …)`),
+the factory creates the `HttpClient` under it, and every verdict reports it as the provider's id. Set
+`o.Id` to report a different id; the other two jobs keep the name.
 
 | Option | |
 |---|---|
@@ -123,12 +126,12 @@ Four programs, each a single `dotnet run` on TypeSafe Jev through OpenRouter. Se
 dotnet run --project examples/PromptInjectionGuard   # an instruction planted in the user's input
 dotnet run --project examples/ToolIntentGuard        # a tool call that does not match the request
 dotnet run --project examples/ToolResultGuard        # an instruction planted in a tool's result
-dotnet run --project examples/AgentRouter            # the same runtime choosing a specialist
+dotnet run --project examples/AgentRouter            # the same runtime routing support requests
 ```
 
 Each security example runs twice, in Shadow and then in Enforce, and prints what the policy concluded
 and what the application did about it. [examples/README.md](examples/README.md) says what each one
-shows and what two live runs of it returned.
+shows and what five live runs of it returned.
 
 ## Layout
 
