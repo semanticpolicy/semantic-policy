@@ -1,3 +1,4 @@
+using System.Globalization;
 using SemanticPolicy.Evals.Counting;
 using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Evals.Metrics;
@@ -22,7 +23,9 @@ namespace SemanticPolicy.Evals.Sweeping;
 public sealed record GatePoint(double? Below, int Abstained, double AbstentionRate, int Decided, double? Accuracy);
 
 /// <summary>The abstention-against-accuracy curve of one binding's gate, from no gate up to the widest margin seen.</summary>
-/// <param name="Points">The no-gate point first, then one point per observed margin, ascending.</param>
+/// <param name="Points">
+/// The no-gate point first, then one point per observed margin at fifteen significant digits, ascending.
+/// </param>
 public sealed record GateCurve(IReadOnlyList<GatePoint> Points);
 
 /// <summary>
@@ -89,7 +92,13 @@ public static class GateSweep
                 candidate is not null && candidate.Kind == kind && candidate.Values is not null);
             if (entry is not null && EvidenceMath.Margin(entry) is { } margin && double.IsFinite(margin) && margin > 0)
             {
-                margins.Add(margin);
+                // A margin is a difference of two scores and carries binary noise in its last digits: 0.81
+                // gives 0.6200000000000001 and 0.7 gives 0.3999999999999999. The candidate is the decimal a
+                // policy would carry, and since the point is replayed at that decimal, a row whose margin fell
+                // just under it is held back there exactly as it would be at run time.
+                margins.Add(double.Parse(
+                    margin.ToString("G15", CultureInfo.InvariantCulture),
+                    CultureInfo.InvariantCulture));
             }
         }
 

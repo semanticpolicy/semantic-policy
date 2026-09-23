@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using SemanticPolicy.Protocol;
 
@@ -85,7 +86,11 @@ public sealed record ProviderStats(
             Dictionary<string, double> usage = new(_usage.Count, StringComparer.Ordinal);
             foreach (string field in _usage.Keys.Order(StringComparer.Ordinal))
             {
-                usage[field] = _usage[field];
+                // A binary sum of decimals leaves noise in the last digits (0.1 + 0.2 is 0.30000000000000004),
+                // and no provider reports usage to more than fifteen significant digits.
+                usage[field] = double.Parse(
+                    _usage[field].ToString("G15", CultureInfo.InvariantCulture),
+                    CultureInfo.InvariantCulture);
             }
 
             return new ProviderStats(

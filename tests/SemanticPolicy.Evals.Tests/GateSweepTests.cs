@@ -54,4 +54,31 @@ public sealed class GateSweepTests
         curve.Points.Select(point => point.Decided).Should().Equal(10, 9, 7, 5, 3, 1);
         curve.Points.Select(point => point.Accuracy).Should().Equal(0.6, 6.0 / 9, 6.0 / 7, 1, 1, 1);
     }
+
+    [Fact]
+    public async Task Gate_Sweep_Offers_Each_Margin_As_The_Decimal_A_Policy_Would_Carry_And_Replays_That_Gate()
+    {
+        using TempFile file = TempFile.Write("");
+        BooleanRule rule = Samples.Flagged();
+        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [rule]);
+
+        // A margin is 2p - 1 in binary floating point: 0.3999999999999999 for 0.7, 0.5 for 0.75,
+        // 0.6200000000000001 for 0.81 and 0.8999999999999999 for 0.95.
+        double[] flagged = [0.7, 0.75, 0.81, 0.95];
+        DatasetRow[] rows = [.. flagged.Select((_, index) => Samples.Row($"r{index}", "true", index + 1))];
+        RecordedRow[] recorded =
+        [
+            .. flagged.Select((value, index) => Samples.Recorded(rows[index].Id, (rule.Id, "local", Samples.BooleanAnswer(value)))),
+        ];
+        Recording recording = await Samples.RecordAsync(file.Path, Samples.Header(policy), recorded);
+        ReplaySet set = ReplaySet.Load(recording, Samples.Inputs(policy, Samples.Dataset(rows)), force: false);
+
+        GateCurve curve = GateSweep.Compute(set, policy, 0, rows);
+
+        curve.Points.Select(point => point.Below).Should().Equal(null, 0.4, 0.5, 0.62, 0.9);
+
+        // The replay runs at the decimal, so the row whose margin fell just under it abstains there, as it would
+        // under a policy carrying that gate.
+        curve.Points.Select(point => point.Abstained).Should().Equal(0, 1, 1, 2, 4);
+    }
 }

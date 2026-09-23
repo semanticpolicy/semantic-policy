@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace SemanticPolicy.Evals.Recordings;
@@ -14,6 +15,11 @@ public sealed class RecordingWriter : IAsyncDisposable
     // No byte-order mark, and the same newline on every platform: a recording may be committed, and a file
     // whose bytes depend on the machine that wrote it cannot be compared between two runs.
     private static readonly UTF8Encoding _utf8 = new(encoderShouldEmitUTF8Identifier: false);
+
+    // The default encoder escapes for embedding in HTML, which writes the '+' of a version's build metadata as
+    // \u002B; a recording is a file, never a page.
+    private static readonly JsonSerializerOptions _options =
+        new(SemanticPolicyJson.Options) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     private readonly StreamWriter _writer;
     private readonly string _path;
@@ -72,13 +78,41 @@ public sealed class RecordingWriter : IAsyncDisposable
         return WriteLineAsync(row, cancellationToken, row.Id);
     }
 
+    /// <summary>
+    /// Replaces the header line of a finished recording and leaves every row as it was written. The new file is
+    /// written beside the old one and then takes its place, so a rewrite that fails leaves the recording whole.
+    /// </summary>
+    /// <param name="path">The recording.</param>
+    /// <param name="header">The header that takes the first line's place.</param>
+    /// <param name="cancellationToken">Cancels the rewrite.</param>
+    /// <exception cref="EvalsException">The file cannot be rewritten; the message names the path.</exception>
+    public static async Task ReplaceHeaderAsync(string path, RecordingHeader header, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        ArgumentNullException.ThrowIfNull(header);
+        string line = JsonSerializer.Serialize(header, _options);
+        string replacement = path + ".tmp";
+        try
+        {
+            string[] lines = await File.ReadAllLinesAsync(path, _utf8, cancellationToken).ConfigureAwait(false);
+            lines[0] = line;
+            string content = string.Concat(lines.Select(text => text + "\n"));
+            await File.WriteAllTextAsync(replacement, content, _utf8, cancellationToken).ConfigureAwait(false);
+            File.Move(replacement, path, overwrite: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new EvalsException($"Recording '{path}': the header cannot be rewritten: {e.Message}");
+        }
+    }
+
     /// <summary>Closes the file; every line was already flushed as it was written.</summary>
     public ValueTask DisposeAsync() => _writer.DisposeAsync();
 
     private async Task WriteLineAsync<T>(T value, CancellationToken cancellationToken, string? rowId = null)
     {
         // Serialisation first: a value that cannot be written must not leave a half-line in the file.
-        string line = JsonSerializer.Serialize(value, SemanticPolicyJson.Options);
+        string line = JsonSerializer.Serialize(value, _options);
         try
         {
             await _writer.WriteLineAsync(line.AsMemory(), cancellationToken).ConfigureAwait(false);

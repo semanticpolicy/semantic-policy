@@ -63,6 +63,21 @@ public sealed class ProviderStatsTests
         stats.Attempts.Should().Be(3);
     }
 
+    [Fact]
+    public void Provider_Stats_Sum_Usage_Without_The_Noise_Binary_Addition_Leaves_In_The_Last_Digits()
+    {
+        // 0.1 + 0.2 is 0.30000000000000004 in binary floating point, and a report would print every digit of it.
+        (string Provider, ProviderResult Result)[] attempts =
+        [
+            Attempt("hosted", 100, """{"cost": 0.1}"""),
+            Attempt("hosted", 100, """{"cost": 0.2}"""),
+        ];
+
+        ProviderStats stats = ProviderStats.Compute(attempts).Should().ContainSingle().Subject;
+
+        stats.Usage["cost"].Should().Be(0.3);
+    }
+
     private static (string Provider, ProviderResult Result) Attempt(string provider, double latencyMs, string? usage = null)
     {
         ProviderMetadata metadata = new(provider, "model-" + provider, latencyMs, Usage: Parse(usage));
