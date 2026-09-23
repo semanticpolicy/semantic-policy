@@ -7,8 +7,8 @@ your application to one provider.
 
 > **Status: pre-alpha.** `SemanticPolicy.Core` — the policy model, the evaluation engine, telemetry
 > and DI registration — is implemented and tested. The provider packages, the Agent Framework
-> integration, the evaluation CLI and the examples are still skeletons, so nothing here runs against
-> a real decision model yet. There is no released package, and every part of the API can still
+> integration and the examples are still skeletons, so nothing here runs against a real decision
+> model yet. There is no released package, and every part of the API can still
 > change. Watch the repository rather than depending on it.
 
 ## The idea
@@ -51,6 +51,19 @@ A decision model is probabilistic. A prompt-injection rule raises the cost of an
 make one impossible, and nothing here should be the only thing between an untrusted input and a
 privileged action. Use it as one layer of defence in depth, behind real authorization, real input
 handling and least-privilege tools. `SECURITY.md` and `docs/THREAT_MODEL.md` say more.
+
+## Evals
+
+`tools/SemanticPolicy.Evals` measures a rule against a labelled dataset the way any classifier is
+measured: both error rates at every verdict rung, provider failures and abstentions counted apart,
+a threshold sweep against a constraint you name, and a comparison between providers on the same
+data. Its numbers describe the dataset they were measured on and nothing more; the dataset schema,
+every verb and what each report section means are in
+[its README](tools/SemanticPolicy.Evals/README.md).
+
+```bash
+dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy policy.json --dataset dataset.jsonl --recording run.recording.jsonl --deny min-precision=0.95
+```
 
 ## Layout
 
