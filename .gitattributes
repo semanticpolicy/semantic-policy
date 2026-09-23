@@ -14,6 +14,10 @@
 *.yml     text
 *.yaml    text
 
+# The evaluation tool digests a dataset's raw bytes, and a recording replays only against the bytes it was
+# made from. LF on every platform keeps a Windows checkout from changing them.
+*.jsonl   text eol=lf
+
 *.png binary
 *.jpg binary
 *.ico binary
