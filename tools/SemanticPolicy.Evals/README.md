@@ -308,6 +308,9 @@ A goal (`<constraint>` in `--help`) is one of these, with `v` from 0 to 1:
 - A rung or gate with no goal keeps the policy's number.
 - Candidates are the values the binding returned. For probability evidence the curve also shows a
   0.05 grid, which is never recommended.
+- A gate's candidates are its margins to 15 significant digits, so 0.81 against 0.19 reads 0.62, not
+  0.6200000000000001. Each gate is replayed at that number, so a row whose margin came out as
+  0.3999999999999999 abstains at gate 0.4, as it would with 0.4 in the policy.
 - Curves round to four decimals; a recommended number prints exactly, ready to copy into the policy
   file.
 - If nothing meets a goal, the nearest candidate is printed and the exit code is 2.
@@ -361,7 +364,8 @@ If any binding cannot meet its goals, `compare` still prints everything and exit
   (lower is better), the Brier score and ten bins. Otherwise it reads *"calibration: not
   applicable:"* and the reason. Nothing is recalibrated.
 - **providers**: per provider, the model, the number of calls, p50 and p95 latency, and each usage
-  field summed as the provider reports it, so `cost` is in the provider's own unit.
+  field summed as the provider reports it, to 15 significant digits, so `cost` is in the provider's
+  own unit.
 - **notes**: that a verdict is an estimate, the policy's mode, that a `budget` was not applied, and
   whether `--force` was used.
 
@@ -409,10 +413,14 @@ the answers; from the trial run, spread over lines and with the policy cut:
   "format": "semanticpolicy/evals-recording/v0",
   "policy": { ... },
   "datasets": [ { "path": "tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.smoke.jsonl", "sha256": "<64 hex digits>" } ],
-  "providers": [ { "name": "jev" } ],
+  "providers": [ { "name": "jev", "model": "typesafe/jev-1.13-20260917" } ],
   "toolVersion": "1.0.0+<commit>"
 }
 ```
+
+The header is written before the first call, so each provider's `model`, the first one its answers
+reported, is filled in when the run finishes. An interrupted run's header has none; its answers still
+carry it.
 
 A row is the dataset row's `id` and every answer it got, keyed by rule id and provider name, as the
 library serializes it. The trial run's first row, without its request id:

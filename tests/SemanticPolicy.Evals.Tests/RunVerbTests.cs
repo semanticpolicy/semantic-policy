@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using SemanticPolicy.Evals.Cli;
+using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Evals.Tests.Support;
 using SemanticPolicy.Protocol;
 
@@ -54,6 +55,23 @@ public sealed partial class RunVerbTests
         scripted.Calls.Should().Be(12);
         runOutput.Should().Contain("rung deny:").And.Be(reportOutput);
         runError.Should().Contain("row 6 of 6");
+    }
+
+    [Fact]
+    public async Task Run_Names_In_The_Recording_Header_The_Model_Each_Provider_Reported()
+    {
+        using Fixture fixture = Fixture.Create(Guard());
+        ScriptedProvider local = new ScriptedProvider().Returns(request => Samples.BooleanAnswer(PTrue(request), "local"));
+        ScriptedProvider jev = new ScriptedProvider().Returns(request => Samples.BooleanAnswer(PTrue(request), "jev"));
+
+        (int exit, _, string error) = await InvokeAsync(
+            fixture.RunArgs(),
+            builder => builder.AddProvider(local, "local").AddProvider(jev, "jev"));
+
+        exit.Should().Be(ExitCodes.Success, error);
+        Recording recording = RecordingReader.Read(fixture.RecordingPath);
+        recording.Header.Providers.Should().Equal(new RecordedProvider("local", "model-local"), new RecordedProvider("jev", "model-jev"));
+        recording.Rows.Should().HaveCount(6);
     }
 
     [Fact]

@@ -15,7 +15,7 @@ public sealed class EvalsResultTests
         EvalsResult result = new(
             EvalsResult.FormatV0,
             "report",
-            "1.2.3",
+            "1.2.3+abc",
             new DateTimeOffset(2026, 9, 22, 12, 0, 0, TimeSpan.Zero),
             "guard",
             PolicyMode.Enforce,
@@ -47,6 +47,7 @@ public sealed class EvalsResultTests
         using JsonDocument document = JsonDocument.Parse(json);
         JsonElement root = document.RootElement;
         root.GetProperty("format").GetString().Should().Be("semanticpolicy/evals-result/v0");
+        json.Should().Contain("\"toolVersion\": \"1.2.3+abc\"");
 
         // Every enum on the way out is its camel-case name. A number here would still parse and would still
         // mean something to this tool alone, so nothing but the spelling can catch it.

@@ -78,10 +78,11 @@ public static class SharedOptions
     };
 
     /// <summary><c>--recording &lt;file&gt;</c>: the recording a read verb works from.</summary>
-    public static Option<string?> Recording { get; } = new("--recording")
+    public static Option<string> Recording { get; } = new("--recording")
     {
         Description = "The recording to read.",
         HelpName = "file",
+        Required = true,
     };
 
     /// <summary><c>--force</c>: accept a recording whose dataset digest no longer matches the file.</summary>

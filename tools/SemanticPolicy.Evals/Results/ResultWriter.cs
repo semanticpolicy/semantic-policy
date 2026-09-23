@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace SemanticPolicy.Evals.Results;
@@ -13,8 +14,15 @@ public static class ResultWriter
     // previous run's, and a diff that turns on which machine wrote it is not a diff of the numbers.
     private static readonly UTF8Encoding _utf8 = new(encoderShouldEmitUTF8Identifier: false);
 
+    // The default encoder escapes for embedding in HTML, which writes the '+' of the tool version's build
+    // metadata as an escape sequence; a result file is never a page.
     private static readonly JsonSerializerOptions _indented =
-        new(SemanticPolicyJson.Options) { WriteIndented = true, NewLine = "\n" };
+        new(SemanticPolicyJson.Options)
+        {
+            WriteIndented = true,
+            NewLine = "\n",
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        };
 
     /// <summary>Writes the result, replacing a file that is already there.</summary>
     /// <param name="path">Where the file goes.</param>
