@@ -80,7 +80,8 @@ static ValueTask<PreToolOutcome> OnToolCall(ToolCall call, PolicyVerdict verdict
     // verdict.Effective — the one the policy's mode makes binding.
     return ValueTask.FromResult(verdict.Effective switch
     {
-        Verdict.Deny => PreToolOutcome.Refuse("That call was not run: it went beyond the request."),
+        Verdict.Deny => PreToolOutcome.Refuse(
+            $"The {verdict.PolicyId} policy did not read that call as part of the request, so it was not run."),
         Verdict.Abstain => PreToolOutcome.Refuse("The policy could not judge that call."),
         _ => PreToolOutcome.Proceed,
     });
@@ -97,28 +98,30 @@ Two properties of the verdict, and the difference matters:
 The adapter never reads either. A handler that returns `Stop` in Shadow stops the run, because the
 handler decided so — there is no mode in which the library overrides you.
 
-**`Abstain` is a verdict you will see.** It is the runtime's own outcome when the evidence was too
-close to call, and a binding earns it by declaring a margin gate:
+**Handle `Abstain`.** It is the runtime's own outcome when the evidence was too close to call, and
+only a binding that sets `WhenProbabilityMarginBelow` produces it. The margin is how far apart the
+provider put its two likeliest answers:
 
 ```csharp
 .Using("jev", binding => binding.DenyAboveProbability(0.90).WhenProbabilityMarginBelow(0.15))
 ```
 
-Without that gate a near-even answer still crosses the threshold and reads as a decision. With it,
-the policy says it did not decide, and your handler chooses what that means for this point.
+Without that gate a near-even answer is read against the thresholds like any other and comes back as
+a decision. With it, the policy says it did not decide, and your handler chooses what that means for
+this point.
 
 **`ToolResult.Value` is what the function-invoking loop received**, not what your method wrote in its
 `return` statement. For a function built with `AIFunctionFactory` that is a `JsonElement` — a
 string-valued element for a method returning `string`, an object element with camel-cased property
 names for one returning an object.
 
-## Two roads to the policy
+## Pass a policy id, or the policy itself
 
-**By id**, as in the quick start: the evaluator and the policy come from the container passed to
-`Build(serviceProvider)`. A container without an `IPolicyEvaluator`, or an id no registered policy
+**A policy id**, as in the quick start: the evaluator and the policy come from the container passed
+to `Build(serviceProvider)`. A container without an `IPolicyEvaluator`, or an id no registered policy
 carries, fails there rather than on the first run.
 
-**Explicitly**, with the policy and an evaluator in hand and no container at all:
+**The policy itself**, with an evaluator in hand and no container at all:
 
 ```csharp
 // decisionProvider: any IDecisionProvider, such as new TypeSafeJevProvider(httpClient, options).
@@ -200,7 +203,7 @@ contract surfaces as the exception the evaluator threw.
   observe it, the run completes: the framework turns the exception into a function-error result, the
   model's next request carries it with `FunctionResultContent.Exception` set to the exception, and
   the run answers from there. A misconfigured policy is therefore reported to the model, not to you —
-  which is why the by-id road fails at `Build(serviceProvider)` instead.
+  which is why a guard given a policy id checks it at `Build(serviceProvider)` instead.
 
 ## What comes next
 
