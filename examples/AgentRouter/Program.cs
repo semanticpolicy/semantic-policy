@@ -64,20 +64,22 @@ catch (PolicyConfigurationException error)
     return 2;
 }
 
-// Four agents over one chat client, differing only in what they are told to be.
+// Four agents over one chat client, differing only in what they are told to be. Each answers in two
+// sentences at most, so the output stays about the route rather than the answer.
+const string Brief = " Answer in at most two sentences.";
 Dictionary<string, AIAgent> specialists = new(StringComparer.Ordinal)
 {
     ["coding"] = chat.AsAIAgent(
-        instructions: "You are a software engineer. Answer with code and with the reasoning behind it.",
+        instructions: "You are a software engineer." + Brief,
         name: "coding-specialist"),
     ["research"] = chat.AsAIAgent(
-        instructions: "You summarise and compare information. Say plainly when you do not know something.",
+        instructions: "You summarise and compare information, and say plainly when you do not know." + Brief,
         name: "research-specialist"),
     ["general"] = chat.AsAIAgent(
-        instructions: "You are a helpful assistant. Answer briefly and ask when the request is unclear.",
+        instructions: "You are a helpful assistant, and you ask when a request is unclear." + Brief,
         name: "general-assistant"),
     ["finance"] = chat.AsAIAgent(
-        instructions: "You answer questions about invoices, budgets, pricing and tax in general terms.",
+        instructions: "You answer questions about invoices, budgets, pricing and tax in general terms." + Brief,
         name: "finance-specialist"),
 };
 
@@ -135,9 +137,12 @@ static void Report(PolicyVerdict verdict, string? chosen)
     Console.WriteLine($"    decided by {deciding.ProviderId} in {deciding.Result.Provider.LatencyMs:F0} ms");
     foreach (Evidence evidence in deciding.Result.Evidence)
     {
-        // Keyed by option, and the provider's own numbers on its own scale: nothing here is calibrated,
-        // and a route with the highest number is not a route the provider is confident about.
-        string perOption = string.Join("  ", evidence.Values.Select(pair => $"{pair.Key} {pair.Value:F2}"));
+        // Keyed by option and printed highest first, the provider's own numbers on its own scale: nothing
+        // here is calibrated, and a route with the highest number is not a route the provider is confident
+        // about.
+        string perOption = string.Join(
+            "  ",
+            evidence.Values.OrderByDescending(pair => pair.Value).Select(pair => $"{pair.Key} {pair.Value:F2}"));
         Console.WriteLine($"    {evidence.Kind} per option: {perOption}");
     }
 }
