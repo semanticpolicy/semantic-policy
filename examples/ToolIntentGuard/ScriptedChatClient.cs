@@ -6,9 +6,9 @@ namespace ToolIntentGuard;
 
 /// <summary>
 /// The "model" this demo runs on: it proposes the one tool call it was built with, then answers with
-/// whatever that call returned. It reaches no network and holds no model. A real model asked to delete
-/// branch test-old proposes test-old, so the wrong branch has to be scripted: the model is the scripted
-/// half here and the policy is the real one.
+/// whatever that call returned. It reaches no network and holds no model. A real model does not make a
+/// given mistake on cue, so the mistakes are scripted: the model is the scripted half here and the policy
+/// is the real one.
 /// </summary>
 internal sealed class ScriptedChatClient(string tool, IReadOnlyDictionary<string, object?> arguments) : IChatClient
 {
