@@ -14,7 +14,11 @@ public sealed class PolicyGuardTests
         ScriptedDecisionProvider provider = new ScriptedDecisionProvider().Returns(ScriptedDecisionProvider.Boolean(true, 0.95));
         PolicyGuard<ToolCall, PreToolOutcome> guard = new(GuardSubject.PreTool, Evaluator(provider, PolicyMode.Enforce), "p", Proceed);
 
-        Activity[] traced = await Traced(() => guard.EvaluateAsync(Call("call_1"), CancellationToken.None), "call_1");
+        // The listener hears every source in the process, and test classes run in parallel, so the call
+        // id has to be one no other test uses or a sibling's evaluation lands in this one's assertion.
+        Activity[] traced = await Traced(
+            () => guard.EvaluateAsync(Call("call_guard_activity"), CancellationToken.None),
+            "call_guard_activity");
 
         Activity activity = traced.Should().ContainSingle().Which;
         activity.OperationName.Should().Be("semanticpolicy.evaluate");
