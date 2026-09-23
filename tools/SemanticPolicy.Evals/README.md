@@ -81,15 +81,14 @@ dotnet run --project tools/SemanticPolicy.Evals -- compare --policy $P --dataset
 dotnet run --project tools/SemanticPolicy.Evals -- run --policy $P --dataset $D --record smoke.recording.jsonl
 ```
 
-Part of the report from a trial run of the smoke set on 23 September 2026, with the Jev provider
-registered in a local build of the tool and only its binding (`jev`) in the policy:
+Part of what step 1 prints:
 
 ```text
 SemanticPolicy evals report
-policy prompt-injection-smoke-jev, mode shadow
+policy prompt-injection-smoke, mode shadow
 rule prompt-injection, boolean
-recording smoke.recording.jsonl
-tool version 1.0.0+<commit>
+recording tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.recording.jsonl
+tool version 0.1.0-alpha.1+<commit>
 Measured on this dataset only: a verdict is an estimate and can be wrong in either direction.
 
 rows
@@ -98,9 +97,9 @@ rows
 split from metadata.split: 60 tune, 40 test, 0 unassigned
 
 outcomes
-classified 93
+classified 92
 failed 0, failure rate 0.000
-abstained 1, abstention rate 0.010
+abstained 2, abstention rate 0.020
 ambiguous 6 (allow 3, warn 1, deny 2)
 
 ...
@@ -108,14 +107,14 @@ ambiguous 6 (allow 3, warn 1, deny 2)
 rung deny: verdict at or above deny against the flagged label, classified rows only
 tp  fp  tn  fn  accuracy  precision  recall     f1    fpr    fnr  failed  abstained  ambiguous
 --  --  --  --  --------  ---------  ------  -----  -----  -----  ------  ---------  ---------
-39   0  48   6     0.935      1.000   0.867  0.929  0.000  0.133       0          1          6
+39   0  47   6     0.935      1.000   0.867  0.929  0.000  0.133       0          2          6
 ```
 
-Read it like this: 93 rows had a clear label and got a verdict. The rule denied 39 of the 45 attacks
-among them (recall 0.867) and no safe input (precision 1.000); the other six attacks got warn. One
-row was left undecided, and the six rows labelled `ambiguous` are counted apart. The smoke rows are
+Read it like this: 92 rows had a clear label and got a verdict. The rule denied 39 of the 45 attacks
+among them (recall 0.867) and no safe input (precision 1.000); the other six attacks got warn. Two
+rows were left undecided, and the six rows labelled `ambiguous` are counted apart. The smoke rows are
 clear-cut on purpose, so numbers this good show that the pieces fit together, not how a rule does on
-real traffic.
+real traffic, and the policy's thresholds are placeholders, not a recommendation.
 
 ## The dataset
 
@@ -336,7 +335,28 @@ under the same goals and prints one table on the test rows. `--recording` and `-
 If any binding cannot meet its goals, `compare` still prints everything and exits with code 2.
 
 The tool registers one provider, so for now `compare` measures a single binding; a second one
-arrives with the local provider.
+arrives with the local provider. Step 3 of the quick start, shortened:
+
+```text
+compare of rule 'prompt-injection', policy 'prompt-injection-smoke': binding 'jev', alone
+rows: 100 in the dataset, 100 recorded, 100 after the filters
+chosen on split 'tune' (60 rows), reported on split 'test' (40 rows)
+
+...
+
+deny on split 'test' (40 rows)
+provider  threshold  accuracy  precision  recall     f1    fpr    fnr  roc-auc  pr-auc
+--------  ---------  --------  ---------  ------  -----  -----  -----  -------  ------
+jev            0.16     0.974      0.947   1.000  0.973  0.050  0.000    1.000   1.000
+
+outcomes, latency and usage on split 'test' (40 rows)
+provider  abstention  failure  p50 ms  p95 ms         cost  input_tokens  output_tokens
+--------  ----------  -------  ------  ------  -----------  ------------  -------------
+jev            0.000    0.000   465.3   617.9  0.000666036         15858            800
+```
+
+The deny threshold comes out below the policy's warn of 0.6, so the output ends with a conflict
+line; [Pitfalls](#pitfalls) says why and what to do.
 
 ## Reading the report
 
@@ -385,8 +405,9 @@ failure rates, latency and usage.
 - **Crossed thresholds.** Warn and deny read the same evidence and share one curve, and `min-recall`
   picks its highest threshold while `min-precision` picks its lowest. On data that separates well,
   the pair `--warn min-recall=0.9` and `--deny min-precision=0.95` can put deny at or below warn: on
-  the smoke set with only the hosted provider it gave warn 0.88 and deny 0.48. Deny's threshold
-  alone then catches at least 90% of the attacks. Keep it and set warn below it by hand, reading on
+  the committed smoke recording it gives warn 0.86 and deny 0.16, and `--deny min-precision=0.95`
+  alone gives deny 0.16 against the policy file's warn of 0.6. Deny's threshold alone then catches at
+  least 90% of the attacks. Keep it and set warn below it by hand, reading on
   the curve how many safe inputs each lower threshold would flag; the library refuses thresholds
   that do not increase with severity.
 - **Small test sets.** On 40 test rows, one row moves a rate by 2.5 points or more, so a threshold
@@ -404,18 +425,18 @@ failure rates, latency and usage.
 ## The recording
 
 JSONL: a header line, then one line per dataset row, in dataset order. The header says what produced
-the answers; from the trial run, spread over lines and with the policy cut:
+the answers; from the committed smoke recording, spread over lines and with the policy cut:
 
 ```json
 {
-  "recordedAt": "2026-09-23T10:02:31.8485074+00:00",
+  "recordedAt": "2026-09-23T17:28:31.1939113+00:00",
   "parallel": 4,
   "timeout": "00:00:30",
   "format": "semanticpolicy/evals-recording/v0",
   "policy": { ... },
   "datasets": [ { "path": "tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.smoke.jsonl", "sha256": "<64 hex digits>" } ],
   "providers": [ { "name": "jev", "model": "typesafe/jev-1.13-20260917" } ],
-  "toolVersion": "1.0.0+<commit>"
+  "toolVersion": "0.1.0-alpha.1+<commit>"
 }
 ```
 
@@ -424,7 +445,7 @@ reported, is filled in when the run finishes. An interrupted run's header has no
 carry it.
 
 A row is the dataset row's `id` and every answer it got, keyed by rule id and provider name, as the
-library serializes it. The trial run's first row, without its request id:
+library serializes it. The committed recording's first row, without its request id:
 
 ```json
 {
@@ -437,7 +458,7 @@ library serializes it. The trial run's first row, without its request id:
         "outcome": { "status": "success" },
         "value": true,
         "evidence": [ { "kind": "probability", "values": { "true": 0.98 }, "scale": "calibrated" } ],
-        "provider": { "id": "jev", "model": "typesafe/jev-1.13-20260917", "latencyMs": 648.6249, "usage": { "input_tokens": 393, "output_tokens": 20, "cost": 0.000016506 }, "extra": { "provider": "TypeSafe" } }
+        "provider": { "id": "jev", "model": "typesafe/jev-1.13-20260917", "latencyMs": 1002.0442, "usage": { "input_tokens": 393, "output_tokens": 20, "cost": 0.000016506 }, "extra": { "provider": "TypeSafe" } }
       }
     }
   }
@@ -469,21 +490,21 @@ Replaying checks that the recording still fits:
 ## The JSON result
 
 `--out <file>` writes what the text shows as JSON, in the format `semanticpolicy/evals-result/v0`.
-From `report` on the test rows, shortened:
+From `report` on the committed recording's test rows, shortened:
 
 ```json
 {
   "format": "semanticpolicy/evals-result/v0",
   "verb": "report",
-  "toolVersion": "1.0.0+<commit>",
-  "generatedAt": "2026-09-23T05:27:12.9728477+00:00",
+  "toolVersion": "0.1.0-alpha.1+<commit>",
+  "generatedAt": "2026-09-23T17:30:57.5140543+00:00",
   "policyId": "prompt-injection-smoke",
   "mode": "shadow",
   "ruleId": "prompt-injection",
   "decisionType": "boolean",
   "rows": { "datasetRows": 100, "recordedRows": 100, "afterFilter": 40, "filters": [ "metadata.split=test" ], "splitSource": "metadata", "tuneRows": 0, "testRows": 40 },
-  "report": { "outcomes": { ... }, "verdicts": { ... }, "rungs": [ ... ], "discrimination": [ ... ], "calibration": { ... }, "providers": [ ... ], "notes": [ ... ], "sweptProvider": "local" },
-  "recordingPath": "smoke.recording.jsonl"
+  "report": { "outcomes": { ... }, "verdicts": { ... }, "rungs": [ ... ], "discrimination": [ ... ], "calibration": { ... }, "providers": [ ... ], "notes": [ ... ], "sweptProvider": "jev" },
+  "recordingPath": "tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.recording.jsonl"
 }
 ```
 
