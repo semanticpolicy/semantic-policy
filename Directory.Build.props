@@ -9,6 +9,13 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
+  <!-- One version for every project, so the packages and the tools never report different ones. A
+       release is tagged v followed by this version. -->
+  <PropertyGroup>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionSuffix>alpha.1</VersionSuffix>
+  </PropertyGroup>
+
   <!-- Package metadata for everything under src/. A project that is not published to NuGet turns
        IsPackable off for itself; the defaults live here so the published packages cannot disagree
        about their licence, their repository or who wrote them. -->
