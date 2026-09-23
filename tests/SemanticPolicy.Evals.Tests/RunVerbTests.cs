@@ -18,6 +18,7 @@ public sealed class CurrentDirectoryCollection;
 public sealed partial class RunVerbTests
 {
     private const string _marker = "INPUT-MARKER-5b2e";
+    private const string _openRouterKey = "OPENROUTER_API_KEY";
 
     [Fact]
     public async Task Run_Fails_Before_Any_Call_When_A_Binding_Names_An_Unregistered_Provider_Listing_The_Names()
@@ -35,6 +36,32 @@ public sealed partial class RunVerbTests
         noneError.Should().Contain("registered providers: none");
         scripted.Calls.Should().Be(0);
         File.Exists(fixture.RecordingPath).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Run_Without_The_OpenRouter_Key_Stops_Before_Any_Call_Naming_The_Variable()
+    {
+        // The tool's own registration, so the key really is looked for. The variable is process-wide: this
+        // collection runs alone, and no other test reads or sets it. One row, so a registration that reached the
+        // endpoint anyway would cost one call.
+        using Fixture fixture = Fixture.Create(
+            Samples.Guard(FailureBehavior.Fallback(Verdict.Escalate), ["jev"], [Samples.Flagged()]),
+            rows: 1);
+        string? key = Environment.GetEnvironmentVariable(_openRouterKey);
+        Environment.SetEnvironmentVariable(_openRouterKey, null);
+        try
+        {
+            (int exit, string output, string error) = await InvokeAsync(fixture.RunArgs(), Cli.Providers.Register);
+
+            exit.Should().Be(ExitCodes.UsageOrData);
+            error.TrimEnd().Should().Be("provider 'jev': the environment variable OPENROUTER_API_KEY is not set.");
+            output.Should().BeEmpty();
+            File.Exists(fixture.RecordingPath).Should().BeFalse();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(_openRouterKey, key);
+        }
     }
 
     [Fact]
@@ -220,10 +247,10 @@ public sealed partial class RunVerbTests
 
         public string RecordingPath { get; }
 
-        public static Fixture Create(Policy policy) =>
+        public static Fixture Create(Policy policy, int rows = 6) =>
             new(
                 TempFile.Write(JsonSerializer.Serialize(policy, SemanticPolicyJson.Options), ".json"),
-                TempFile.Write(Dataset(1, 2, 3, 4, 5, 6)));
+                TempFile.Write(Dataset([.. Enumerable.Range(1, rows)])));
 
         public string[] InputArgs() => ["--policy", _policy.Path, "--dataset", _dataset.Path];
 
