@@ -305,8 +305,11 @@ A goal (`<constraint>` in `--help`) is one of these, with `v` from 0 to 1:
 - Candidates are the values the binding returned. For probability evidence the curve also shows a
   0.05 grid, which is never recommended.
 - A curve holds at most 101 candidates, and so does a gate curve besides its no-gate point. Past
-  that, it keeps values spread evenly through the sorted ones, the lowest and highest among them;
-  for probability evidence the 0.05 grid is always kept and counts toward the 101.
+  that, a rung's curve gives half the places to values from rows labelled with the flagged answer
+  and half to the others, and spreads each half evenly through that label's sorted values, its
+  lowest and highest among them. A label with fewer values keeps them all and leaves the rest to
+  the other, so a rare label is never skipped. A gate curve spreads its margins the same way over
+  all of them. For probability evidence the 0.05 grid is always kept and counts toward the 101.
 - A gate's candidates are its margins to 15 significant digits, so 0.81 against 0.19 reads 0.62, not
   0.6200000000000001. Each gate is replayed at that number, so a row whose margin came out as
   0.3999999999999999 abstains at gate 0.4, as it would with 0.4 in the policy.
@@ -421,8 +424,9 @@ failure rates, latency and usage.
   does.
 - **Large datasets.** With more than 101 distinct values, a curve keeps at most 101 candidates, so
   a recommended threshold is the best of those rather than of every value, and the ROC and PR areas
-  are integrated over those points. Each candidate replays every row, so the time still grows with
-  the row count.
+  are integrated over those points. Because each label keeps its own spread, a gap between two
+  points skips at most about 2.5% of either label's values. Each candidate replays every row, so the
+  time still grows with the row count.
 - **An interrupted run** keeps its finished rows, and the other commands read the shorter recording
   and say how many rows it covers. Delete a last line torn by the interruption first.
 

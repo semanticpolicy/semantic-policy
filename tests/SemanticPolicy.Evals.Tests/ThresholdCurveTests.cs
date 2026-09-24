@@ -253,6 +253,32 @@ public sealed class ThresholdCurveTests
         });
     }
 
+    [Fact]
+    public async Task Curve_Thinned_Over_A_Rare_Label_Keeps_Its_Values_And_The_Areas()
+    {
+        using TempFile file = TempFile.Write("");
+        Policy policy = Ladder(EvidenceKind.Score, 0.6, 0.9);
+
+        // A perfect ranking with the three highest of three hundred scores flagged. Spread by rank over every row,
+        // the kept values would skip two of those three, and the areas would bridge the gap with a straight line.
+        double[] values = [.. Enumerable.Range(1, 300).Select(index => index / 301.0)];
+        (ReplaySet set, IReadOnlyList<DatasetRow> rows) = await LoadAsync(
+            file,
+            policy,
+            [.. values.Select((value, index) => (index >= 297 ? "true" : "false", new[] { Answer(EvidenceKind.Score, value) }))]);
+
+        IReadOnlyList<RungCurve> curves = ThresholdCurve.Compute(set, policy, 0, rows);
+
+        curves.Should().AllSatisfy(curve =>
+        {
+            curve.Points.Should().HaveCountLessThanOrEqualTo(101);
+            curve.Points.Select(point => point.Threshold).Should().Contain(values[^3..]);
+            Discrimination discrimination = Discrimination.FromCurve(curve);
+            discrimination.RocAuc.Should().BeApproximately(1.0, 1e-9);
+            discrimination.PrAuc.Should().BeApproximately(1.0, 1e-9);
+        });
+    }
+
     private static Policy Ladder(EvidenceKind kind, double warn, double deny, double? gate = null)
     {
         BooleanRule rule = Samples.Flagged();
