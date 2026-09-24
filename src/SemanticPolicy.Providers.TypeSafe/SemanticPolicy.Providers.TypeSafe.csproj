@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
+    <ProjectReference Include="..\SemanticPolicy.Providers.SystemOne\SemanticPolicy.Providers.SystemOne.csproj" />
   </ItemGroup>
 
 </Project>

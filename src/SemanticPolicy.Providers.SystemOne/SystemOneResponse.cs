@@ -4,17 +4,17 @@ using System.Text;
 using System.Text.Json;
 using SemanticPolicy.Protocol;
 
-namespace SemanticPolicy.Providers.TypeSafe;
+namespace SemanticPolicy.Providers.SystemOne;
 
 /// <summary>
-/// Reads what came back from a Jev call: a status onto a failure kind, an error body onto a message
-/// that quotes no vendor text, and a 200 body onto the protocol's value, evidence and metadata. A
-/// 200 body is read strictly, because a distribution with a key missing would let a threshold read a
-/// partial answer as a whole one.
+/// Reads what came back from a System One call: a status onto a failure kind, an error body onto a
+/// message that quotes no vendor text, and a 200 body onto the protocol's value, evidence and
+/// metadata. A 200 body is read strictly, because a distribution with a key missing would let a
+/// threshold read a partial answer as a whole one.
 /// </summary>
-internal static class JevResponse
+internal static class SystemOneResponse
 {
-    /// <summary>The scale the vendor claims for its probabilities, reported as its claim and nothing more.</summary>
+    /// <summary>The scale TypeSafe claims for Jev's probabilities, reported as its claim and nothing more.</summary>
     private const string _calibratedScale = "calibrated";
 
     /// <summary>
@@ -93,13 +93,13 @@ internal static class JevResponse
             return Reading.Malformed("the response has no `answers`");
         }
 
-        if (!answers.TryGetProperty(JevRequest.QuestionKey, out JsonElement answer)
+        if (!answers.TryGetProperty(SystemOneRequest.QuestionKey, out JsonElement answer)
             || answer.ValueKind != JsonValueKind.Object)
         {
             return Reading.Malformed("the response has no `answers.decision`");
         }
 
-        if (StringProperty(answer, "type") != JevRequest.WireType(request.Type))
+        if (StringProperty(answer, "type") != SystemOneRequest.WireType(request.Type))
         {
             return Reading.Malformed("the answer is of another type");
         }

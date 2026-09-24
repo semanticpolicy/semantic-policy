@@ -9,6 +9,7 @@
     <Project Path="src/SemanticPolicy.AgentFramework/SemanticPolicy.AgentFramework.csproj" />
     <Project Path="src/SemanticPolicy.Core/SemanticPolicy.Core.csproj" />
     <Project Path="src/SemanticPolicy.Providers.Local/SemanticPolicy.Providers.Local.csproj" />
+    <Project Path="src/SemanticPolicy.Providers.SystemOne/SemanticPolicy.Providers.SystemOne.csproj" />
     <Project Path="src/SemanticPolicy.Providers.TypeSafe/SemanticPolicy.Providers.TypeSafe.csproj" />
   </Folder>
   <Folder Name="/tests/">
