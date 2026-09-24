@@ -5,89 +5,97 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text.Json;
 using SemanticPolicy.Protocol;
-using SemanticPolicy.Providers.SystemOne;
 
-namespace SemanticPolicy.Providers.TypeSafe;
+namespace SemanticPolicy.Providers.SystemOne;
 
 /// <summary>
-/// The TypeSafe Jev decision model as an <see cref="IDecisionProvider"/>: one HTTP call per request,
-/// one question per call, the answer normalised onto protocol v0. It reports what the model estimated
-/// and decides nothing. Thresholds, verdicts and what a failure means belong to the policy, and a
-/// denied verdict downstream is not proof of an attack any more than an allowed one is proof of safety.
+/// Any server that answers the System One wire (<c>/v1/systemone</c>) as an
+/// <see cref="IDecisionProvider"/>: one HTTP call per request, one question per call, the answer
+/// normalised onto protocol v0. It reports the server's numbers as <see cref="EvidenceKind.Score"/>
+/// unless the options declare them a probability, and decides nothing. Thresholds, verdicts and what a
+/// failure means belong to the policy, and a denied verdict downstream is not proof of an attack any
+/// more than an allowed one is proof of safety.
 /// </summary>
 /// <remarks>
-/// The adapter retries nothing and reads no <c>Retry-After</c>: a host that wants either configures the
-/// <see cref="HttpClient"/> it hands in. It logs nothing and starts no activity, and no message,
+/// The provider retries nothing and reads no <c>Retry-After</c>: a host that wants either configures
+/// the <see cref="HttpClient"/> it hands in. It logs nothing and starts no activity, and no message,
 /// exception or <see cref="ProviderResult.ToString"/> it produces carries the question, the context, a
 /// request body or a response body.
 /// </remarks>
-public sealed class TypeSafeJevProvider : IDecisionProvider
+public sealed class SystemOneProvider : IDecisionProvider
 {
-    private const string _product = "SemanticPolicy.Providers.TypeSafe";
-    private const string _requestIdHeader = "x-typesafe-request-id";
+    private const string _product = "SemanticPolicy.Providers.SystemOne";
 
     private static readonly ProductInfoHeaderValue _userAgent = new(_product, PackageVersion());
-    private static readonly ProviderCapabilities _capabilities = new(
-        new HashSet<DecisionType> { DecisionType.Boolean, DecisionType.Choice, DecisionType.Score },
-        new HashSet<EvidenceKind> { EvidenceKind.Probability },
-        RawOutput: true,
-        StructuredContext: true);
 
     private readonly Func<HttpClient> _clientSource;
     private readonly Uri _endpoint;
     private readonly string _model;
-    private readonly string _apiKey;
+    private readonly string? _apiKey;
+    private readonly EvidenceKind _evidence;
+    private readonly int? _maxContextLength;
     private readonly TimeSpan _timeout;
 
     /// <summary>
     /// Builds the provider on a client the caller owns. The client's <see cref="HttpClient.Timeout"/>
-    /// should be <see cref="System.Threading.Timeout.InfiniteTimeSpan"/>: the adapter keeps its own
+    /// should be <see cref="System.Threading.Timeout.InfiniteTimeSpan"/>: the provider keeps its own
     /// timer, and a shorter client timeout surfaces as an <see cref="OperationCanceledException"/> with
     /// no token cancelled, which the evaluator treats as a programming error. The client is neither
     /// modified nor disposed here. The options are validated and copied, so a later change to them
-    /// changes nothing; the key must be on them, because this constructor never reads the environment.
+    /// changes nothing. This constructor never reads the environment: only a registration reads
+    /// <see cref="SystemOneOptions.ApiKeyVariable"/>, so a key for a provider built here goes on
+    /// <see cref="SystemOneOptions.ApiKey"/>, or there is none.
     /// </summary>
     /// <param name="httpClient">The client every call is sent through.</param>
-    /// <param name="options">Where to call, as what, with which key.</param>
+    /// <param name="options">Where to call, as what, and with which key if any.</param>
     /// <exception cref="ArgumentException">
-    /// The options fail <see cref="TypeSafeJevOptions.EnsureValid"/>, or carry no
-    /// <see cref="TypeSafeJevOptions.ApiKey"/>.
+    /// The options fail <see cref="SystemOneOptions.EnsureValid"/>, or name an
+    /// <see cref="SystemOneOptions.ApiKeyVariable"/> without an <see cref="SystemOneOptions.ApiKey"/>:
+    /// the variable would never be read, and the provider would send no key and report no error.
     /// </exception>
-    public TypeSafeJevProvider(HttpClient httpClient, TypeSafeJevOptions options)
+    public SystemOneProvider(HttpClient httpClient, SystemOneOptions options)
         : this(Constant(httpClient), options)
     {
     }
 
     // The registration's path: a source invoked once per call, so a factory's handler rotation applies
-    // to the adapter's traffic for the life of the process. What the source returns is not disposed
+    // to the provider's traffic for the life of the process. What the source returns is not disposed
     // here, because a factory client's handler outlives the client and a caller's client is the
     // caller's to dispose.
-    internal TypeSafeJevProvider(Func<HttpClient> clientSource, TypeSafeJevOptions options)
+    internal SystemOneProvider(Func<HttpClient> clientSource, SystemOneOptions options)
     {
         ArgumentNullException.ThrowIfNull(clientSource);
         ArgumentNullException.ThrowIfNull(options);
         options.EnsureValid();
-        if (string.IsNullOrWhiteSpace(options.ApiKey))
+        if (!string.IsNullOrWhiteSpace(options.ApiKeyVariable) && string.IsNullOrWhiteSpace(options.ApiKey))
         {
-            throw new ArgumentException("The options carry no ApiKey.", nameof(options));
+            throw new ArgumentException(
+                "The options name an ApiKeyVariable but carry no ApiKey; only a registration reads the environment.",
+                nameof(SystemOneOptions.ApiKeyVariable));
         }
 
-        TypeSafeJevRoute route = options.Route!;
         _clientSource = clientSource;
 
-        // Joined as text: Uri's own combination would drop a base path such as OpenRouter's /api.
-        _endpoint = new Uri(route.BaseUrl.AbsoluteUri.TrimEnd('/') + route.Path);
-        _model = options.Model ?? route.Model;
-        _apiKey = options.ApiKey;
+        // Joined as text: Uri's own combination would drop a base path such as a gateway's /api.
+        _endpoint = new Uri(options.BaseUrl!.AbsoluteUri.TrimEnd('/') + options.Path);
+        _model = options.Model!;
+        _apiKey = string.IsNullOrWhiteSpace(options.ApiKey) ? null : options.ApiKey;
+        _evidence = options.Evidence;
+        _maxContextLength = options.MaxContextLength;
         _timeout = options.Timeout;
         Id = options.Id;
+        Capabilities = new ProviderCapabilities(
+            new HashSet<DecisionType> { DecisionType.Boolean, DecisionType.Choice, DecisionType.Score },
+            new HashSet<EvidenceKind> { _evidence },
+            RawOutput: true,
+            StructuredContext: true);
     }
 
     /// <inheritdoc />
     public string Id { get; }
 
     /// <inheritdoc />
-    public ProviderCapabilities Capabilities => _capabilities;
+    public ProviderCapabilities Capabilities { get; }
 
     /// <inheritdoc />
     public async Task<ProviderResult> DecideAsync(DecisionRequest request, CancellationToken cancellationToken = default)
@@ -96,6 +104,22 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
         request.EnsureValid();
 
         long started = Stopwatch.GetTimestamp();
+
+        // Counted on the canonical text, the flattening every client shares, although the structure is
+        // what goes out: some servers cut a long input without saying so, and an instruction past the
+        // cut would then score like the text before it. The policy's failure behaviour decides.
+        if (_maxContextLength is { } limit)
+        {
+            int length = SemanticContext.ToCanonicalText(request.Context).Length;
+            if (length > limit)
+            {
+                string lengths = string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"the context is {length} characters after flattening, over the limit of {limit}");
+                return Failed(request.Type, FailureKind.RejectedInput, lengths, started);
+            }
+        }
+
         using HttpRequestMessage message = CreateMessage(request);
         return await SystemOneCall.SendAsync(
                 _clientSource(),
@@ -117,7 +141,7 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
     // hash is not a version. The assembly version's three components when the attribute is absent.
     private static string PackageVersion()
     {
-        Assembly assembly = typeof(TypeSafeJevProvider).Assembly;
+        Assembly assembly = typeof(SystemOneProvider).Assembly;
         string? informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
         if (!string.IsNullOrEmpty(informational))
         {
@@ -139,7 +163,11 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
         message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
         // Per message, never on the client: the key then never lives on an object the caller shares.
-        message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+        if (_apiKey is not null)
+        {
+            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+        }
+
         message.Headers.UserAgent.Add(_userAgent);
         return message;
     }
@@ -160,7 +188,7 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
             return Failed(request.Type, FailureKind.Malformed, $"the body is not JSON ({length} bytes)", started);
         }
 
-        SystemOneResponse.Reading reading = SystemOneResponse.Read(request, json, EvidenceKind.Probability);
+        SystemOneResponse.Reading reading = SystemOneResponse.Read(request, json, _evidence);
         if (reading.Failure is { } shape)
         {
             return Failed(request.Type, FailureKind.Malformed, shape, started) with { Raw = json };
@@ -170,7 +198,7 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
             Id,
             SystemOneResponse.Model(json) ?? _model,
             Elapsed(started),
-            SystemOneResponse.RequestId(json) ?? HeaderRequestId(response),
+            SystemOneResponse.RequestId(json),
             SystemOneResponse.Usage(json),
             reading.Extra);
         return new ProviderResult(
@@ -181,11 +209,6 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
             metadata,
             json);
     }
-
-    // A gateway puts the call's id in the body; the vendor's own endpoint is reported to put it in a
-    // header instead, so the header is the fallback and its absence is not an error.
-    private static string? HeaderRequestId(HttpResponseMessage response) =>
-        response.Headers.TryGetValues(_requestIdHeader, out IEnumerable<string>? values) ? values.FirstOrDefault() : null;
 
     private ProviderResult Failed(DecisionType type, FailureKind kind, string message, long started) =>
         ProviderResult.Failed(type, kind, message, new ProviderMetadata(Id, _model, Elapsed(started)));

@@ -13,7 +13,7 @@ public sealed class TypeSafeJevNormalisationTests
     public static TheoryData<string, DecisionType, string, bool> Deviations => new()
     {
         { "not JSON", DecisionType.Boolean, $"noul: 0.9 {_marker}", false },
-        { "HTML", DecisionType.Boolean, JevFixtures.Html(_marker), false },
+        { "HTML", DecisionType.Boolean, SystemOneFixtures.Html(_marker), false },
         { "a JSON string", DecisionType.Boolean, JsonSerializer.Serialize($"answers {_marker}"), true },
         { "no answers", DecisionType.Boolean, JsonSerializer.Serialize(new { model = "jev", note = _marker }), true },
         {
@@ -52,8 +52,8 @@ public sealed class TypeSafeJevNormalisationTests
             DecisionType.Score,
             Answer(
                 "score",
-                ("legend", JevFixtures.ByIndex(["low", "high", "medium"])),
-                ("probabilities", JevFixtures.ByIndex<double>([0.2, 0.3, 0.5]))),
+                ("legend", SystemOneFixtures.ByIndex(["low", "high", "medium"])),
+                ("probabilities", SystemOneFixtures.ByIndex<double>([0.2, 0.3, 0.5]))),
             true
         },
         {
@@ -61,7 +61,7 @@ public sealed class TypeSafeJevNormalisationTests
             DecisionType.Score,
             Answer(
                 "score",
-                ("legend", JevFixtures.ByIndex(TypeSafeJevHarness.Levels)),
+                ("legend", SystemOneFixtures.ByIndex(TypeSafeJevHarness.Levels)),
                 ("probabilities", Probabilities(("0", 0.5), ("1", 0.5)))),
             true
         },
@@ -75,7 +75,7 @@ public sealed class TypeSafeJevNormalisationTests
     public async Task Boolean_Answer_Becomes_A_Value_At_The_Half_Cut_With_Calibrated_Evidence(double noul, bool expected)
     {
         TypeSafeJevHarness harness = new();
-        harness.Handler.Respond(HttpStatusCode.OK, JevFixtures.BooleanAnswer(noul));
+        harness.Handler.Respond(HttpStatusCode.OK, SystemOneFixtures.BooleanAnswer(noul));
 
         ProviderResult result = await Decide(harness, DecisionType.Boolean);
 
@@ -94,7 +94,7 @@ public sealed class TypeSafeJevNormalisationTests
         TypeSafeJevHarness harness = new();
         harness.Handler.Respond(
             HttpStatusCode.OK,
-            JevFixtures.ChoiceAnswer("block", TypeSafeJevHarness.Distribution(0.05, 0.25, 0.7), confidence: 0.7));
+            SystemOneFixtures.ChoiceAnswer("block", TypeSafeJevHarness.Distribution(0.05, 0.25, 0.7), confidence: 0.7));
 
         ProviderResult result = await Decide(harness, DecisionType.Choice);
 
@@ -118,7 +118,7 @@ public sealed class TypeSafeJevNormalisationTests
         TypeSafeJevHarness harness = new();
         harness.Handler.Respond(
             HttpStatusCode.OK,
-            JevFixtures.ScoreAnswer(TypeSafeJevHarness.Levels, probabilities, score: 1.2));
+            SystemOneFixtures.ScoreAnswer(TypeSafeJevHarness.Levels, probabilities, score: 1.2));
 
         ProviderResult result = await Decide(harness, DecisionType.Score);
 
@@ -144,10 +144,10 @@ public sealed class TypeSafeJevNormalisationTests
     {
         TypeSafeJevHarness harness = new();
         string body = shape == "everything in the body"
-            ? JevFixtures.BooleanAnswer(
+            ? SystemOneFixtures.BooleanAnswer(
                 0.8,
-                envelope: new JevFixtures.Envelope("jev-1.13.0-20260901", "gen-dec-0001", Usage: true, Provider: "TypeSafe"))
-            : JevFixtures.BooleanAnswer(0.8);
+                envelope: new SystemOneFixtures.Envelope("jev-1.13.0-20260901", "gen-dec-0001", Usage: true, Provider: "TypeSafe"))
+            : SystemOneFixtures.BooleanAnswer(0.8);
         Dictionary<string, string>? headers = shape == "a request id header only"
             ? new Dictionary<string, string> { ["x-typesafe-request-id"] = "req-0002" }
             : null;
@@ -208,7 +208,7 @@ public sealed class TypeSafeJevNormalisationTests
 
     /// <summary>A 200 body whose answer has the fields given and a note carrying the marker.</summary>
     private static string Answer(string type, params (string Name, object? Value)[] fields) =>
-        JevFixtures.Response(JevFixtures.Answer(type, [.. fields, ("note", _marker)]));
+        SystemOneFixtures.Response(SystemOneFixtures.Answer(type, [.. fields, ("note", _marker)]));
 
     private static Dictionary<string, double> Probabilities(params (string Key, double Value)[] entries) =>
         entries.ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal);
