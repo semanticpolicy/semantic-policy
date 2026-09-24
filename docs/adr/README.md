@@ -35,6 +35,8 @@ belongs here.
   evaluates a policy and the application's handler acts on the verdict.
 - [0013](0013-evaluation-records-answers-and-replays-them-through-core.md) — The evaluation tool
   records provider answers once and replays them through Core.
+- [0014](0014-evaluation-tool-records-live-once-and-ci-replays.md) — The evaluation tool calls a
+  provider once, commits what it recorded, and CI only replays it.
 
 ## Format
 
