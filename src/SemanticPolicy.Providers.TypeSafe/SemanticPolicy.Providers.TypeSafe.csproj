@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>Decision provider backed by the TypeSafe/Jev API.</Description>
+    <Description>Decision provider for the TypeSafe Jev decision model, at TypeSafe's own endpoint or through OpenRouter.</Description>
+    <PackageTags>$(PackageTags);typesafe;jev;openrouter</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

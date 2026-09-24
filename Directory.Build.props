@@ -18,10 +18,12 @@
 
   <!-- Package metadata for everything under src/. A project that is not published to NuGet turns
        IsPackable off for itself; the defaults live here so the published packages cannot disagree
-       about their licence, their repository or who wrote them. -->
+       about their licence, their repository or who wrote them. A project appends its own tags to
+       PackageTags. -->
   <PropertyGroup>
     <Authors>SemanticPolicy contributors</Authors>
     <Product>SemanticPolicy</Product>
+    <PackageTags>ai;ai-agents;llm;policy;prompt-injection;decision-model</PackageTags>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/semanticpolicy/semantic-policy</PackageProjectUrl>
     <RepositoryUrl>https://github.com/semanticpolicy/semantic-policy</RepositoryUrl>

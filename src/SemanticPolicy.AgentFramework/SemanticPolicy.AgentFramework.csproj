@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <Description>Microsoft Agent Framework integration: pre-model, pre-tool and post-tool policy checks.</Description>
+    <PackageTags>$(PackageTags);microsoft-agent-framework;agent-framework</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
