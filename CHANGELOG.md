@@ -5,7 +5,7 @@ and `SemanticPolicy.AgentFramework`, which share one version. Versions follow
 [Semantic Versioning](https://semver.org/); while the major version is 0, any release can change the
 API.
 
-## 0.1.0-alpha.1
+## 0.1.0-alpha.1 - 2026-09-24
 
 The first release: prerelease packages on NuGet, for .NET 10.
 
