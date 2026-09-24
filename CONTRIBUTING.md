@@ -45,6 +45,11 @@ match the change — a `feat:` that only moves code is a lie that outlives the p
 A pull request says what changed and why, names the commands it was verified with, and targets
 `main`. Keep it to one concern; two concerns are two pull requests.
 
+## Code of conduct
+
+Everyone taking part in the project follows the [Code of Conduct](CODE_OF_CONDUCT.md). Report
+behaviour that breaks it to admin@semanticpolicy.dev.
+
 ## Licence
 
 By contributing you agree that your contribution is licensed under Apache-2.0, the licence in
