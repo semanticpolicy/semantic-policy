@@ -1,4 +1,7 @@
+![](https://raw.githubusercontent.com/semanticpolicy/semantic-policy/main/assets/icon.png)
+
 # SemanticPolicy
+[![NuGet][nuget-badge]][nuget] [![.NET 10][dotnet-badge]][dotnet] [![Licence: Apache-2.0][licence-badge]][licence]
 
 **SemanticPolicy adds testable semantic decisions to .NET applications.**
 
@@ -254,3 +257,8 @@ Apache-2.0. See [`LICENSE`][licence].
 [contributing]: https://github.com/semanticpolicy/semantic-policy/blob/main/CONTRIBUTING.md
 [issues]: https://github.com/semanticpolicy/semantic-policy/issues
 [licence]: https://github.com/semanticpolicy/semantic-policy/blob/main/LICENSE
+[licence-badge]: https://img.shields.io/badge/licence-Apache--2.0-blue
+[nuget]: https://www.nuget.org/packages/SemanticPolicy.Core
+[nuget-badge]: https://img.shields.io/nuget/vpre/SemanticPolicy.Core?label=NuGet
+[dotnet]: https://dotnet.microsoft.com/download/dotnet/10.0
+[dotnet-badge]: https://img.shields.io/badge/.NET-10-512BD4
