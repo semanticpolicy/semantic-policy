@@ -2,14 +2,14 @@ using System.Buffers;
 using System.Text.Json;
 using SemanticPolicy.Protocol;
 
-namespace SemanticPolicy.Providers.TypeSafe;
+namespace SemanticPolicy.Providers.SystemOne;
 
 /// <summary>
-/// Writes a <see cref="DecisionRequest"/> as the Jev body: the model, the context exactly as it is
-/// under <c>state</c>, and one question under a fixed key. The property names are the vendor's, spelled
+/// Writes a <see cref="DecisionRequest"/> as a System One body: the model, the context exactly as it is
+/// under <c>state</c>, and one question under a fixed key. The property names are the wire's, spelled
 /// here and nowhere else.
 /// </summary>
-internal static class JevRequest
+internal static class SystemOneRequest
 {
     /// <summary>The key the single question is sent under and its answer is read from.</summary>
     public const string QuestionKey = "decision";
@@ -37,7 +37,7 @@ internal static class JevRequest
         return buffer.WrittenSpan.ToArray();
     }
 
-    /// <summary>The vendor's name for a decision type. Their Boolean is spelled <c>noul</c>.</summary>
+    /// <summary>The wire's name for a decision type. Its Boolean is spelled <c>noul</c>.</summary>
     public static string WireType(DecisionType type) =>
         type switch
         {
