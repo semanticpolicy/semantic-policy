@@ -304,6 +304,9 @@ A goal (`<constraint>` in `--help`) is one of these, with `v` from 0 to 1:
 - A rung or gate with no goal keeps the policy's number.
 - Candidates are the values the binding returned. For probability evidence the curve also shows a
   0.05 grid, which is never recommended.
+- A curve holds at most 101 candidates, and so does a gate curve besides its no-gate point. Past
+  that, it keeps values spread evenly through the sorted ones, the lowest and highest among them;
+  for probability evidence the 0.05 grid is always kept and counts toward the 101.
 - A gate's candidates are its margins to 15 significant digits, so 0.81 against 0.19 reads 0.62, not
   0.6200000000000001. Each gate is replayed at that number, so a row whose margin came out as
   0.3999999999999999 abstains at gate 0.4, as it would with 0.4 in the policy.
@@ -416,9 +419,10 @@ failure rates, latency and usage.
   file out with CRLF endings, and its digest then no longer matches a recording made from LF bytes.
   Keep datasets LF, for example with `*.jsonl text eol=lf` in `.gitattributes`, as this repository
   does.
-- **Large datasets.** Each distinct evidence value is a candidate threshold, and each candidate
-  replays every row, so with continuous scores the time grows with the square of the row count:
-  thousands of rows take minutes, and `sweep` prints a line per candidate.
+- **Large datasets.** With more than 101 distinct values, a curve keeps at most 101 candidates, so
+  a recommended threshold is the best of those rather than of every value, and the ROC and PR areas
+  are integrated over those points. Each candidate replays every row, so the time still grows with
+  the row count.
 - **An interrupted run** keeps its finished rows, and the other commands read the shorter recording
   and say how many rows it covers. Delete a last line torn by the interruption first.
 

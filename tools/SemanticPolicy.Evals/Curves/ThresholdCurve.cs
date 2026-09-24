@@ -14,9 +14,19 @@ namespace SemanticPolicy.Evals.Curves;
 /// </summary>
 public static class ThresholdCurve
 {
+    /// <summary>
+    /// The most candidates a rung's curve or a gate curve replays. Each one replays every row, so unrounded
+    /// evidence, a value of its own on nearly every row, would otherwise cost rows times rows.
+    /// </summary>
+    internal const int MaxCandidates = 101;
+
     private const int _gridSteps = 20;
 
-    /// <summary>Computes one curve per rung of the swept rule's ladder.</summary>
+    /// <summary>
+    /// Computes one curve per rung of the swept rule's ladder. A curve has at most 101 points: past that, it keeps
+    /// observed values spread evenly by rank, the lowest and highest included, and on probability evidence the 0.05
+    /// grid stays whole and counts toward the 101.
+    /// </summary>
     /// <param name="set">The replay set, loaded on the rule to sweep.</param>
     /// <param name="policy">The policy the sweep varies; every binding of it is kept.</param>
     /// <param name="bindingIndex">The binding in <paramref name="policy"/> whose threshold moves.</param>
@@ -146,17 +156,55 @@ public static class ThresholdCurve
         EvidenceKind kind,
         HashSet<string> selected)
     {
-        SortedSet<double> observed = Observed(set, providerId, rule, kind, selected);
-        List<(double Threshold, bool Observed)> candidates = [.. observed.Select(value => (value, true))];
+        double[] observed = [.. Observed(set, providerId, rule, kind, selected)];
         if (kind != EvidenceKind.Probability)
         {
             // A score or a logit is on the provider's own scale, where a fixed grid is an arbitrary set of
             // numbers; only values some attempt actually reported say anything there.
-            return candidates;
+            return [.. Thin(observed, MaxCandidates).Select(value => (value, true))];
         }
 
+        // The grid is never thinned, so when the bound bites every grid point keeps a place and the observed
+        // values share the rest.
+        List<(double Threshold, bool Observed)> candidates = WithGrid(observed);
+        return candidates.Count <= MaxCandidates
+            ? candidates
+            : WithGrid(Thin(observed, MaxCandidates - (_gridSteps + 1)));
+    }
+
+    /// <summary>
+    /// Keeps at most <paramref name="count"/> of <paramref name="ascending"/>, spread evenly by rank with the lowest
+    /// and highest among them, or all of them when there are no more than that.
+    /// </summary>
+    /// <remarks>
+    /// By rank rather than evenly on the scale: the kept values sit where the reported ones crowd, and each is still
+    /// a number some attempt produced, so a policy carrying it cuts the rows exactly where the curve says.
+    /// </remarks>
+    internal static IReadOnlyList<double> Thin(IReadOnlyList<double> ascending, int count)
+    {
+        if (ascending.Count <= count)
+        {
+            return ascending;
+        }
+
+        List<double> kept = new(count);
+        for (int index = 0; index < count; index++)
+        {
+            // index · (n - 1) / (count - 1), rounded; with n above count consecutive ranks never coincide.
+            long rank = ((long)index * (ascending.Count - 1) + (count - 1) / 2) / (count - 1);
+            kept.Add(ascending[(int)rank]);
+        }
+
+        return kept;
+    }
+
+    private static List<(double Threshold, bool Observed)> WithGrid(IReadOnlyList<double> observed)
+    {
+        List<(double Threshold, bool Observed)> candidates = [.. observed.Select(value => (value, true))];
+
         // Rounded to two decimals so a grid point does not land beside an observed value it is meant to be:
-        // a recorded 0.35 and 7/20 are not always the same double.
+        // a recorded 0.35 and 7/20 are not always the same double. Over thinned values, a grid value whose
+        // covering values were all dropped comes back as a grid point.
         HashSet<double> covered = [.. observed.Select(value => Math.Round(value, 2))];
         for (int step = 0; step <= _gridSteps; step++)
         {

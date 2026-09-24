@@ -195,6 +195,64 @@ public sealed class ThresholdCurveTests
         });
     }
 
+    [Theory]
+    [InlineData(EvidenceKind.Score)]
+    [InlineData(EvidenceKind.Logit)]
+    [InlineData(EvidenceKind.Probability)]
+    public async Task Curve_On_Hundreds_Of_Distinct_Values_Has_At_Most_101_Points_Per_Rung(EvidenceKind kind)
+    {
+        using TempFile file = TempFile.Write("");
+        Policy policy = Ladder(kind, 0.6, 0.9);
+
+        // Unrounded evidence, a value of its own on every row, crowded towards zero. Near one they are under a
+        // hundredth apart, so each 0.05 grid value has an observed value rounding to it; thinned by rank they are
+        // not, and the grid values up there have to come back as grid points.
+        double[] values = [.. Enumerable.Range(0, 300).Select(index => Math.Pow((index + 0.5) / 300, 2))];
+        (ReplaySet set, IReadOnlyList<DatasetRow> rows) = await LoadAsync(file, policy, Rows(kind, values));
+
+        IReadOnlyList<RungCurve> curves = ThresholdCurve.Compute(set, policy, 0, rows);
+
+        curves.Select(curve => curve.Rung).Should().Equal(Verdict.Warn, Verdict.Deny);
+        foreach (RungCurve curve in curves)
+        {
+            curve.Points.Should().HaveCountLessThanOrEqualTo(101);
+            curve.Points.Select(point => point.Threshold).Should().BeInAscendingOrder();
+            if (kind == EvidenceKind.Probability)
+            {
+                // Thinning may drop the observed value that stood for a grid value; the grid value then has to
+                // come back as a grid point rather than go missing.
+                foreach (double grid in Enumerable.Range(0, 21).Select(step => step / 20.0))
+                {
+                    curve.Points.Should().Contain(
+                        point => Math.Round(point.Threshold, 2) == grid,
+                        $"grid value {grid} has to stay on the {curve.Rung} curve");
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Curve_Thinned_On_A_Score_Kind_Keeps_Only_Reported_Values_With_Both_Ends()
+    {
+        using TempFile file = TempFile.Write("");
+        Policy policy = Ladder(EvidenceKind.Score, 0.6, 0.9);
+
+        // Crowded towards zero, so a candidate spaced evenly on the scale would be a number nobody reported.
+        double[] values = [.. Enumerable.Range(1, 300).Select(index => Math.Pow(index / 301.0, 3))];
+        (ReplaySet set, IReadOnlyList<DatasetRow> rows) =
+            await LoadAsync(file, policy, Rows(EvidenceKind.Score, values));
+
+        IReadOnlyList<RungCurve> curves = ThresholdCurve.Compute(set, policy, 0, rows);
+
+        curves.Should().AllSatisfy(curve =>
+        {
+            curve.Points.Should().HaveCountLessThanOrEqualTo(101);
+            curve.Points.Should().AllSatisfy(point => point.Observed.Should().BeTrue());
+            curve.Points.Select(point => point.Threshold).Should().BeSubsetOf(values);
+            curve.Points.Select(point => point.Threshold).Should().Contain([values.Min(), values.Max()]);
+        });
+    }
+
     private static Policy Ladder(EvidenceKind kind, double warn, double deny, double? gate = null)
     {
         BooleanRule rule = Samples.Flagged();
@@ -211,7 +269,7 @@ public sealed class ThresholdCurveTests
     }
 
     private static (string Label, ProviderResult[] Attempts)[] Rows(EvidenceKind kind, double[] values) =>
-        [.. values.Select((value, index) => (_labels[index], new[] { Answer(kind, value) }))];
+        [.. values.Select((value, index) => (_labels[index % _labels.Length], new[] { Answer(kind, value) }))];
 
     private static ProviderResult Answer(EvidenceKind kind, double flagged, string provider = "local") =>
         Samples.Answer(new BooleanValue(flagged >= 0.5), provider, Two(kind, flagged));
