@@ -5,6 +5,7 @@ using System.Net.Http.Headers;
 using System.Reflection;
 using System.Text.Json;
 using SemanticPolicy.Protocol;
+using SemanticPolicy.Providers.SystemOne;
 
 namespace SemanticPolicy.Providers.TypeSafe;
 
@@ -95,32 +96,15 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
         request.EnsureValid();
 
         long started = Stopwatch.GetTimestamp();
-        using CancellationTokenSource timer = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timer.CancelAfter(_timeout);
-        try
-        {
-            using HttpRequestMessage message = CreateMessage(request);
-            using HttpResponseMessage response = await _clientSource()
-                .SendAsync(message, HttpCompletionOption.ResponseContentRead, timer.Token)
-                .ConfigureAwait(false);
-            byte[] body = await response.Content.ReadAsByteArrayAsync(timer.Token).ConfigureAwait(false);
-            return Interpret(request, response, body, started);
-        }
-        catch (OperationCanceledException) when (timer.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-        {
-            // Only the adapter's own timer is a Timeout. The caller's cancellation propagates above,
-            // and a cancellation with neither token cancelled is a programming error that propagates too.
-            long milliseconds = (long)Math.Round(_timeout.TotalMilliseconds);
-            return Failed(request.Type, FailureKind.Timeout, $"no response within {milliseconds} ms", started);
-        }
-        catch (HttpRequestException exception)
-        {
-            return Failed(request.Type, FailureKind.Unavailable, $"HttpRequestException: {exception.HttpRequestError}", started);
-        }
-        catch (HttpIOException exception)
-        {
-            return Failed(request.Type, FailureKind.Unavailable, $"HttpIOException: {exception.HttpRequestError}", started);
-        }
+        using HttpRequestMessage message = CreateMessage(request);
+        return await SystemOneCall.SendAsync(
+                _clientSource(),
+                message,
+                _timeout,
+                (response, body) => Interpret(request, response, body, started),
+                (kind, text) => Failed(request.Type, kind, text, started),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static Func<HttpClient> Constant(HttpClient httpClient)
@@ -150,7 +134,7 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
     {
         HttpRequestMessage message = new(HttpMethod.Post, _endpoint)
         {
-            Content = new ByteArrayContent(JevRequest.Write(request, _model)),
+            Content = new ByteArrayContent(SystemOneRequest.Write(request, _model)),
         };
         message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
@@ -162,11 +146,11 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
 
     private ProviderResult Interpret(DecisionRequest request, HttpResponseMessage response, byte[] body, long started)
     {
-        JsonElement? raw = JevResponse.TryParse(body);
+        JsonElement? raw = SystemOneResponse.TryParse(body);
         if (response.StatusCode != HttpStatusCode.OK)
         {
-            FailureKind kind = JevResponse.KindOf(response.StatusCode);
-            string message = JevResponse.DescribeError(response.StatusCode, raw, body.Length);
+            FailureKind kind = SystemOneResponse.KindOf(response.StatusCode);
+            string message = SystemOneResponse.DescribeError(response.StatusCode, raw, body.Length);
             return Failed(request.Type, kind, message, started) with { Raw = raw };
         }
 
@@ -176,7 +160,7 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
             return Failed(request.Type, FailureKind.Malformed, $"the body is not JSON ({length} bytes)", started);
         }
 
-        JevResponse.Reading reading = JevResponse.Read(request, json);
+        SystemOneResponse.Reading reading = SystemOneResponse.Read(request, json);
         if (reading.Failure is { } shape)
         {
             return Failed(request.Type, FailureKind.Malformed, shape, started) with { Raw = json };
@@ -184,10 +168,10 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
 
         ProviderMetadata metadata = new(
             Id,
-            JevResponse.Model(json) ?? _model,
+            SystemOneResponse.Model(json) ?? _model,
             Elapsed(started),
-            JevResponse.RequestId(json) ?? HeaderRequestId(response),
-            JevResponse.Usage(json),
+            SystemOneResponse.RequestId(json) ?? HeaderRequestId(response),
+            SystemOneResponse.Usage(json),
             reading.Extra);
         return new ProviderResult(
             request.Type,

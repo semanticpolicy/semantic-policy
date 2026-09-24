@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- Only the wire code the TypeSafe provider calls through lives here so far, so nothing is
+         published. The package ships once the client is complete; remove this line then. -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SemanticPolicy.Providers.TypeSafe" />
+  </ItemGroup>
+
+</Project>
