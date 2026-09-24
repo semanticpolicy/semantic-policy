@@ -1,9 +1,10 @@
 # SemanticPolicy
 
-**SemanticPolicy adds testable semantic decisions to AI agent workflows.**
+**SemanticPolicy adds testable semantic decisions to .NET applications.**
 
-Guard prompts, tool calls and tool results with a decision model, without tying your application to
-one provider.
+Write a decision that no `if` or regex can make as a rule, let a decision model answer it, and
+measure it on labelled examples, without tying your application to one provider. Use it in business
+logic, around a model call, or inside an AI agent's loop.
 
 > **Status: alpha.** `0.1.0-alpha.1` is the first release: the core library (policies, the evaluation
 > engine, telemetry, DI registration), the TypeSafe Jev provider and the Microsoft Agent Framework
@@ -13,10 +14,11 @@ one provider.
 
 ## The idea
 
-An agent workflow is full of decisions that are not code and not a regex: *is this input trying to
-manipulate the agent, is this tool call consistent with what the user asked for, which specialist
-should answer this*. Today those decisions are either hardcoded heuristics or a bare model call
-written inline, and neither can be tested, compared across providers, or rolled out gradually.
+Applications are full of decisions that are not code and not a regex: *is this ticket a refund
+request, which specialist should answer this, is this input trying to manipulate an agent, is this
+tool call consistent with what the user asked for*. Today those decisions are either hardcoded
+heuristics or a bare model call written inline, and neither can be tested, compared across providers,
+or rolled out gradually.
 
 SemanticPolicy writes each one down as a rule: a question for a decision model, and what each answer
 means.
