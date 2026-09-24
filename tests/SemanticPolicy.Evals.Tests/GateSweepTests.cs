@@ -81,4 +81,32 @@ public sealed class GateSweepTests
         // under a policy carrying that gate.
         curve.Points.Select(point => point.Abstained).Should().Equal(0, 1, 1, 2, 4);
     }
+
+    [Fact]
+    public async Task Gate_Sweep_On_Hundreds_Of_Distinct_Margins_Considers_At_Most_101()
+    {
+        using TempFile file = TempFile.Write("");
+        BooleanRule rule = Samples.Flagged();
+        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [rule]);
+
+        // 0.5 + k/2048 is exact in binary, so every margin is exactly k/1024 and prints as that decimal: three
+        // hundred distinct margins, each one a gate a policy could carry as written.
+        double[] margins = [.. Enumerable.Range(1, 300).Select(k => k / 1024.0)];
+        DatasetRow[] rows = [.. margins.Select((_, index) => Samples.Row($"r{index:000}", "true", index + 1))];
+        RecordedRow[] recorded =
+        [
+            .. margins.Select((_, index) =>
+                Samples.Recorded(rows[index].Id, (rule.Id, "local", Samples.BooleanAnswer(0.5 + (index + 1) / 2048.0)))),
+        ];
+        Recording recording = await Samples.RecordAsync(file.Path, Samples.Header(policy), recorded);
+        ReplaySet set = ReplaySet.Load(recording, Samples.Inputs(policy, Samples.Dataset(rows)), force: false);
+
+        GateCurve curve = GateSweep.Compute(set, policy, 0, rows);
+
+        curve.Points[0].Below.Should().BeNull();
+        List<double> gates = [.. curve.Points.Skip(1).Select(point => point.Below!.Value)];
+        gates.Should().HaveCountLessThanOrEqualTo(101).And.BeInAscendingOrder().And.OnlyHaveUniqueItems();
+        gates.Should().BeSubsetOf(margins);
+        gates[^1].Should().Be(margins[^1]);
+    }
 }

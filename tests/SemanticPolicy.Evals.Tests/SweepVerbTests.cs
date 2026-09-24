@@ -240,6 +240,38 @@ public sealed class SweepVerbTests
         fixture.ReadOut().GetProperty("sweep").GetProperty("provider").GetString().Should().Be("hosted");
     }
 
+    [Fact]
+    public async Task Sweep_Of_Distinct_Scores_Prints_A_Table_A_Person_Can_Read()
+    {
+        // Unrounded scores, one per row, and their margins nearly as varied: a few hundred distinct candidates
+        // for the rung curves and the gate curve alike.
+        using CliFixture fixture = await CliFixture.CreateAsync(
+            Guard(EvidenceKind.Score),
+            [
+                .. Enumerable.Range(1, 300).Select(index => index / 301.0).Select(value =>
+                    Row(value >= 0.5 ? "true" : "false", value, kind: EvidenceKind.Score)),
+            ]);
+
+        CliRun run = await fixture.RunAsync("sweep", "--provider", "local");
+
+        run.ExitCode.Should().Be(ExitCodes.Success);
+        string[] lines = run.Output.ReplaceLineEndings("\n").Split('\n');
+        TableRows(lines, "warn curve").Should().BeInRange(1, 101);
+        TableRows(lines, "deny curve").Should().BeInRange(1, 101);
+        TableRows(lines, "gate curve").Should().BeInRange(1, 102);
+    }
+
+    // The rows of the table printed under the line that starts with the title: past the header and the rule of
+    // dashes under it, up to the blank line that ends the table.
+    private static int TableRows(string[] lines, string title)
+    {
+        int start = Array.FindIndex(lines, line => line.StartsWith(title, StringComparison.Ordinal));
+        start.Should().BeGreaterThanOrEqualTo(0, $"the output has a '{title}' table");
+        int rule = Array.FindIndex(lines, start + 1, line => line.Length > 0 && line.Trim(' ', '-').Length == 0);
+        int end = Array.FindIndex(lines, rule + 1, line => line.Length == 0);
+        return (end < 0 ? lines.Length : end) - rule - 1;
+    }
+
     internal static Policy Guard(EvidenceKind kind = EvidenceKind.Probability, params string[] providers)
     {
         BooleanRule rule = Samples.Flagged();

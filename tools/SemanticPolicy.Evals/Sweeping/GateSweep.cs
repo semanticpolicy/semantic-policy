@@ -1,5 +1,6 @@
 using System.Globalization;
 using SemanticPolicy.Evals.Counting;
+using SemanticPolicy.Evals.Curves;
 using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Evals.Metrics;
 using SemanticPolicy.Evals.Replay;
@@ -24,7 +25,8 @@ public sealed record GatePoint(double? Below, int Abstained, double AbstentionRa
 
 /// <summary>The abstention-against-accuracy curve of one binding's gate, from no gate up to the widest margin seen.</summary>
 /// <param name="Points">
-/// The no-gate point first, then one point per observed margin at fifteen significant digits, ascending.
+/// The no-gate point first, then one point per observed margin at fifteen significant digits, ascending. Past 101
+/// distinct margins, 101 of them spread evenly by rank, the narrowest and widest included.
 /// </param>
 public sealed record GateCurve(IReadOnlyList<GatePoint> Points);
 
@@ -102,8 +104,9 @@ public static class GateSweep
             }
         }
 
-        List<GatePoint> points = new(margins.Count + 1) { Point(set, policy, bindingIndex, rule, null, selected) };
-        foreach (double margin in margins)
+        IReadOnlyList<double> candidates = ThresholdCurve.Thin([.. margins], ThresholdCurve.MaxCandidates);
+        List<GatePoint> points = new(candidates.Count + 1) { Point(set, policy, bindingIndex, rule, null, selected) };
+        foreach (double margin in candidates)
         {
             points.Add(Point(set, policy, bindingIndex, rule, new MarginGate(kind, margin), selected));
         }

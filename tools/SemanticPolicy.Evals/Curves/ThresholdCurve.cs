@@ -14,9 +14,19 @@ namespace SemanticPolicy.Evals.Curves;
 /// </summary>
 public static class ThresholdCurve
 {
+    /// <summary>
+    /// The most candidates a rung's curve or a gate curve replays. Each one replays every row, so unrounded
+    /// evidence, a value of its own on nearly every row, would otherwise cost rows times rows.
+    /// </summary>
+    internal const int MaxCandidates = 101;
+
     private const int _gridSteps = 20;
 
-    /// <summary>Computes one curve per rung of the swept rule's ladder.</summary>
+    /// <summary>
+    /// Computes one curve per rung of the swept rule's ladder. A curve has at most 101 points: past that, half the
+    /// places go to values reported on flagged rows and half to the others, each spread evenly by rank with its lowest
+    /// and highest, and on probability evidence the 0.05 grid stays whole and counts toward the 101.
+    /// </summary>
     /// <param name="set">The replay set, loaded on the rule to sweep.</param>
     /// <param name="policy">The policy the sweep varies; every binding of it is kept.</param>
     /// <param name="bindingIndex">The binding in <paramref name="policy"/> whose threshold moves.</param>
@@ -100,7 +110,9 @@ public static class ThresholdCurve
         ProviderBinding binding = policy.Bindings[bindingIndex];
         RuleOperatingPoint point = OperatingPoint(binding, rule);
         HashSet<string> selected = new(rows.Select(row => row.Id), StringComparer.Ordinal);
-        bool observed = Observed(set, binding.ProviderId, rule, point.Thresholds[0].Kind, selected).Contains(threshold);
+        (SortedSet<double> onFlagged, SortedSet<double> onOthers) =
+            Observed(set, binding.ProviderId, rule, point.Thresholds[0].Kind, selected);
+        bool observed = onFlagged.Contains(threshold) || onOthers.Contains(threshold);
         return Point(set, policy, rule with { Ladder = [rung] }, bindingIndex, threshold, observed, selected);
     }
 
@@ -146,17 +158,78 @@ public static class ThresholdCurve
         EvidenceKind kind,
         HashSet<string> selected)
     {
-        SortedSet<double> observed = Observed(set, providerId, rule, kind, selected);
-        List<(double Threshold, bool Observed)> candidates = [.. observed.Select(value => (value, true))];
+        (SortedSet<double> onFlagged, SortedSet<double> onOthers) = Observed(set, providerId, rule, kind, selected);
         if (kind != EvidenceKind.Probability)
         {
             // A score or a logit is on the provider's own scale, where a fixed grid is an arbitrary set of
             // numbers; only values some attempt actually reported say anything there.
-            return candidates;
+            return [.. ThinPerLabel(onFlagged, onOthers, MaxCandidates).Select(value => (value, true))];
         }
 
+        // The grid is never thinned, so when the bound bites every grid point keeps a place and the observed
+        // values share the rest.
+        List<(double Threshold, bool Observed)> candidates = WithGrid([.. onFlagged.Union(onOthers)]);
+        return candidates.Count <= MaxCandidates
+            ? candidates
+            : WithGrid(ThinPerLabel(onFlagged, onOthers, MaxCandidates - (_gridSteps + 1)));
+    }
+
+    /// <summary>
+    /// Keeps at most <paramref name="count"/> of the values reported on flagged rows and on the others, ascending:
+    /// half the places for each label, each label's values spread by rank with its own lowest and highest, or all
+    /// of them when there are no more than that.
+    /// </summary>
+    /// <remarks>
+    /// Spread by rank over every row, a gap between two kept values holds about a hundredth of the rows, and a rare
+    /// label can sit in one gap whole; the areas under the curve would then bridge it with a straight line. A label
+    /// with fewer values than its half keeps them all and leaves the other places to the other label.
+    /// </remarks>
+    private static IReadOnlyList<double> ThinPerLabel(SortedSet<double> onFlagged, SortedSet<double> onOthers, int count)
+    {
+        SortedSet<double> all = [.. onFlagged, .. onOthers];
+        if (all.Count <= count)
+        {
+            return [.. all];
+        }
+
+        int flaggedShare = Math.Min(onFlagged.Count, Math.Max(count / 2, count - onOthers.Count));
+        SortedSet<double> kept = [.. Thin([.. onFlagged], flaggedShare), .. Thin([.. onOthers], count - flaggedShare)];
+        return [.. kept];
+    }
+
+    /// <summary>
+    /// Keeps at most <paramref name="count"/> of <paramref name="ascending"/>, spread evenly by rank with the lowest
+    /// and highest among them, or all of them when there are no more than that.
+    /// </summary>
+    /// <remarks>
+    /// By rank rather than evenly on the scale: the kept values sit where the reported ones crowd, and each is still
+    /// a number some attempt produced, so a policy carrying it cuts the rows exactly where the curve says.
+    /// </remarks>
+    internal static IReadOnlyList<double> Thin(IReadOnlyList<double> ascending, int count)
+    {
+        if (ascending.Count <= count)
+        {
+            return ascending;
+        }
+
+        List<double> kept = new(count);
+        for (int index = 0; index < count; index++)
+        {
+            // index · (n - 1) / (count - 1), rounded; with n above count consecutive ranks never coincide.
+            long rank = ((long)index * (ascending.Count - 1) + (count - 1) / 2) / (count - 1);
+            kept.Add(ascending[(int)rank]);
+        }
+
+        return kept;
+    }
+
+    private static List<(double Threshold, bool Observed)> WithGrid(IReadOnlyList<double> observed)
+    {
+        List<(double Threshold, bool Observed)> candidates = [.. observed.Select(value => (value, true))];
+
         // Rounded to two decimals so a grid point does not land beside an observed value it is meant to be:
-        // a recorded 0.35 and 7/20 are not always the same double.
+        // a recorded 0.35 and 7/20 are not always the same double. Over thinned values, a grid value whose
+        // covering values were all dropped comes back as a grid point.
         HashSet<double> covered = [.. observed.Select(value => Math.Round(value, 2))];
         for (int step = 0; step <= _gridSteps; step++)
         {
@@ -171,7 +244,9 @@ public static class ThresholdCurve
         return candidates;
     }
 
-    private static SortedSet<double> Observed(
+    // Split by the row's label, read as the confusion matrix reads it: the flagged answer is the positive class, and
+    // every other row, a row outside the matrix included, is among the others.
+    private static (SortedSet<double> OnFlagged, SortedSet<double> OnOthers) Observed(
         ReplaySet set,
         string providerId,
         BooleanRule rule,
@@ -179,7 +254,8 @@ public static class ThresholdCurve
         HashSet<string> selected)
     {
         string flagged = rule.FlaggedAnswer ? "true" : "false";
-        SortedSet<double> observed = [];
+        SortedSet<double> onFlagged = [];
+        SortedSet<double> onOthers = [];
         foreach (ReplayRow row in set.Rows)
         {
             if (!selected.Contains(row.Row.Id)
@@ -196,11 +272,11 @@ public static class ThresholdCurve
             if (entry is not null
                 && EvidenceMath.WithBooleanComplement(entry).Values.TryGetValue(flagged, out double value))
             {
-                observed.Add(value);
+                (string.Equals(row.Row.Label.Answer, flagged, StringComparison.Ordinal) ? onFlagged : onOthers).Add(value);
             }
         }
 
-        return observed;
+        return (onFlagged, onOthers);
     }
 
     private static Policy Variant(Policy policy, BooleanRule single, int bindingIndex, double threshold)
