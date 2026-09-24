@@ -7,7 +7,7 @@ the same. Everything here is a fact about this repository; nothing here is a pre
 
 SemanticPolicy evaluates semantic decisions — "is this input trying to manipulate the agent", "is
 this tool call consistent with what the user asked for" — through a pluggable decision provider, and
-makes those decisions testable. Pre-alpha: `src/SemanticPolicy.Core/`,
+makes those decisions testable. Alpha: `src/SemanticPolicy.Core/`,
 `src/SemanticPolicy.Providers.TypeSafe/` and `src/SemanticPolicy.AgentFramework/` are implemented and
 tested, and the four examples run on them; `tools/SemanticPolicy.Evals/` is implemented and tested,
 and its `run` verb calls Jev through OpenRouter; the local provider is a skeleton that builds and does
@@ -68,17 +68,17 @@ and a design change needs an ADR in `docs/adr/` before it needs an implementatio
 
 ## Logging and privacy
 
-Nothing logs content by default: not prompts, not tool arguments, not tool results, not anything a
-user typed. Telemetry carries identifiers, latency, evidence kind and value, verdict, mode and
-error — never the text that was judged. Debug content logging is opt-in, off by default, and
-documented where it is introduced.
+Nothing logs content: not prompts, not tool arguments, not tool results, not anything a user typed.
+Telemetry carries identifiers, latency, evidence kind and value, verdict, mode and error — never the
+text that was judged. No setting turns content logging on. One added later follows ADR 0008: an
+opt-in per policy or per provider, off by default, named for what it does, and never a log level.
 
 The same rule applies to tests, fixtures and example data: no real customer content, no real API
 keys, no live endpoints.
 
 ## Code
 
-- C# 13 on `net10.0`, nullable enabled, warnings are errors.
+- C# 14 on `net10.0` (`LangVersion` is `latest`), nullable enabled, warnings are errors.
 - File-scoped namespaces, braces always, `var` only where the type is already on the right-hand side.
   `.editorconfig` is authoritative and enforced in the build.
 - Public API carries XML documentation. The documentation file is generated and warnings are errors,
@@ -93,13 +93,7 @@ keys, no live endpoints.
 - No tool attribution: no `Co-Authored-By` trailer for an AI assistant and no "Generated with …" line
   in a commit message, a pull request description, an issue or a comment. Older commits that carry
   one are a mistake, not a convention.
-- One concern per pull request. Base is `main` unless the pull request is part of a scope that is
-  being integrated on its own branch, in which case the base is that branch — explicitly, never by
+- One concern per pull request. Base is `main` unless the pull request belongs to a larger change
+  that is integrated on its own branch; then the base is that branch, set explicitly, never by
   default.
 - Do not merge your own pull request unless asked to.
-
-## A note on the planning side
-
-If `.agents/repo-profile.md` exists in your checkout, read it before starting: it carries the branch
-and issue model this repository is developed under. It is not part of the repository — a checkout
-without it is normal, and nothing in this file depends on it.
