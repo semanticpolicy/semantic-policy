@@ -1,12 +1,14 @@
 # Protocol v0
 
 The language-neutral shape of a semantic decision request and its result. The .NET types in
-`SemanticPolicy.Core` mirror it; a provider written in any language that speaks this shape over HTTP
-is a provider. Frozen with [ADR 0002](adr/0002-provider-contract-and-capabilities.md) after the same
+`SemanticPolicy.Core` mirror it: every provider adapter, an `IDecisionProvider`, takes the request
+and returns the result, whatever its provider's own API looks like. This release has no adapter that
+speaks the shape itself over HTTP, so a provider written in another language needs a .NET adapter of
+its own. Frozen with [ADR 0002](adr/0002-provider-contract-and-capabilities.md) after the same
 request passed through a hosted decision model and a local zero-shot classifier. A change to the
 shape is a new version, not an edit.
 
-JSON, camel case, enums as lower-case strings. Absent means absent: a field a provider cannot fill is
+JSON, camel case, enums as camel-case strings. Absent means absent: a field a provider cannot fill is
 omitted, never `null`, `0`, `false` or `""`.
 
 ## Request
@@ -131,8 +133,10 @@ provider-shaped; nothing in them is read by a policy.
 
 ### `raw`
 
-The provider response as received, for evaluation and replay. Optional on the wire; excluded from
-telemetry by default ([ADR 0008](adr/0008-telemetry-and-content-logging.md)).
+The provider response as received. Optional on the wire. The .NET types hold it in memory only: they
+never write or read it, so it reaches no log, no telemetry and no evaluation recording
+([ADR 0008](adr/0008-telemetry-and-content-logging.md),
+[ADR 0013](adr/0013-evaluation-records-answers-and-replays-them-through-core.md)).
 
 ## Capabilities
 

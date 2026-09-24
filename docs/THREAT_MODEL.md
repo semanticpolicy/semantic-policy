@@ -154,10 +154,10 @@ drops under a threshold, or push a benign request over one so that a real user i
 A false negative lets an attack through. A false positive blocks a legitimate request, and enough of
 them teach the operator to switch the rule off. Both are threats.
 
-- **The library** ships no recommended threshold, reports both error rates whenever a rule is
-  evaluated, requires every policy to name its mode, and has every example start in Shadow, where
-  the verdict is recorded and the application's behaviour is unchanged
-  ([ADR 0007](adr/0007-per-policy-failure-behaviour.md)).
+- **The library** ships no recommended threshold and requires every policy to name its mode; the
+  guard examples in `examples/` start in Shadow, where the verdict is recorded and the application's
+  behaviour is unchanged ([ADR 0007](adr/0007-per-policy-failure-behaviour.md)); and the evaluation
+  tool reports both error rates for every rule it measures.
 - **The application still** owns the asymmetry: what a missed injection costs against what a blocked
   request costs, per rule.
 - **Residual:** a dataset is never the production distribution.
@@ -167,10 +167,10 @@ them teach the operator to switch the rule off. Both are threats.
 A hosted provider is breached, its model is replaced, or it starts returning different answers to
 the same question.
 
-- **The library** records the provider and model identifier on every result and keeps the raw
-  response for replay, so a change in behaviour is visible on a stored dataset; it treats a
-  provider's answer as untrusted input and validates it against the contract; and a policy can fall
-  back to a second provider of a different kind.
+- **The library** records the provider and model identifier on every result, and the evaluation tool
+  saves every answer with them, so running a dataset again after a model change shows whether its
+  numbers moved; it treats a provider's answer as untrusted input and validates it against the
+  contract; and a policy can fall back to a second provider of a different kind.
 - **The application still** chooses providers with retention and audit terms it accepts, and
   re-runs its evaluation set when a model version changes.
 - **Residual:** a provider that answers plausibly and wrongly is not detectable from one result.

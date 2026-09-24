@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for looking. The project is pre-alpha and the API is still moving, so the most useful
+Thanks for looking. The project is in alpha and the API is still moving, so the most useful
 contributions right now are use cases, evaluation datasets, and reports of where the abstraction does
 not fit what you are building.
 
@@ -13,7 +13,7 @@ preamble.
 
 ## Working on it
 
-Requires the .NET 10 SDK.
+Requires the .NET 10 SDK, 10.0.300 or later (see `global.json`).
 
 ```bash
 dotnet build
@@ -33,9 +33,8 @@ All three must pass before a pull request is ready. CI runs them on pull request
   are errors, so this is enforced rather than requested.
 - **Tests cover behaviour, not implementation.** A provider change proves itself against the contract
   test suite every provider shares.
-- **Nothing logs content by default.** Prompts, tool arguments, tool results and anything a user
-  typed stay out of logs, error messages and exception text unless debug content logging is
-  explicitly enabled.
+- **Nothing logs content.** Prompts, tool arguments, tool results and anything a user typed stay
+  out of logs, error messages and exception text.
 
 ## Commits and pull requests
 
