@@ -29,6 +29,7 @@
     <RepositoryUrl>https://github.com/semanticpolicy/semantic-policy</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
@@ -36,10 +37,13 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
-  <!-- PackageReadmeFile above names README.md; without this item the file is not in the package
-       and `dotnet pack` fails with NU5039 rather than shipping a package with no description. -->
+  <!-- PackageReadmeFile and PackageIcon above name README.md and icon.png; without these items the
+       files are not in the package and `dotnet pack` fails with NU5039 or NU5046 rather than shipping
+       a package with no description or no icon. assets/icon.svg is the icon's source; the PNG is it
+       rendered at 128 x 128. -->
   <ItemGroup Condition="'$(IsPackable)' != 'false'">
     <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="$(MSBuildThisFileDirectory)assets\icon.png" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
 </Project>
