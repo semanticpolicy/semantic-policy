@@ -264,12 +264,13 @@ loopback and with synthetic content, on the date in its row or cell.
 |---|---|---|---|---|---|---|---|
 | Von | 1.2.2 | 25 Sep 2026 | GPU | 0.81 | 63 ms | 6.4 s | cuts nothing but dilutes: an instruction at the end first scores like benign text at 1 800 characters |
 | Laya, `english` checkpoint | 0.3.10 | 23 Sep 2026 | GPU | 0.81 | 242 ms | 2.1 s | keeps the head: an instruction at the end scores like benign text from 1 712 characters (25 Sep 2026) |
-| Laya, `typed-decisions` checkpoint | 0.3.10 | 23 Sep 2026 | GPU | 0.88 | 228 ms | 755 ms | keeps the head: the same from 3 773 characters (25 Sep 2026) |
+| Laya, `typed-decisions` checkpoint | 0.3.10 | 23 Sep 2026 | GPU | 0.89 | 228 ms | 755 ms | keeps the head: the same from 3 773 characters (25 Sep 2026) |
 | kev, 0.8B model | 0.1.0, commit `557598f` | 23 Sep 2026 | CPU | 0.93 | 4.2 s | 16.7 s | reads the whole context, diluted |
 
 - **Smoke AUC** is the ROC-AUC of the boolean score over the smoke set that ships with the
-  evaluation CLI: how well it ranks the 52 synthetic attacks above the 48 benign rows. It is not an
-  accuracy, and it says nothing about your data.
+  evaluation CLI: how well it ranks the 46 synthetic attacks above the 48 benign rows, with the 6
+  `ambiguous` rows left out, as the CLI leaves them out. It is not an accuracy, and it says nothing
+  about your data.
 - **Median call** is over ten short calls to a warm server. **First call** is the first after the
   server answered its health check.
 - **The model a verdict reports** is the one the server names: `von-1.2.0` from Von 1.2.2, whatever
