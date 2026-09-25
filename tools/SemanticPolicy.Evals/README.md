@@ -66,8 +66,9 @@ one that leaves `local` out needs no server.
 
 ## Quick start
 
-The smoke set ships with a recording of one `run` of its policy through Jev, so the three commands
-that read a recording work on a fresh clone, with no key and at no cost. From the repository root:
+The smoke set ships with a recording of one `run` of its policy through both providers, a local Von
+server and Jev, so the three commands that read a recording work on a fresh clone, with no key, no
+server and at no cost. From the repository root:
 
 ```bash
 P=tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.policy.json
@@ -77,14 +78,15 @@ R=tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.recording.jsonl
 # 1. Measure the policy at the thresholds it has.
 dotnet run --project tools/SemanticPolicy.Evals -- report --policy $P --dataset $D --recording $R
 
-# 2. The lowest deny threshold for jev at which at least 95% of denials are right.
-dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy $P --dataset $D --recording $R --provider jev --deny min-precision=0.95
+# 2. The lowest deny threshold for local, the first binding, at which at least 95% of denials are right.
+dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy $P --dataset $D --recording $R --provider local --deny min-precision=0.95
 
-# 3. The same goal for each binding on its own, side by side; this policy has one.
+# 3. The same goal for each binding on its own, side by side.
 dotnet run --project tools/SemanticPolicy.Evals -- compare --policy $P --dataset $D --recording $R --deny min-precision=0.95
 
-# 4. Record a run of your own. The only step that calls a provider: it needs OPENROUTER_API_KEY and
-#    sends every input to Jev. It writes a new file, so the committed recording stays as it is.
+# 4. Record a run of your own. The only step that calls a provider: it needs a Von server on
+#    127.0.0.1:8000 and OPENROUTER_API_KEY, and sends every input to both. It writes a new file, so
+#    the committed recording stays as it is.
 dotnet run --project tools/SemanticPolicy.Evals -- run --policy $P --dataset $D --record smoke.recording.jsonl
 ```
 
@@ -104,24 +106,34 @@ rows
 split from metadata.split: 60 tune, 40 test, 0 unassigned
 
 outcomes
-classified 92
+classified 93
 failed 0, failure rate 0.000
-abstained 2, abstention rate 0.020
-ambiguous 6 (allow 3, warn 1, deny 2)
+abstained 1, abstention rate 0.010
+ambiguous 6 (allow 3, deny 3)
 
 ...
 
 rung deny: verdict at or above deny against the flagged label, classified rows only
 tp  fp  tn  fn  accuracy  precision  recall     f1    fpr    fnr  failed  abstained  ambiguous
 --  --  --  --  --------  ---------  ------  -----  -----  -----  ------  ---------  ---------
-39   0  47   6     0.935      1.000   0.867  0.929  0.000  0.133       0          2          6
+32   1  47  13     0.849      0.970   0.711  0.821  0.021  0.289       0          1          6
+
+...
+
+providers: every recorded attempt of the rule
+provider  model                       attempts  p50 ms  p95 ms  cost         input_tokens  output_tokens
+--------  --------------------------  --------  ------  ------  -----------  ------------  -------------
+local     von-1.2.0                        100    66.7    99.1  n/a                  6722            100
+jev       typesafe/jev-1.13-20260917       100   277.4   362.1  0.001663032         39596           2000
 ```
 
-Read it like this: 92 rows had a clear label and got a verdict. The rule denied 39 of the 45 attacks
-among them (recall 0.867) and no safe input (precision 1.000); the other six attacks got warn. Two
-rows were left undecided, and the six rows labelled `ambiguous` are counted apart. The smoke rows are
-clear-cut on purpose, so numbers this good show that the pieces fit together, not how a rule does on
-real traffic, and the policy's thresholds are placeholders, not a recommendation.
+Read it like this: 93 rows had a clear label and got a verdict. The rule denied 32 of the 45 attacks
+among them (recall 0.711) and one safe input (precision 0.970); of the other 13 attacks, 9 got warn
+and 4 were allowed. One row was left undecided by both providers, and the six rows labelled
+`ambiguous` are counted apart. In the replay, `local` decides first and passes the rows whose margin
+is below its gate to `jev`. The smoke rows are clear-cut on purpose, so these numbers show that the
+pieces fit together, not how a rule does on real traffic, and the policy's thresholds are
+illustrations, not a recommendation.
 
 ## The dataset
 
@@ -174,6 +186,19 @@ smoke policy, with the question and criteria shortened:
   ],
   "bindings": [
     {
+      "providerId": "local",
+      "operatingPoints": [
+        {
+          "ruleId": "prompt-injection",
+          "thresholds": [
+            { "verdict": "warn", "kind": "score", "atOrAbove": 0.194 },
+            { "verdict": "deny", "kind": "score", "atOrAbove": 0.843 }
+          ],
+          "gate": { "kind": "score", "below": 0.5418 }
+        }
+      ]
+    },
+    {
       "providerId": "jev",
       "operatingPoints": [
         {
@@ -193,14 +218,16 @@ smoke policy, with the question and criteria shortened:
 
 - **`bindings`** are asked in order; `providerId` is the name a provider is registered under. A
   Boolean binding has one threshold per rung and an optional `gate`. A Choice or Score binding has
-  only a gate, because the rule itself maps its options or levels to verdicts. The smoke policy has
-  one binding, so a margin below its gate makes the rule abstain; with a second binding, that row
-  would go to the next provider instead.
+  only a gate, because the rule itself maps its options or levels to verdicts. In the smoke policy, a
+  row whose `local` margin is below 0.5418 goes to `jev`, and one whose `jev` margin is below 0.05 as
+  well makes the rule abstain.
 - **`mode` and `onFailure`** replay as written; a `budget` does not (see [`run`](#run)). The numbers
   read the rule's own verdict, so shadow and enforce give the same numbers.
 - **Several rules in one file** need `--rule <id>`: every number is about one rule.
-- **Every number in the smoke policy is a placeholder** that lets the tool run. A threshold belongs
-  to one provider on one dataset; choose yours with `sweep` on your own data
+- **Every number in the smoke policy is an illustration.** `local`'s thresholds and gate are what
+  `sweep` chose on the smoke set's sixty tune rows (see [`sweep`](#sweep)), and `jev`'s are
+  placeholders that let the tool run. A threshold belongs to one provider on one dataset; choose
+  yours with `sweep` on your own data
   ([ADR 0005](../../docs/adr/0005-evaluation-and-threshold-ownership.md)).
 
 ## Tune and test
@@ -327,13 +354,21 @@ A goal (`<constraint>` in `--help`) is one of these, with `v` from 0 to 1:
   [Pitfalls](#pitfalls).
 - A Choice or Score binding's gate can be swept only if the policy file gives it one.
 
-Warn catches at least 90% of attacks; deny is right at least 95% of the time and flags at most 1% of
-safe inputs:
+Warn catches at least 90% of attacks, deny is right at least 95% of the time, and the rows that pass
+`local`'s gate are decided right at least 90% of the time:
 
 ```bash
 dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy $P --dataset $D --recording $R \
-  --provider jev --warn min-recall=0.9 --deny min-precision=0.95 --deny max-fpr=0.01
+  --provider local --warn min-recall=0.9 --deny min-precision=0.95 --gate min-accuracy=0.9
 ```
+
+On the committed recording it recommends warn 0.194, deny 0.843 and gate 0.5418, the smoke policy's
+`local` numbers. Each curve is replayed at the policy file's other numbers, so a recommended gate
+changes which rows the thresholds are measured on, and the other way round. After copying the
+numbers in, sweep again until it recommends what the file holds: here the first sweep, over
+placeholder numbers, gave deny 0.9349 and gate 0.5618, the second moved them to 0.843 and 0.5418,
+and the third recommended the same again. The router policy's `local` gate, 0.4079, came from
+`--provider local --gate min-accuracy=0.9` on its own recording, and `jev`'s 0.2 is set by hand.
 
 ### `compare`
 
@@ -347,11 +382,10 @@ under the same goals and prints one table on the test rows. `--recording` and `-
 
 If any binding cannot meet its goals, `compare` still prints everything and exits with code 2.
 
-The smoke policy has one binding, so for now its `compare` measures a single binding. Step 3 of the
-quick start, shortened:
+Step 3 of the quick start, shortened:
 
 ```text
-compare of rule 'prompt-injection', policy 'prompt-injection-smoke': binding 'jev', alone
+compare of rule 'prompt-injection', policy 'prompt-injection-smoke': bindings 'local', 'jev', each alone
 rows: 100 in the dataset, 100 recorded, 100 after the filters
 chosen on split 'tune' (60 rows), reported on split 'test' (40 rows)
 
@@ -360,16 +394,51 @@ chosen on split 'tune' (60 rows), reported on split 'test' (40 rows)
 deny on split 'test' (40 rows)
 provider  threshold  accuracy  precision  recall     f1    fpr    fnr  roc-auc  pr-auc
 --------  ---------  --------  ---------  ------  -----  -----  -----  -------  ------
-jev            0.16     0.974      0.947   1.000  0.973  0.050  0.000    1.000   1.000
+local        0.9349     0.615      1.000   0.167  0.286  0.000  0.833    0.786   0.842
+jev            0.15     0.974      0.947   1.000  0.973  0.050  0.000    1.000   1.000
 
 outcomes, latency and usage on split 'test' (40 rows)
-provider  abstention  failure  p50 ms  p95 ms         cost  input_tokens  output_tokens
---------  ----------  -------  ------  ------  -----------  ------------  -------------
-jev            0.000    0.000   465.3   617.9  0.000666036         15858            800
+provider  abstention  failure  p50 ms  p95 ms  input_tokens  output_tokens  cost
+--------  ----------  -------  ------  ------  ------------  -------------  -----------
+local          0.625    0.000    63.8    89.8          2695             40  n/a
+jev            0.000    0.000   276.5   350.7         15858            800  0.000666036
 ```
 
-The deny threshold comes out below the policy's warn of 0.6, so the output ends with a conflict
+Alone, `local` leaves 25 of the 40 test rows undecided: its gate of 0.5418 hands them to `jev` in
+the policy, and with no binding after it they abstain. Its rates cover only the rows it decides.
+`jev`'s deny threshold comes out below the policy's warn of 0.6, so the output ends with a conflict
 line; [Pitfalls](#pitfalls) says why and what to do.
+
+The router set's Choice rule has no rungs, so only the gate is compared. Here each binding gets the
+lowest gate at which the rows it decides on its own are right at least 90% of the time:
+
+```bash
+S=tools/SemanticPolicy.Evals/datasets/smoke
+dotnet run --project tools/SemanticPolicy.Evals -- compare --policy $S/support-router.policy.json \
+  --dataset $S/support-router.smoke.jsonl --recording $S/support-router.recording.jsonl --gate min-accuracy=0.9
+```
+
+```text
+compare of rule 'route', policy 'support-router-smoke': bindings 'local', 'jev', each alone
+rows: 80 in the dataset, 80 recorded, 80 after the filters
+chosen on split 'tune' (48 rows), reported on split 'test' (32 rows)
+
+each binding on split 'test' (32 rows)
+provider  abstention  failure  p50 ms  p95 ms  input_tokens  output_tokens  cost
+--------  ----------  -------  ------  ------  ------------  -------------  -----------
+local          0.438    0.000    61.0    75.3           970             32  n/a
+jev            0.000    0.000   271.3   356.7         13092           1440  0.000549864
+
+binding 'local'
+gate: min-accuracy=0.9 → gate 0.4649 (abstention rate 0.250, accuracy 0.906), chosen on split 'tune' (48 rows), reported on split 'test' (32 rows)
+
+binding 'jev'
+gate: min-accuracy=0.9 → no gate (abstention rate 0.000, accuracy 1.000), chosen on split 'tune' (48 rows), reported on split 'test' (32 rows)
+```
+
+`jev` meets the goal on the tune rows with no gate at all. `local` meets it only by leaving a quarter
+of them undecided, and at that gate 14 of the 32 test rows; in the policy, those rows go to `jev`.
+Eighty synthetic rows show the two bindings side by side, not which provider routes better.
 
 ## Reading the report
 
@@ -418,9 +487,9 @@ failure rates, latency and usage.
 - **Crossed thresholds.** Warn and deny read the same evidence and share one curve, and `min-recall`
   picks its highest threshold while `min-precision` picks its lowest. On data that separates well,
   the pair `--warn min-recall=0.9` and `--deny min-precision=0.95` can put deny at or below warn: on
-  the committed smoke recording it gives warn 0.86 and deny 0.16, and `--deny min-precision=0.95`
-  alone gives deny 0.16 against the policy file's warn of 0.6. Deny's threshold alone then catches at
-  least 90% of the attacks. Keep it and set warn below it by hand, reading on
+  the committed smoke recording, `compare` with that pair gives `jev` warn 0.87 and deny 0.15, and
+  `--deny min-precision=0.95` alone gives deny 0.15 against the policy file's warn of 0.6. Deny's
+  threshold alone then catches at least 90% of the attacks. Keep it and set warn below it by hand, reading on
   the curve how many safe inputs each lower threshold would flag; the library refuses thresholds
   that do not increase with severity.
 - **Small test sets.** On 40 test rows, one row moves a rate by 2.5 points or more, so a threshold
@@ -444,20 +513,21 @@ the answers; from the committed smoke recording, spread over lines and with the 
 
 ```json
 {
-  "recordedAt": "2026-09-23T17:28:31.1939113+00:00",
+  "recordedAt": "2026-09-25T12:19:17.7944419+00:00",
   "parallel": 4,
   "timeout": "00:00:30",
   "format": "semanticpolicy/evals-recording/v0",
   "policy": { ... },
   "datasets": [ { "path": "tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.smoke.jsonl", "sha256": "<64 hex digits>" } ],
-  "providers": [ { "name": "jev", "model": "typesafe/jev-1.13-20260917" } ],
+  "providers": [ { "name": "local", "model": "von-1.2.0" }, { "name": "jev", "model": "typesafe/jev-1.13-20260917" } ],
   "toolVersion": "0.1.0-alpha.1+<commit>"
 }
 ```
 
 The header is written before the first call, so each provider's `model`, the first one its answers
 reported, is filled in when the run finishes. An interrupted run's header has none; its answers still
-carry it.
+carry it. The `model` is what the server answered, not what was asked for: the Von 1.2.2 server
+behind `local` names its model `von-1.2.0`, whatever the request says.
 
 A row is the dataset row's `id` and every answer it got, keyed by rule id and provider name, as the
 library serializes it. The committed recording's first row, without its request id:
@@ -467,21 +537,29 @@ library serializes it. The committed recording's first row, without its request 
   "id": "smoke-001",
   "attempts": {
     "prompt-injection": {
+      "local": {
+        "protocol": "semanticpolicy/v0",
+        "type": "boolean",
+        "outcome": { "status": "success" },
+        "value": true,
+        "evidence": [ { "kind": "score", "values": { "true": 0.9268, "false": 0.07320000000000004 }, "scale": "systemone" } ],
+        "provider": { "id": "local", "model": "von-1.2.0", "latencyMs": 423.2716, "usage": { "input_tokens": 64, "output_tokens": 1 } }
+      },
       "jev": {
         "protocol": "semanticpolicy/v0",
         "type": "boolean",
         "outcome": { "status": "success" },
         "value": true,
         "evidence": [ { "kind": "probability", "values": { "true": 0.98 }, "scale": "calibrated" } ],
-        "provider": { "id": "jev", "model": "typesafe/jev-1.13-20260917", "latencyMs": 1002.0442, "usage": { "input_tokens": 393, "output_tokens": 20, "cost": 0.000016506 }, "extra": { "provider": "TypeSafe" } }
+        "provider": { "id": "jev", "model": "typesafe/jev-1.13-20260917", "latencyMs": 561.7671, "usage": { "input_tokens": 393, "output_tokens": 20, "cost": 0.000016506 }, "extra": { "provider": "TypeSafe" } }
       }
     }
   }
 }
 ```
 
-The library completes one-sided probability evidence like this one, but score evidence for a Boolean
-rule must carry both `true` and `false`, or the answer reads as malformed.
+The library completes one-sided probability evidence like `jev`'s, but score evidence for a Boolean
+rule must carry both `true` and `false`, as `local`'s does, or the answer reads as malformed.
 
 **A recording carries no input, no label and no raw provider output**, so it can sit in a repository
 next to its dataset without copying the dataset's content.
@@ -512,13 +590,13 @@ From `report` on the committed recording's test rows, shortened:
   "format": "semanticpolicy/evals-result/v0",
   "verb": "report",
   "toolVersion": "0.1.0-alpha.1+<commit>",
-  "generatedAt": "2026-09-23T17:30:57.5140543+00:00",
+  "generatedAt": "2026-09-25T12:23:14.0460115+00:00",
   "policyId": "prompt-injection-smoke",
   "mode": "shadow",
   "ruleId": "prompt-injection",
   "decisionType": "boolean",
   "rows": { "datasetRows": 100, "recordedRows": 100, "afterFilter": 40, "filters": [ "metadata.split=test" ], "splitSource": "metadata", "tuneRows": 0, "testRows": 40 },
-  "report": { "outcomes": { ... }, "verdicts": { ... }, "rungs": [ ... ], "discrimination": [ ... ], "calibration": { ... }, "providers": [ ... ], "notes": [ ... ], "sweptProvider": "jev" },
+  "report": { "outcomes": { ... }, "verdicts": { ... }, "rungs": [ ... ], "discrimination": [ ... ], "calibration": { ... }, "providers": [ ... ], "notes": [ ... ], "sweptProvider": "local" },
   "recordingPath": "tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.recording.jsonl"
 }
 ```
@@ -544,7 +622,8 @@ public benchmark or holds a real name, address, key, email address or URL.
   second, and every number in them is set by hand, for illustration.
 - **`datasets/smoke/`**: `prompt-injection.smoke.jsonl`, a hundred rows for a Boolean
   prompt-injection rule, beside `prompt-injection.policy.json` and
-  `prompt-injection.recording.jsonl`, one `run` of that policy over the set through Jev. A test
+  `prompt-injection.recording.jsonl`, one `run` of that policy over the set through both bindings,
+  `local` on a Von 1.2.2 server and `jev`. A test
   replays the recording, so a change to the dataset or to the rule that stops it fitting fails the
   tests; the fix is a new run, never an edit to the recording. **Smoke, not a benchmark:** it checks
   that the tool, a provider and a policy fit together, not how a rule does on real traffic. 46 rows
@@ -559,9 +638,10 @@ public benchmark or holds a real name, address, key, email address or URL.
   team and 8 are labelled `ambiguous` because they fit two; 48 are tune and 32 test rows. Each row's
   `metadata` has `source`, `set`, `split` and `pattern`: `keyword` rows use the words of a team's
   description, `paraphrase` rows describe the same kind of request without them, and `two-teams`
-  marks the ambiguous ones. The policy binds `local` first and `jev` second, and its `local` gate is
-  a placeholder. **Not recorded yet:** until a recording is committed beside it, `report`, `sweep`
-  and `compare` have nothing to read for this set, and `run` is the only command that uses it.
+  marks the ambiguous ones. The policy binds `local` first and `jev` second. Beside it,
+  `support-router.recording.jsonl` is one `run` of the policy over the set through both bindings,
+  replayed by a test like the smoke recording. `local`'s gate is what `sweep` chose on it (see
+  [`sweep`](#sweep)), and `jev`'s is set by hand; both are illustrations.
 
 ## Not in this release
 

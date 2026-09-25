@@ -67,7 +67,7 @@ public sealed class ExampleDatasetsTests
 
         loaded.Selected.Should().OnlyContain(row =>
             row.Metadata.ContainsKey("set") && row.Metadata["set"].GetString() == "smoke, not a benchmark");
-        loaded.Policy.Bindings.Select(binding => binding.ProviderId).Should().Equal("jev");
+        loaded.Policy.Bindings.Select(binding => binding.ProviderId).Should().Equal("local", "jev");
     }
 
     // A structural guard: the router set is meant to be recorded like the smoke set, and a label naming no team,
@@ -107,20 +107,44 @@ public sealed class ExampleDatasetsTests
     [Fact]
     public async Task Committed_Smoke_Recording_Replays_Against_The_Committed_Dataset_And_Policy()
     {
+        IReadOnlyList<DatasetRow> rows = await ReplayCommittedRecordingAsync("prompt-injection", "prompt-injection");
+
+        rows.Should().HaveCount(100);
+    }
+
+    // The same guard for the router set, whose recording the README's compare section quotes.
+    [Fact]
+    public async Task Committed_Router_Recording_Replays_Against_The_Committed_Dataset_And_Policy()
+    {
+        IReadOnlyList<DatasetRow> rows = await ReplayCommittedRecordingAsync("support-router", "route");
+
+        rows.Should().HaveCount(80);
+    }
+
+    // Replays with report, which calls no provider, so it passes with no key and no server. Every row must have a
+    // non-failed answer from both bindings: a row the local server or Jev failed on would quietly leave that
+    // provider's side of the README's comparison short.
+    private static async Task<IReadOnlyList<DatasetRow>> ReplayCommittedRecordingAsync(string set, string ruleId)
+    {
         string smoke = Path.Combine(RepositoryRoot(), "tools", "SemanticPolicy.Evals", "datasets", "smoke");
-        string dataset = Path.Combine(smoke, "prompt-injection.smoke.jsonl");
-        string recording = Path.Combine(smoke, "prompt-injection.recording.jsonl");
+        string dataset = Path.Combine(smoke, $"{set}.smoke.jsonl");
+        string recording = Path.Combine(smoke, $"{set}.recording.jsonl");
 
         CliRun report = await CliFixture.InvokeAsync(
-            ["report", "--policy", Path.Combine(smoke, "prompt-injection.policy.json"), "--dataset", dataset, "--recording", recording]);
+            ["report", "--policy", Path.Combine(smoke, $"{set}.policy.json"), "--dataset", dataset, "--recording", recording]);
 
         report.ExitCode.Should().Be(ExitCodes.Success, report.Error);
         IReadOnlyList<DatasetRow> rows = DatasetReader.Read(dataset).Rows;
         IReadOnlyList<RecordedRow> recorded = RecordingReader.Read(recording).Rows;
-        rows.Should().HaveCount(100);
         recorded.Select(row => row.Id).Should().Equal(rows.Select(row => row.Id));
-        recorded.Select(row => row.Attempts.GetValueOrDefault("prompt-injection")?.GetValueOrDefault("jev")?.Outcome.Status)
-            .Should().NotContainNulls().And.NotContain(OutcomeStatus.Failure);
+        foreach (string provider in new[] { "local", "jev" })
+        {
+            recorded.Select(row => row.Attempts.GetValueOrDefault(ruleId)?.GetValueOrDefault(provider)?.Outcome.Status)
+                .Should().NotContainNulls("every row needs an answer from {0}", provider)
+                .And.NotContain(OutcomeStatus.Failure, "no row may have failed on {0}", provider);
+        }
+
+        return rows;
     }
 
     // A structural guard: a real address, key or endpoint committed in a dataset is a content-policy breach with

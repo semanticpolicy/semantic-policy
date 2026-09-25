@@ -18,7 +18,7 @@
     {
       "providerId": "local",
       "operatingPoints": [
-        { "ruleId": "route", "thresholds": [], "gate": { "kind": "score", "below": 0.1 } }
+        { "ruleId": "route", "thresholds": [], "gate": { "kind": "score", "below": 0.4079 } }
       ]
     },
     {
