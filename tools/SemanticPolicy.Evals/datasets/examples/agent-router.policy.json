@@ -15,6 +15,12 @@
   ],
   "bindings": [
     {
+      "providerId": "local",
+      "operatingPoints": [
+        { "ruleId": "route", "thresholds": [], "gate": { "kind": "score", "below": 0.05 } }
+      ]
+    },
+    {
       "providerId": "jev",
       "operatingPoints": [
         { "ruleId": "route", "thresholds": [], "gate": { "kind": "probability", "below": 0.1 } }
