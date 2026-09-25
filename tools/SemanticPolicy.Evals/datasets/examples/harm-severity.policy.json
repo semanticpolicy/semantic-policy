@@ -15,6 +15,12 @@
   ],
   "bindings": [
     {
+      "providerId": "local",
+      "operatingPoints": [
+        { "ruleId": "harm-severity", "thresholds": [], "gate": { "kind": "score", "below": 0.05 } }
+      ]
+    },
+    {
       "providerId": "jev",
       "operatingPoints": [
         { "ruleId": "harm-severity", "thresholds": [], "gate": { "kind": "probability", "below": 0.1 } }

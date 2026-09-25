@@ -19,6 +19,7 @@ public sealed partial class RunVerbTests
 {
     private const string _marker = "INPUT-MARKER-5b2e";
     private const string _openRouterKey = "OPENROUTER_API_KEY";
+    private const string _localUrl = "SEMANTICPOLICY_EVALS_LOCAL_URL";
 
     [Fact]
     public async Task Run_Fails_Before_Any_Call_When_A_Binding_Names_An_Unregistered_Provider_Listing_The_Names()
@@ -26,12 +27,14 @@ public sealed partial class RunVerbTests
         using Fixture fixture = Fixture.Create(Guard());
         ScriptedProvider scripted = Answering();
 
-        (int partly, _, string partlyError) =
-            await InvokeAsync(fixture.RunArgs(), builder => builder.AddProvider(scripted, "local"));
+        // A registration that cannot be built is still a registered name.
+        (int partly, _, string partlyError) = await InvokeAsync(
+            fixture.RunArgs(),
+            builder => builder.AddProvider(scripted, "local").AddProvider("broken", _ => throw Unbuildable()));
         (int none, _, string noneError) = await InvokeAsync(fixture.RunArgs(), providers: null);
 
         partly.Should().Be(ExitCodes.UsageOrData);
-        partlyError.Should().Contain("'jev'").And.Contain("registered providers: local");
+        partlyError.Should().Contain("'jev'").And.Contain("registered providers: broken, local");
         none.Should().Be(ExitCodes.UsageOrData);
         noneError.Should().Contain("registered providers: none");
         scripted.Calls.Should().Be(0);
@@ -41,27 +44,105 @@ public sealed partial class RunVerbTests
     [Fact]
     public async Task Run_Without_The_OpenRouter_Key_Stops_Before_Any_Call_Naming_The_Variable()
     {
-        // The tool's own registration, so the key really is looked for. The variable is process-wide: this
-        // collection runs alone, and no other test reads or sets it. One row, so a registration that reached the
-        // endpoint anyway would cost one call.
-        using Fixture fixture = Fixture.Create(
-            Samples.Guard(FailureBehavior.Fallback(Verdict.Escalate), ["jev"], [Samples.Flagged()]),
-            rows: 1);
-        string? key = Environment.GetEnvironmentVariable(_openRouterKey);
-        Environment.SetEnvironmentVariable(_openRouterKey, null);
-        try
-        {
-            (int exit, string output, string error) = await InvokeAsync(fixture.RunArgs(), Cli.Providers.Register);
+        // The tool's own registrations, so the key really is looked for, and local's address is the default one
+        // whatever this machine sets. One row, so a registration that reached the endpoint anyway would cost one
+        // call.
+        using Fixture fixture = Fixture.Create(Bound("jev"), rows: 1);
+        using Variable key = Variable.Set(_openRouterKey, null);
+        using Variable url = Variable.Set(_localUrl, null);
 
-            exit.Should().Be(ExitCodes.UsageOrData);
-            error.TrimEnd().Should().Be("provider 'jev': the environment variable OPENROUTER_API_KEY is not set.");
-            output.Should().BeEmpty();
-            File.Exists(fixture.RecordingPath).Should().BeFalse();
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable(_openRouterKey, key);
-        }
+        (int exit, string output, string error) = await InvokeAsync(fixture.RunArgs(), Cli.Providers.Register);
+
+        exit.Should().Be(ExitCodes.UsageOrData);
+        error.TrimEnd().Should().Be("provider 'jev': the environment variable OPENROUTER_API_KEY is not set.");
+        output.Should().BeEmpty();
+        File.Exists(fixture.RecordingPath).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Run_Of_A_Policy_That_Does_Not_Bind_Jev_Needs_No_OpenRouter_Key()
+    {
+        // The tool's own registrations beside a scripted one the policy binds alone: neither jev's key nor
+        // local's server is looked for, because neither is bound.
+        using Fixture fixture = Fixture.Create(Bound("scripted"));
+        using Variable key = Variable.Set(_openRouterKey, null);
+        using Variable url = Variable.Set(_localUrl, null);
+        ScriptedProvider scripted = Answering();
+
+        (int exit, _, string error) = await InvokeAsync(
+            fixture.RunArgs(),
+            builder =>
+            {
+                Cli.Providers.Register(builder);
+                builder.AddProvider(scripted, "scripted");
+            });
+
+        exit.Should().Be(ExitCodes.Success, error);
+        scripted.Calls.Should().Be(6);
+    }
+
+    [Fact]
+    public async Task Run_Of_A_Policy_That_Does_Not_Bind_A_Broken_Registration_Succeeds()
+    {
+        using Fixture fixture = Fixture.Create(Bound("local"));
+        ScriptedProvider local = Answering();
+
+        (int exit, _, string error) = await InvokeAsync(
+            fixture.RunArgs(),
+            builder => builder.AddProvider(local, "local").AddProvider("broken", _ => throw Unbuildable()));
+
+        exit.Should().Be(ExitCodes.Success, error);
+        local.Calls.Should().Be(6);
+    }
+
+    [Fact]
+    public async Task Run_Of_A_Policy_That_Binds_A_Broken_Registration_Fails_With_Its_Message()
+    {
+        using Fixture fixture = Fixture.Create(Bound("local", "broken"));
+        ScriptedProvider local = Answering();
+
+        (int exit, string output, string error) = await InvokeAsync(
+            fixture.RunArgs(),
+            builder => builder.AddProvider(local, "local").AddProvider("broken", _ => throw Unbuildable()));
+
+        exit.Should().Be(ExitCodes.UsageOrData);
+        error.TrimEnd().Should().Be(Unbuildable().Message);
+        output.Should().BeEmpty();
+        local.Calls.Should().Be(0);
+        File.Exists(fixture.RecordingPath).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Run_Still_Rejects_A_Name_Registered_Twice_When_The_Policy_Does_Not_Bind_It()
+    {
+        using Fixture fixture = Fixture.Create(Bound("local"));
+        ScriptedProvider scripted = Answering();
+
+        (int exit, _, string error) = await InvokeAsync(
+            fixture.RunArgs(),
+            builder => builder.AddProvider(scripted, "local").AddProvider(scripted, "twice").AddProvider(scripted, "twice"));
+
+        exit.Should().Be(ExitCodes.UsageOrData);
+        error.TrimEnd().Should().Be("Provider 'twice' is registered twice; each name must be registered once.");
+        scripted.Calls.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("not a url")]
+    [InlineData("ftp://127.0.0.1")]
+    [InlineData("http://von.internal:8000")]
+    public async Task Run_Rejects_A_Local_Url_That_Is_Not_A_Loopback_Or_Https_Address(string value)
+    {
+        // Stopped at registration, whatever the policy binds, so the address is never called.
+        using Fixture fixture = Fixture.Create(Bound("local"), rows: 1);
+        using Variable url = Variable.Set(_localUrl, value);
+
+        (int exit, string output, string error) = await InvokeAsync(fixture.RunArgs(), Cli.Providers.Register);
+
+        exit.Should().Be(ExitCodes.UsageOrData);
+        error.TrimEnd().Split('\n').Should().ContainSingle().Which.Should().Contain(_localUrl);
+        output.Should().BeEmpty();
+        File.Exists(fixture.RecordingPath).Should().BeFalse();
     }
 
     [Fact]
@@ -201,8 +282,15 @@ public sealed partial class RunVerbTests
     private static Policy Guard(TimeSpan? budget = null) =>
         Samples.Guard(FailureBehavior.Fallback(Verdict.Escalate), ["local", "jev"], [Samples.Flagged()], budget: budget);
 
+    private static Policy Bound(params string[] providers) =>
+        Samples.Guard(FailureBehavior.Fallback(Verdict.Escalate), providers, [Samples.Flagged()]);
+
     private static ScriptedProvider Answering() =>
         new ScriptedProvider().Returns(request => Samples.BooleanAnswer(PTrue(request)));
+
+    // What an adapter throws when its configuration is incomplete, such as a key missing from the environment.
+    private static PolicyConfigurationException Unbuildable() =>
+        new("provider 'broken': the environment variable BROKEN_KEY is not set.", policyId: null, providerId: "broken");
 
     private static double PTrue(DecisionRequest request) =>
         double.Parse(Probability().Match(ScriptedProvider.TextOf(request)).Groups["p"].Value, CultureInfo.InvariantCulture);
@@ -229,6 +317,29 @@ public sealed partial class RunVerbTests
             new InvocationConfiguration { Output = output, Error = error, EnableDefaultExceptionHandler = false },
             TestContext.Current.CancellationToken);
         return (exit, output.ToString(), error.ToString());
+    }
+
+    // An environment variable set for one test and put back afterwards. Variables are process-wide: this
+    // collection runs alone, and no other test reads or sets the ones used here.
+    private sealed class Variable : IDisposable
+    {
+        private readonly string _name;
+        private readonly string? _previous;
+
+        private Variable(string name)
+        {
+            _name = name;
+            _previous = Environment.GetEnvironmentVariable(name);
+        }
+
+        public static Variable Set(string name, string? value)
+        {
+            Variable variable = new(name);
+            Environment.SetEnvironmentVariable(name, value);
+            return variable;
+        }
+
+        public void Dispose() => Environment.SetEnvironmentVariable(_name, _previous);
     }
 
     private sealed class Fixture : IDisposable

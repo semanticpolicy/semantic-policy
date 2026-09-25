@@ -46,16 +46,23 @@ A recording holds row ids and answers, never an input or a label. The tool depen
 
 ## The provider
 
-The tool registers one provider, under the name `jev`: TypeSafe's Jev model, reached through
-OpenRouter. A binding's `providerId` refers to that name, and the policies under `datasets/` bind it
-alone.
+The tool registers two providers, and a binding's `providerId` refers to one of them by name.
+`run` builds only the providers its policy binds, so a policy that leaves `jev` out needs no key and
+one that leaves `local` out needs no server.
 
-- **`run` needs `OPENROUTER_API_KEY`** in the environment. Without it, `run` stops before its first
-  call with exit code 1 and a message naming the variable.
-- **`run` sends every dataset input it evaluates to Jev through OpenRouter, a third party.** Run it
-  only on data you may send there. Each row costs one call per rule and binding, billed to the key's
-  account.
-- `report`, `sweep` and `compare` read a recording and call nothing, so they need no key.
+- **`local`** is a Von server at the address in `SEMANTICPOLICY_EVALS_LOCAL_URL`, or at
+  `http://127.0.0.1:8000` when the variable is unset. `run` sends content to that address and
+  nowhere else, and needs no key. The address must be `https`, or plain `http` to a loopback host;
+  any other value stops `run` with exit code 1 and a message naming the variable. Its answers carry
+  `score` evidence, not `probability`, so a `local` binding's thresholds and gate read `score`.
+- **`jev`** is TypeSafe's Jev model, reached through OpenRouter.
+  - **`run` needs `OPENROUTER_API_KEY`** in the environment for a policy that binds it. Without it,
+    `run` stops before its first call with exit code 1 and a message naming the variable.
+  - **`run` sends every dataset input it evaluates to Jev through OpenRouter, a third party.** Run it
+    only on data you may send there. Each row costs one call per rule and binding, billed to the
+    key's account.
+- `report`, `sweep` and `compare` read a recording and call nothing, so they need no key and no
+  server.
 
 ## Quick start
 
@@ -258,9 +265,9 @@ same report as [`report`](#report).
 | `--timeout <seconds>` | How long one call may take before it is recorded as a `timeout`; 30 by default. |
 
 Providers are registered in code, as in an application, and a binding's `providerId` is a
-registration name. The tool registers `jev` (see [The provider](#the-provider)). A policy that binds
-a name the tool does not register stops `run` before the first call with exit code 1, and the
-message lists the names that are registered.
+registration name. The tool registers `local` and `jev` (see [The provider](#the-provider)). A
+policy that binds a name the tool does not register stops `run` before the first call with exit
+code 1, and the message lists the names that are registered.
 
 ### `report`
 
@@ -340,8 +347,8 @@ under the same goals and prints one table on the test rows. `--recording` and `-
 
 If any binding cannot meet its goals, `compare` still prints everything and exits with code 2.
 
-The tool registers one provider, so for now `compare` measures a single binding. Step 3 of the quick
-start, shortened:
+The smoke policy has one binding, so for now its `compare` measures a single binding. Step 3 of the
+quick start, shortened:
 
 ```text
 compare of rule 'prompt-injection', policy 'prompt-injection-smoke': binding 'jev', alone
@@ -533,7 +540,8 @@ public benchmark or holds a real name, address, key, email address or URL.
 
 - **`datasets/examples/`**: ten rows per rule type, each beside its policy: `prompt-injection`
   (Boolean), `agent-router` (Choice, with two-part inputs) and `harm-severity` (Score). They show the
-  format and are far too small to measure anything.
+  format and are far too small to measure anything. Each policy binds `local` first and `jev`
+  second, and every number in them is set by hand, for illustration.
 - **`datasets/smoke/`**: `prompt-injection.smoke.jsonl`, a hundred rows for a Boolean
   prompt-injection rule, beside `prompt-injection.policy.json` and
   `prompt-injection.recording.jsonl`, one `run` of that policy over the set through Jev. A test
@@ -545,6 +553,15 @@ public benchmark or holds a real name, address, key, email address or URL.
   data exfiltration, next to harmless requests that only look like them. Each row's `metadata` has
   `source`, `set`, `split`, `difficulty` and `pattern`, so a slice is one filter away:
   `--where metadata.pattern=benign-look-alike`.
+- **The router set in `datasets/smoke/`**: `support-router.smoke.jsonl`, eighty plain support
+  requests beside `support-router.policy.json`, a Choice rule with the question and the four teams of
+  the `examples/AgentRouter` program: `billing`, `technical`, `account` and `sales`. 18 rows go to each
+  team and 8 are labelled `ambiguous` because they fit two; 48 are tune and 32 test rows. Each row's
+  `metadata` has `source`, `set`, `split` and `pattern`: `keyword` rows use the words of a team's
+  description, `paraphrase` rows describe the same kind of request without them, and `two-teams`
+  marks the ambiguous ones. The policy binds `local` first and `jev` second, and its `local` gate is
+  a placeholder. **Not recorded yet:** until a recording is committed beside it, `report`, `sweep`
+  and `compare` have nothing to read for this set, and `run` is the only command that uses it.
 
 ## Not in this release
 

@@ -69,8 +69,7 @@ internal static class RunCommand
         }
 
         LoadedInputs inputs = Inputs.Load(selection);
-        IReadOnlyDictionary<string, IDecisionProvider> providers = Providers.Resolve(configureProviders);
-        RequireRegistered(inputs.Policy, providers);
+        IReadOnlyDictionary<string, IDecisionProvider> providers = Providers.Resolve(configureProviders, inputs.Policy);
         if (inputs.Policy.Budget is not null)
         {
             io.Error.WriteLine("policy budget ignored: run is eager");
@@ -130,19 +129,6 @@ internal static class RunCommand
                 }),
             ],
         };
-
-    private static void RequireRegistered(Policy policy, IReadOnlyDictionary<string, IDecisionProvider> providers)
-    {
-        ProviderBinding? missing = policy.Bindings.FirstOrDefault(binding => !providers.ContainsKey(binding.ProviderId));
-        if (missing is null)
-        {
-            return;
-        }
-
-        string registered = providers.Count == 0 ? "none" : string.Join(", ", providers.Keys.Order(StringComparer.Ordinal));
-        throw new EvalsException(
-            $"Policy '{policy.Id}' binds provider '{missing.ProviderId}', which is not registered; registered providers: {registered}.");
-    }
 
     // Two files are the tune half and the test half, in that order; one file carries its split per row, if at all.
     private static RecordedDataset[] RecordedDatasets(IReadOnlyList<Dataset> datasets) =>
