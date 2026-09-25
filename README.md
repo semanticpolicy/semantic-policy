@@ -58,8 +58,8 @@ probability, or a score on the provider's own scale. A binding's thresholds and 
   without touching the rule, or bind several in order and move on to the next when the *margin*, the
   gap between a provider's two likeliest answers, is too thin to call.
 - **Testable.** The evaluation CLI measures a rule on labelled examples like any classifier:
-  precision, recall, a threshold sweep and a comparison between providers. It registers one
-  provider, Jev, so for now a comparison measures a single binding.
+  precision, recall, a threshold sweep and a comparison between providers. It registers two
+  providers, Jev and a local Von server, so a comparison can set them side by side.
 - **Shippable gradually.** Shadow mode records what a policy *would* have decided while the runtime
   behaves as before, so thresholds are checked against production traffic before anything is
   enforced.

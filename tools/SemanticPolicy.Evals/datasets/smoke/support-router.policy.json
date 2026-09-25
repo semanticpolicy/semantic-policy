@@ -1,0 +1,32 @@
+{
+  "id": "support-router-smoke",
+  "mode": "enforce",
+  "rules": [
+    {
+      "id": "route",
+      "question": "Which team should handle this support request?",
+      "options": [
+        { "key": "billing", "description": "Invoices, charges, refunds, payment methods and tax.", "verdict": "allow" },
+        { "key": "technical", "description": "Builds, errors, integrations and anything that doesn't work as it should.", "verdict": "allow" },
+        { "key": "account", "description": "Signing in, passwords, two-factor authentication, members and permissions.", "verdict": "allow" },
+        { "key": "sales", "description": "Plans, prices, discounts and trials for teams choosing or changing a plan.", "verdict": "allow" }
+      ],
+      "type": "choice"
+    }
+  ],
+  "bindings": [
+    {
+      "providerId": "local",
+      "operatingPoints": [
+        { "ruleId": "route", "thresholds": [], "gate": { "kind": "score", "below": 0.1 } }
+      ]
+    },
+    {
+      "providerId": "jev",
+      "operatingPoints": [
+        { "ruleId": "route", "thresholds": [], "gate": { "kind": "probability", "below": 0.2 } }
+      ]
+    }
+  ],
+  "onFailure": { "action": "allow" }
+}

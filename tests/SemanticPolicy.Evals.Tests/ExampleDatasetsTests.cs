@@ -37,7 +37,7 @@ public sealed class ExampleDatasetsTests
         loaded.Splits.Tune.Should().HaveCount(tuneRows);
         loaded.Splits.Test.Should().HaveCount(testRows);
         loaded.Selected.Count(row => row.Label.Kind == RowLabelKind.Ambiguous).Should().Be(ambiguousRows);
-        loaded.Policy.Bindings.Select(binding => binding.ProviderId).Should().Equal("jev");
+        loaded.Policy.Bindings.Select(binding => binding.ProviderId).Should().Equal("local", "jev");
     }
 
     // A structural guard: the README's examples run on this file, and a set that stopped parsing, or lost its
@@ -68,6 +68,37 @@ public sealed class ExampleDatasetsTests
         loaded.Selected.Should().OnlyContain(row =>
             row.Metadata.ContainsKey("set") && row.Metadata["set"].GetString() == "smoke, not a benchmark");
         loaded.Policy.Bindings.Select(binding => binding.ProviderId).Should().Equal("jev");
+    }
+
+    // A structural guard: the router set is meant to be recorded like the smoke set, and a label naming no team,
+    // a split left empty or a binding dropped would show up only when a run cannot be made or sweeps over nothing.
+    [Fact]
+    public void Shipped_Router_Set_Parses_With_Four_Teams_Both_Splits_And_Ambiguous_Rows()
+    {
+        string smoke = Path.Combine(RepositoryRoot(), "tools", "SemanticPolicy.Evals", "datasets", "smoke");
+        InputSelection selection = new(
+            Path.Combine(smoke, "support-router.policy.json"),
+            RuleId: null,
+            Path.Combine(smoke, "support-router.smoke.jsonl"),
+            TunePath: null,
+            TestPath: null,
+            new SplitNames(),
+            []);
+
+        LoadedInputs loaded = Inputs.Load(selection);
+
+        string[] teams = ["billing", "technical", "account", "sales"];
+        loaded.Policy.Rules.Should().ContainSingle().Which.Should().BeOfType<ChoiceRule>()
+            .Which.Options.Select(option => option.Key).Should().Equal(teams);
+        loaded.Selected.Count.Should().BeInRange(70, 90);
+        loaded.Selected.Select(row => row.Id).Should().OnlyHaveUniqueItems();
+        loaded.Splits.Source.Should().Be(SplitSource.Metadata);
+        loaded.Splits.Tune.Should().NotBeEmpty();
+        loaded.Splits.Test.Should().NotBeEmpty();
+        loaded.Selected.Where(row => row.Label.Kind != RowLabelKind.Ambiguous).Select(row => row.Label.Answer)
+            .Distinct().Should().BeEquivalentTo(teams);
+        loaded.Selected.Should().Contain(row => row.Label.Kind == RowLabelKind.Ambiguous);
+        loaded.Policy.Bindings.Select(binding => binding.ProviderId).Should().Equal("local", "jev");
     }
 
     // A structural guard: the README quotes this recording, and a reader replays it without a key. A dataset whose
