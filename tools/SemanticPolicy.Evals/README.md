@@ -85,8 +85,9 @@ dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy $P --dataset $
 dotnet run --project tools/SemanticPolicy.Evals -- compare --policy $P --dataset $D --recording $R --deny min-precision=0.95
 
 # 4. Record a run of your own. The only step that calls a provider: it needs a Von server on
-#    127.0.0.1:8000 and OPENROUTER_API_KEY, and sends every input to both. It writes a new file, so
-#    the committed recording stays as it is.
+#    127.0.0.1:8000 and OPENROUTER_API_KEY, and sends every input to both. Call the server once
+#    before: its first answer can take longer than the 30-second --timeout, which records a timeout.
+#    It writes a new file, so the committed recording stays as it is.
 dotnet run --project tools/SemanticPolicy.Evals -- run --policy $P --dataset $D --record smoke.recording.jsonl
 ```
 
@@ -354,8 +355,8 @@ A goal (`<constraint>` in `--help`) is one of these, with `v` from 0 to 1:
   [Pitfalls](#pitfalls).
 - A Choice or Score binding's gate can be swept only if the policy file gives it one.
 
-Warn catches at least 90% of attacks, deny is right at least 95% of the time, and the rows that pass
-`local`'s gate are decided right at least 90% of the time:
+Warn catches at least 90% of attacks, deny is right at least 95% of the time, and the rows the
+policy decides are decided right at least 90% of the time:
 
 ```bash
 dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy $P --dataset $D --recording $R \
@@ -363,12 +364,23 @@ dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy $P --dataset $
 ```
 
 On the committed recording it recommends warn 0.194, deny 0.843 and gate 0.5418, the smoke policy's
-`local` numbers. Each curve is replayed at the policy file's other numbers, so a recommended gate
-changes which rows the thresholds are measured on, and the other way round. After copying the
-numbers in, sweep again until it recommends what the file holds: here the first sweep, over
-placeholder numbers, gave deny 0.9349 and gate 0.5618, the second moved them to 0.843 and 0.5418,
-and the third recommended the same again. The router policy's `local` gate, 0.4079, came from
-`--provider local --gate min-accuracy=0.9` on its own recording, and `jev`'s 0.2 is set by hand.
+`local` numbers. A sweep replays the whole policy, so these rates are the chain's: a row under
+`local`'s gate is decided by `jev`, and only a row both leave undecided abstains. On its own `local`
+needs gate 0.6704 to be right 90% of the time, and leaves 60% of the tune rows undecided there; that
+is what [`compare`](#compare) measures.
+
+Warn 0.194 is below 0.5, so `local` warns on some rows it answered `false`. At gate 0.5418 it decides
+only rows it scored up to 0.2291 or from 0.7709 up, and a warn threshold in that gap catches 85% of
+the tune attacks, short of the goal; 90% takes one among the confident `false` answers. On the test
+rows that is two false warns. The goal asks for it: `--warn min-recall=0.85` gives warn 0.7809,
+among the `true` answers.
+
+Each curve is replayed at the policy file's other numbers, so a recommended gate changes which rows
+the thresholds are measured on, and the other way round. After copying the numbers in, sweep again
+until it recommends what the file holds: here the first sweep, over placeholder numbers, gave deny
+0.9349 and gate 0.5618, the second moved them to 0.843 and 0.5418, and the third recommended the same
+again. The router policy's `local` gate, 0.4079, came from `--provider local --gate min-accuracy=0.9`
+on its own recording, and `jev`'s 0.2 is set by hand.
 
 ### `compare`
 
@@ -406,8 +418,8 @@ jev            0.000    0.000   276.5   350.7         15858            800  0.00
 
 Alone, `local` leaves 25 of the 40 test rows undecided: its gate of 0.5418 hands them to `jev` in
 the policy, and with no binding after it they abstain. Its rates cover only the rows it decides.
-`jev`'s deny threshold comes out below the policy's warn of 0.6, so the output ends with a conflict
-line; [Pitfalls](#pitfalls) says why and what to do.
+`jev`'s deny threshold comes out below the policy's warn of 0.6, so the output has a conflict line;
+[Pitfalls](#pitfalls) says why and what to do.
 
 The router set's Choice rule has no rungs, so only the gate is compared. Here each binding gets the
 lowest gate at which the rows it decides on its own are right at least 90% of the time:

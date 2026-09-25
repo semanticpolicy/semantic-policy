@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using SemanticPolicy.Evals.Cli;
 using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Evals.Recordings;
+using SemanticPolicy.Evals.Replay;
 using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy.Evals.Tests;
@@ -107,44 +108,49 @@ public sealed class ExampleDatasetsTests
     [Fact]
     public async Task Committed_Smoke_Recording_Replays_Against_The_Committed_Dataset_And_Policy()
     {
-        IReadOnlyList<DatasetRow> rows = await ReplayCommittedRecordingAsync("prompt-injection", "prompt-injection");
-
-        rows.Should().HaveCount(100);
+        await ReplayCommittedRecordingAsync("prompt-injection", 100);
     }
 
     // The same guard for the router set, whose recording the README's compare section quotes.
     [Fact]
     public async Task Committed_Router_Recording_Replays_Against_The_Committed_Dataset_And_Policy()
     {
-        IReadOnlyList<DatasetRow> rows = await ReplayCommittedRecordingAsync("support-router", "route");
-
-        rows.Should().HaveCount(80);
+        await ReplayCommittedRecordingAsync("support-router", 80);
     }
 
-    // Replays with report, which calls no provider, so it passes with no key and no server. Every row must have a
-    // non-failed answer from both bindings: a row the local server or Jev failed on would quietly leave that
-    // provider's side of the README's comparison short.
-    private static async Task<IReadOnlyList<DatasetRow>> ReplayCommittedRecordingAsync(string set, string ruleId)
+    // Replays with report, which calls no provider, so it passes with no key and no server. The header must name
+    // every bound provider with the model the README quotes, and every row must have an answer from each binding
+    // that the library still accepts on replay: a row the local server or Jev failed on, or a success read as
+    // malformed, would quietly leave that provider's side of the README's comparison short. Each binding is
+    // replayed alone, because under the whole chain a malformed answer moves on to the next binding and no count
+    // shows it.
+    private static async Task ReplayCommittedRecordingAsync(string set, int rowCount)
     {
         string smoke = Path.Combine(RepositoryRoot(), "tools", "SemanticPolicy.Evals", "datasets", "smoke");
+        string policy = Path.Combine(smoke, $"{set}.policy.json");
         string dataset = Path.Combine(smoke, $"{set}.smoke.jsonl");
-        string recording = Path.Combine(smoke, $"{set}.recording.jsonl");
+        string recordingPath = Path.Combine(smoke, $"{set}.recording.jsonl");
 
         CliRun report = await CliFixture.InvokeAsync(
-            ["report", "--policy", Path.Combine(smoke, $"{set}.policy.json"), "--dataset", dataset, "--recording", recording]);
+            ["report", "--policy", policy, "--dataset", dataset, "--recording", recordingPath]);
 
         report.ExitCode.Should().Be(ExitCodes.Success, report.Error);
-        IReadOnlyList<DatasetRow> rows = DatasetReader.Read(dataset).Rows;
-        IReadOnlyList<RecordedRow> recorded = RecordingReader.Read(recording).Rows;
-        recorded.Select(row => row.Id).Should().Equal(rows.Select(row => row.Id));
-        foreach (string provider in new[] { "local", "jev" })
-        {
-            recorded.Select(row => row.Attempts.GetValueOrDefault(ruleId)?.GetValueOrDefault(provider)?.Outcome.Status)
-                .Should().NotContainNulls("every row needs an answer from {0}", provider)
-                .And.NotContain(OutcomeStatus.Failure, "no row may have failed on {0}", provider);
-        }
+        LoadedInputs loaded = Inputs.Load(
+            new InputSelection(policy, RuleId: null, dataset, TunePath: null, TestPath: null, new SplitNames(), []));
+        Recording recording = RecordingReader.Read(recordingPath);
+        recording.Rows.Select(row => row.Id).Should().HaveCount(rowCount)
+            .And.Equal(loaded.Selected.Select(row => row.Id));
+        recording.Header.Providers.Select(provider => provider.Name)
+            .Should().Equal(loaded.Policy.Bindings.Select(binding => binding.ProviderId));
+        recording.Header.Providers.Should().OnlyContain(provider => !string.IsNullOrEmpty(provider.Model));
 
-        return rows;
+        ReplaySet replay = ReplaySet.Load(recording, loaded, force: false);
+        foreach (ProviderBinding binding in loaded.Policy.Bindings)
+        {
+            replay.Evaluate(loaded.Policy with { Bindings = [binding] })
+                .Select(row => row.Verdict.Attempts.Single().EffectiveOutcome.Status)
+                .Should().NotContain(OutcomeStatus.Failure, "no row may have failed on {0}", binding.ProviderId);
+        }
     }
 
     // A structural guard: a real address, key or endpoint committed in a dataset is a content-policy breach with
