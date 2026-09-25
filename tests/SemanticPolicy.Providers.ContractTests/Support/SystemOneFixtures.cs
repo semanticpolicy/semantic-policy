@@ -4,11 +4,11 @@ using System.Text.Json;
 namespace SemanticPolicy.Providers.ContractTests.Support;
 
 /// <summary>
-/// Synthetic Jev bodies, shaped like the vendor's and invented here: nothing in them was ever sent to
-/// or received from a live endpoint. Probabilities are two-decimal values that sum to one exactly, so
-/// the suite's tolerance is never what makes a fixture pass.
+/// Synthetic System One bodies, shaped like the wire's and invented here: nothing in them was ever
+/// sent to or received from a live endpoint. Probabilities are two-decimal values that sum to one
+/// exactly, so the suite's tolerance is never what makes a fixture pass.
 /// </summary>
-internal static class JevFixtures
+internal static class SystemOneFixtures
 {
     /// <summary>A 200 body answering a Boolean question with the probability of <c>true</c>.</summary>
     public static string BooleanAnswer(double noul, double? confidence = null, Envelope? envelope = null) =>

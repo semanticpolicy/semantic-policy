@@ -3,19 +3,21 @@ using System.Text.Json;
 using SemanticPolicy.Protocol;
 using SemanticPolicy.Providers.ContractTests.Contract;
 using SemanticPolicy.Providers.ContractTests.Support;
-using SemanticPolicy.Providers.TypeSafe;
+using SemanticPolicy.Providers.SystemOne;
 
-namespace SemanticPolicy.Providers.ContractTests.TypeSafe;
+namespace SemanticPolicy.Providers.ContractTests.SystemOne;
 
 /// <summary>
-/// The Jev adapter on a scripted transport. The timeout is short so the suite's own timeout case
-/// returns in well under a second and a 50 ms caller cancellation fires before the adapter's timer;
-/// tests that need another timeout configure their own.
+/// The System One client on a scripted transport, as a user would first register it: <c>Score</c>
+/// evidence, plain <c>http</c> on loopback and no key. The timeout is short so the suite's own timeout
+/// case returns in well under a second and a 50 ms caller cancellation fires before the client's timer.
 /// </summary>
-public sealed class TypeSafeJevHarness : ProviderHarness
+public sealed class SystemOneHarness : ProviderHarness
 {
-    /// <summary>A key that authenticates nowhere: the transport is a double, so it is never sent.</summary>
-    public const string ApiKey = "test-key-not-a-credential";
+    /// <summary>A model name no server answers to: the transport is a double, so it is never sent.</summary>
+    public const string Model = "systemone-test-model";
+
+    public static readonly Uri BaseUrl = new("http://127.0.0.1:8000");
 
     public static readonly IReadOnlyDictionary<string, string> Options = new Dictionary<string, string>(StringComparer.Ordinal)
     {
@@ -26,26 +28,26 @@ public sealed class TypeSafeJevHarness : ProviderHarness
 
     public static readonly IReadOnlyList<string> Levels = ["low", "medium", "high"];
 
-    public TypeSafeJevHarness(Action<TypeSafeJevOptions>? configure = null)
+    public SystemOneHarness(Action<SystemOneOptions>? configure = null)
     {
         Handler = new ScriptedHttpMessageHandler();
         Client = new HttpClient(Handler) { Timeout = Timeout.InfiniteTimeSpan };
-        JevOptions = new TypeSafeJevOptions
+        ProviderOptions = new SystemOneOptions
         {
-            Route = TypeSafeJevRoute.TypeSafe,
-            ApiKey = ApiKey,
+            BaseUrl = BaseUrl,
+            Model = Model,
             Timeout = TimeSpan.FromMilliseconds(250),
         };
-        configure?.Invoke(JevOptions);
-        Provider = new TypeSafeJevProvider(Client, JevOptions);
+        configure?.Invoke(ProviderOptions);
+        Provider = new SystemOneProvider(Client, ProviderOptions);
     }
 
     internal ScriptedHttpMessageHandler Handler { get; }
 
     public HttpClient Client { get; }
 
-    /// <summary>The options the provider was built from; mutate them to prove they were snapshotted.</summary>
-    public TypeSafeJevOptions JevOptions { get; }
+    /// <summary>The options the provider was built from.</summary>
+    public SystemOneOptions ProviderOptions { get; }
 
     public override IDecisionProvider Provider { get; }
 
@@ -57,10 +59,6 @@ public sealed class TypeSafeJevHarness : ProviderHarness
     public JsonElement LastBody =>
         JsonSerializer.Deserialize<JsonElement>(
             LastRequest.Body ?? throw new InvalidOperationException("The last request had no body."));
-
-    /// <summary>A three-option distribution over <see cref="Options"/>.</summary>
-    public static Dictionary<string, double> Distribution(double allow, double review, double block) =>
-        new(StringComparer.Ordinal) { ["allow"] = allow, ["review"] = review, ["block"] = block };
 
     public override DecisionRequest CreateRequest(DecisionType type, string marker)
     {
@@ -86,7 +84,10 @@ public sealed class TypeSafeJevHarness : ProviderHarness
             type switch
             {
                 DecisionType.Boolean => SystemOneFixtures.BooleanAnswer(0.91),
-                DecisionType.Choice => SystemOneFixtures.ChoiceAnswer("review", Distribution(0.15, 0.7, 0.15), confidence: 0.7),
+                DecisionType.Choice => SystemOneFixtures.ChoiceAnswer(
+                    "review",
+                    new Dictionary<string, double>(StringComparer.Ordinal) { ["allow"] = 0.15, ["review"] = 0.7, ["block"] = 0.15 },
+                    confidence: 0.7),
                 DecisionType.Score => SystemOneFixtures.ScoreAnswer(Levels, [0.1, 0.6, 0.3], score: 1.2, confidence: 0.6),
                 _ => throw new ArgumentOutOfRangeException(nameof(type)),
             });
@@ -102,7 +103,9 @@ public sealed class TypeSafeJevHarness : ProviderHarness
                 Handler.Respond(HttpStatusCode.ServiceUnavailable, SystemOneFixtures.Html(Marker), "text/html");
                 break;
             case FailureKind.Malformed:
-                Handler.Respond(HttpStatusCode.OK, SystemOneFixtures.Response(SystemOneFixtures.Answer("noul", ("explanation", Marker))));
+                Handler.Respond(
+                    HttpStatusCode.OK,
+                    SystemOneFixtures.Response(SystemOneFixtures.Answer("noul", ("explanation", Marker))));
                 break;
             case FailureKind.RejectedInput:
                 Handler.Respond(HttpStatusCode.BadRequest, SystemOneFixtures.OpenRouterError(400, $"invalid state: {Marker}"));

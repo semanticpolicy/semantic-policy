@@ -142,6 +142,54 @@ PolicyVerdict verdict = await evaluator.EvaluateAsync("tool-guard", SemanticCont
 `verdict.Effective` is the verdict to act on, and acting on it is your application's job, not the
 library's.
 
+### Any System One server
+
+`SemanticPolicy.Providers.SystemOne` sends a rule's question to any server that answers the System
+One wire at `/v1/systemone`, such as a decision model you run yourself. It answers boolean, choice
+and score rules, and returns the server's numbers for the policy to threshold.
+
+```csharp
+services.AddSemanticPolicy()
+    .AddSystemOne("local", o =>
+    {
+        o.BaseUrl = new Uri("http://127.0.0.1:8000");
+        o.Model = "von-1.2.0"; // the name your server expects
+    })
+    .AddPolicy(policy);
+```
+
+The registration name does the same three jobs as for TypeSafe, and the named `HttpClient` gets the
+same treatment: its loggers stripped, its own timeout infinite, `o.Timeout` in charge.
+
+| Option | |
+|---|---|
+| `o.BaseUrl` | Required. `https`, or plain `http` to a loopback host (`localhost`, `127.0.0.1`, `[::1]`). `http` to any other host needs `o.AllowInsecureHttp`. |
+| `o.Model` | Required, with no default. Some servers pick a checkpoint by this name and others ignore it, so only you know what yours expects. A verdict reports the model the server names in its answer, or this one when it names none. |
+| `o.Evidence` | `EvidenceKind.Score` by default; `EvidenceKind.Probability` only as a claim you make, below. No other kind. |
+| `o.ApiKey` | Optional. Sent as a Bearer token when set. Leave it unset and the key is read from the environment variable `o.ApiKeyVariable` names, once, when the evaluator is first resolved; with neither, or with that variable unset, no `Authorization` header is sent. |
+| `o.AllowInsecureHttp` | `false` by default. |
+| `o.MaxContextLength` | Off by default. A context longer than this many characters is not sent, below. |
+| `o.Path` | `/v1/systemone` by default. |
+| `o.Timeout` | How long one call may take, ten seconds by default. Past it the provider reports a timeout, and the policy's `OnFailure` decides what that means. |
+
+**Why a score, not a probability.** A server's number between 0 and 1 orders its answers, but
+nothing says that 0.8 is right four times in five. So the provider reports it as a score on the
+`systemone` scale, and a policy thresholds it with `WarnAboveScore`, `DenyAboveScore` and
+`WhenScoreMarginBelow`. A boolean answer carries both ends, `true` and `false`, and the margin is the
+distance between them. A policy written with probability thresholds fails when the evaluator is
+resolved; it never reads a score as a probability ([ADR 0003][adr-0003]). Setting
+`o.Evidence = EvidenceKind.Probability` (from `SemanticPolicy.Protocol`) reports the same numbers on
+the `calibrated` scale. That is your claim that the server is calibrated, not the provider's: it
+checks nothing, so measure calibration on your own data before you make it.
+
+**Plain `http`.** Off loopback it sends your content, and your key if there is one, across the
+network in clear text. `o.AllowInsecureHttp = true` says in code that someone decided that, for a
+sidecar on a private network for example. Any scheme other than `http` or `https` is refused.
+
+**Long contexts.** Some servers cut a long input without saying so, and an instruction past the cut
+then scores like the text before it. With `o.MaxContextLength` set, a context whose canonical text is
+longer is not sent: the provider reports a rejected input, and the policy's `OnFailure` decides.
+
 ## Guarding an agent
 
 `SemanticPolicy.AgentFramework` asks a policy at three points of a Microsoft Agent Framework agent's
@@ -248,6 +296,7 @@ requests and questions belong in this repository's [issue tracker][issues].
 Apache-2.0. See [`LICENSE`][licence].
 
 [examples]: https://github.com/semanticpolicy/semantic-policy/blob/main/examples/README.md
+[adr-0003]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/adr/0003-evidence-semantics.md
 [adr-0005]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/adr/0005-evaluation-and-threshold-ownership.md
 [security]: https://github.com/semanticpolicy/semantic-policy/blob/main/SECURITY.md
 [threat-model]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/THREAT_MODEL.md

@@ -352,7 +352,7 @@ public sealed class TypeSafeJevRegistrationTests
     private static ScriptedHttpMessageHandler Answering(double noul)
     {
         ScriptedHttpMessageHandler handler = new();
-        handler.Respond(HttpStatusCode.OK, JevFixtures.BooleanAnswer(noul));
+        handler.Respond(HttpStatusCode.OK, SystemOneFixtures.BooleanAnswer(noul));
         return handler;
     }
 

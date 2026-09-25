@@ -14,8 +14,14 @@ namespace SemanticPolicy.Providers.SystemOne;
 /// </summary>
 internal static class SystemOneResponse
 {
-    /// <summary>The scale TypeSafe claims for Jev's probabilities, reported as its claim and nothing more.</summary>
+    /// <summary>
+    /// The scale of a declared <see cref="EvidenceKind.Probability"/>: TypeSafe's claim for Jev, or a
+    /// user's for their own server, reported as that claim and nothing more.
+    /// </summary>
     private const string _calibratedScale = "calibrated";
+
+    /// <summary>The wire's own [0, 1] scale, under <see cref="EvidenceKind.Score"/>: ordered, not a probability.</summary>
+    private const string _systemOneScale = "systemone";
 
     /// <summary>
     /// Every status other than 200 as a failure kind. 400 and 422 are the provider's verdict on the
@@ -83,8 +89,13 @@ internal static class SystemOneResponse
     public static JsonElement? Usage(JsonElement body) =>
         body.ValueKind == JsonValueKind.Object && body.TryGetProperty("usage", out JsonElement usage) ? usage : null;
 
-    /// <summary>A 200 body onto the answer the request asked for, or the shape of what stopped it.</summary>
-    public static Reading Read(DecisionRequest request, JsonElement body)
+    /// <summary>
+    /// A 200 body onto the answer the request asked for, or the shape of what stopped it. The numbers
+    /// are the server's whichever kind is declared; <paramref name="evidence"/> names what the caller
+    /// claims they are and picks the scale, <c>calibrated</c> for a probability and <c>systemone</c>
+    /// for a score.
+    /// </summary>
+    public static Reading Read(DecisionRequest request, JsonElement body, EvidenceKind evidence)
     {
         if (body.ValueKind != JsonValueKind.Object
             || !body.TryGetProperty("answers", out JsonElement answers)
@@ -106,19 +117,21 @@ internal static class SystemOneResponse
 
         Reading reading = request.Type switch
         {
-            DecisionType.Boolean => ReadBoolean(answer),
-            DecisionType.Choice => ReadChoice(request, answer),
-            DecisionType.Score => ReadScore(request, answer),
+            DecisionType.Boolean => ReadBoolean(answer, evidence),
+            DecisionType.Choice => ReadChoice(request, answer, evidence),
+            DecisionType.Score => ReadScore(request, answer, evidence),
             _ => throw new ArgumentOutOfRangeException(nameof(request)),
         };
         return reading.Failure is null ? reading with { Extra = Extra(body, answer, request.Type) } : reading;
     }
 
-    // `noul` is P(true) alone; the runtime completes the pair when it needs both sides. The half cut
-    // is inclusive and is the adapter's reading of the model's estimate, not a verdict: 0.5 says the
-    // model found the two answers equally likely, and the policy's threshold, not this line, decides
-    // what that means.
-    private static Reading ReadBoolean(JsonElement answer)
+    // `noul` is one number on a scale whose two ends are the two answers. As a probability it is sent
+    // alone, because the runtime completes the pair as 1 − p when it needs both sides. A score has no
+    // complement the runtime may derive, so under Score both ends go out as the server said them, or
+    // every threshold and gate on the answer would read it as incomplete. The half cut is inclusive
+    // and is the adapter's reading of the model's estimate, not a verdict: 0.5 says the model found the
+    // two answers equally likely, and the policy's threshold, not this line, decides what that means.
+    private static Reading ReadBoolean(JsonElement answer, EvidenceKind evidence)
     {
         if (!answer.TryGetProperty("noul", out JsonElement noul))
         {
@@ -131,12 +144,17 @@ internal static class SystemOneResponse
         }
 
         Dictionary<string, double> values = new(StringComparer.Ordinal) { ["true"] = probability };
-        return Reading.Success(new BooleanValue(probability >= 0.5), Calibrated(values));
+        if (evidence != EvidenceKind.Probability)
+        {
+            values["false"] = 1 - probability;
+        }
+
+        return Reading.Success(new BooleanValue(probability >= 0.5), Declared(evidence, values));
     }
 
     // The value is the provider's `choice` as it gave it, never the argmax of the distribution: the
     // provider's pick is its answer, and the distribution is the evidence behind it.
-    private static Reading ReadChoice(DecisionRequest request, JsonElement answer)
+    private static Reading ReadChoice(DecisionRequest request, JsonElement answer, EvidenceKind evidence)
     {
         IReadOnlyDictionary<string, string> options = request.Options!;
         if (StringProperty(answer, "choice") is not { } choice)
@@ -179,14 +197,14 @@ internal static class SystemOneResponse
             return Reading.Malformed("`probabilities` does not cover every option of the request");
         }
 
-        return Reading.Success(new ChoiceValue(choice), Calibrated(values));
+        return Reading.Success(new ChoiceValue(choice), Declared(evidence, values));
     }
 
     // The vendor answers a Score with a distribution keyed by index and a legend from index to level;
     // the legend must be the request's levels in order, or the indices would name something else.
     // The value is the most probable level, a tie going to the lowest index; the vendor's scalar
     // `score` is an expected index and goes to Extra, never to the value or the evidence.
-    private static Reading ReadScore(DecisionRequest request, JsonElement answer)
+    private static Reading ReadScore(DecisionRequest request, JsonElement answer, EvidenceKind evidence)
     {
         IReadOnlyList<string> levels = request.Levels!;
         if (!answer.TryGetProperty("legend", out JsonElement legend) || legend.ValueKind != JsonValueKind.Object)
@@ -241,7 +259,7 @@ internal static class SystemOneResponse
             }
         }
 
-        return Reading.Success(new ScoreValue(levels[best], best), Calibrated(values));
+        return Reading.Success(new ScoreValue(levels[best], best), Declared(evidence, values));
     }
 
     // Only the fields the answer carried, or null when it carried none: `confidence` is a projection
@@ -302,8 +320,8 @@ internal static class SystemOneResponse
             && probability is >= 0 and <= 1;
     }
 
-    private static Evidence Calibrated(Dictionary<string, double> values) =>
-        new(EvidenceKind.Probability, values, _calibratedScale);
+    private static Evidence Declared(EvidenceKind evidence, Dictionary<string, double> values) =>
+        new(evidence, values, evidence == EvidenceKind.Probability ? _calibratedScale : _systemOneScale);
 
     private static string? StringProperty(JsonElement element, string name) =>
         element.ValueKind == JsonValueKind.Object
