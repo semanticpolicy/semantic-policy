@@ -76,6 +76,13 @@ public abstract class ProviderContractTests
                 values.Values.Should().AllSatisfy(value => value.Should().BeInRange(0, 1));
                 values.Values.Sum().Should().BeApproximately(1, 0.02);
             }
+            else if (type == DecisionType.Boolean)
+            {
+                evidence.Values.Keys.Should().Contain(
+                    ["true", "false"],
+                    "only a probability has a complement the runtime may derive, so {0} evidence carries both ends",
+                    evidence.Kind);
+            }
         }
 
         (result.Raw is not null).Should().Be(capabilities.RawOutput);

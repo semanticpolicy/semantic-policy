@@ -12,9 +12,10 @@
     <!-- The abstractions are the one package Core references: IServiceCollection and TryAdd for
          AddSemanticPolicy(). MIT. -->
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
-    <!-- Providers.TypeSafe sends every call through the named HttpClient of IHttpClientFactory, so a
-         host can attach a proxy, a resilience handler or its own logging under the registration's
-         name. Brings Logging and Options transitively. MIT. -->
+    <!-- Providers.SystemOne references it and sends every call through the named HttpClient of
+         IHttpClientFactory, so a host can attach a proxy, a resilience handler or its own logging under
+         the registration's name. Providers.TypeSafe gets it through SystemOne. Brings Logging and
+         Options transitively. MIT. -->
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.12" />
     <!-- The container itself, which the abstractions do not carry: BuildServiceProvider and
          ServiceProvider. No project under src/ references it - an application brings its own container -

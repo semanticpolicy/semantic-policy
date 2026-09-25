@@ -14,21 +14,21 @@ public sealed class TypeSafeJevFailureTests
         {
             "an OpenRouter error with a code",
             400,
-            JevFixtures.OpenRouterError(400, $"the state is invalid near {ProviderHarness.Marker}"),
+            SystemOneFixtures.OpenRouterError(400, $"the state is invalid near {ProviderHarness.Marker}"),
             "application/json",
             "HTTP 400, code 400"
         },
         {
             "a TypeSafe error with an error type",
             401,
-            JevFixtures.TypeSafeError("authentication_error", $"no key for {ProviderHarness.Marker}"),
+            SystemOneFixtures.TypeSafeError("authentication_error", $"no key for {ProviderHarness.Marker}"),
             "application/json",
             "HTTP 401, error_type authentication_error"
         },
         {
             "a gateway's HTML page",
             503,
-            JevFixtures.Html(ProviderHarness.Marker),
+            SystemOneFixtures.Html(ProviderHarness.Marker),
             "text/html",
             "HTTP 503"
         },
@@ -104,8 +104,8 @@ public sealed class TypeSafeJevFailureTests
     {
         TypeSafeJevHarness harness = new();
         string body = json
-            ? JevFixtures.OpenRouterError(429, $"slow down {ProviderHarness.Marker}")
-            : JevFixtures.Html(ProviderHarness.Marker);
+            ? SystemOneFixtures.OpenRouterError(429, $"slow down {ProviderHarness.Marker}")
+            : SystemOneFixtures.Html(ProviderHarness.Marker);
         harness.Handler.Respond(HttpStatusCode.TooManyRequests, body, json ? "application/json" : "text/html");
 
         ProviderResult result = await Decide(harness);
