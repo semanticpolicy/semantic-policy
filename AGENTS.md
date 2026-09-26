@@ -9,16 +9,19 @@ SemanticPolicy evaluates semantic decisions — "is this input trying to manipul
 this tool call consistent with what the user asked for" — through a pluggable decision provider, and
 makes those decisions testable. Alpha: `src/SemanticPolicy.Core/`,
 `src/SemanticPolicy.Providers.TypeSafe/` and `src/SemanticPolicy.AgentFramework/` are implemented and
-tested, and the four examples run on them; `tools/SemanticPolicy.Evals/` is implemented and tested,
-and its `run` verb calls Jev through OpenRouter; the local provider is a skeleton that builds and does
-nothing yet.
+tested, and the four examples run on them; `src/SemanticPolicy.Providers.SystemOne/`, the provider for
+any System One server and the base TypeSafe is built on, is implemented and tested too;
+`tools/SemanticPolicy.Evals/` is implemented and tested, and its `run` verb calls Jev through
+OpenRouter and a local Von server through SystemOne; `src/SemanticPolicy.Providers.Local/` is a
+skeleton that builds and does nothing yet.
 
 ## Layout
 
 ```
 src/SemanticPolicy.Core/                    policies, rules, verdicts, decision requests and results
-src/SemanticPolicy.Providers.TypeSafe/      hosted decision provider
-src/SemanticPolicy.Providers.Local/         local decision model provider
+src/SemanticPolicy.Providers.SystemOne/     decision provider for any System One server, such as Von
+src/SemanticPolicy.Providers.TypeSafe/      hosted decision provider, built on SystemOne
+src/SemanticPolicy.Providers.Local/         skeleton, not published
 src/SemanticPolicy.AgentFramework/          Microsoft Agent Framework integration
 tools/SemanticPolicy.Evals/                 evaluation CLI
 examples/                                   four demos: PromptInjectionGuard, ToolIntentGuard, ToolResultGuard, AgentRouter

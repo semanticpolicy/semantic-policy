@@ -10,4 +10,19 @@
     <ProjectReference Include="..\SemanticPolicy.Providers.SystemOne\SemanticPolicy.Providers.SystemOne.csproj" />
   </ItemGroup>
 
+  <!-- This package compiles against SystemOne's internals, so it must never load beside a SystemOne of
+       another version. A ProjectReference packs as a minimum version, which lets a consumer take a newer
+       SystemOne alone and fail at run time with a MissingMethodException. Bracketing SystemOne's version
+       in the nuspec, [X], turns that into NU1608 at restore. Core stays a minimum: nothing here reaches
+       its internals, and an exact range would warn everyone who upgrades Core alone.
+       _GetProjectReferenceVersions is internal to NuGet, so a NuGet update can silently bring the
+       minimum back. Read the nuspec inside the .nupkg at every release. -->
+  <Target Name="PinSystemOneExactly" AfterTargets="_GetProjectReferenceVersions">
+    <ItemGroup>
+      <_ProjectReferencesWithVersions Condition="'%(Filename)' == 'SemanticPolicy.Providers.SystemOne'">
+        <ProjectVersion>[%(ProjectVersion)]</ProjectVersion>
+      </_ProjectReferencesWithVersions>
+    </ItemGroup>
+  </Target>
+
 </Project>
