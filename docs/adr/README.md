@@ -37,6 +37,8 @@ belongs here.
   records provider answers once and replays them through Core.
 - [0014](0014-evaluation-tool-records-live-once-and-ci-replays.md) — The evaluation tool calls a
   provider once, commits what it recorded, and CI only replays it.
+- [0015](0015-self-hosted-models-through-one-system-one-client.md) — Self-hosted decision models
+  are reached through one System One client, and TypeSafe's Jev is a preset on it.
 
 ## Format
 
