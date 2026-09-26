@@ -67,7 +67,7 @@ public static class ThresholdSweep
             ? [.. observed.OrderByDescending(point => point.Threshold)]
             : [.. observed.OrderBy(point => point.Threshold)];
 
-        CurvePoint? chosen = preferred.FirstOrDefault(point => own.All(constraint => Satisfies(point.Matrix, constraint)));
+        CurvePoint? chosen = preferred.FirstOrDefault(point => Meets(point.Matrix, own));
         if (chosen is not null)
         {
             return new RungRecommendation(curve.Rung, own, Swept: true, Feasible: true, chosen.Threshold, chosen, null);
@@ -86,6 +86,12 @@ public static class ThresholdSweep
 
         return new RungRecommendation(curve.Rung, own, Swept: true, Feasible: false, null, null, nearest);
     }
+
+    /// <summary>Whether every constraint holds at a point; a rate that is undefined there satisfies none.</summary>
+    /// <param name="matrix">The point's confusion matrix.</param>
+    /// <param name="constraints">The constraints, all on the rung the point belongs to.</param>
+    internal static bool Meets(BinaryConfusion matrix, IEnumerable<RungConstraint> constraints) =>
+        constraints.All(constraint => Satisfies(matrix, constraint));
 
     private static bool Satisfies(BinaryConfusion matrix, RungConstraint constraint) =>
         Rate(matrix, constraint.Kind) is { } rate

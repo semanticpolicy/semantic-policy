@@ -86,8 +86,8 @@ public static class SweepRenderer
         {
             writer.WriteLine();
             writer.WriteLine(
-                $"gate on {section.Gate.ReportedOn}: {Gate(test.Below)}, {Count(test.Abstained)} abstained (abstention "
-                + $"rate {Rate(test.AbstentionRate)}), {Count(test.Decided)} decided, accuracy {Rate(test.Accuracy)}");
+                $"gate on {section.Gate.ReportedOn}: {Gate(test.Below)}, {PassedOn(test)}{Count(test.Abstained)} abstained "
+                + $"(abstention rate {Rate(test.AbstentionRate)}), {Count(test.Decided)} decided, accuracy {Rate(test.Accuracy)}");
         }
     }
 
@@ -200,15 +200,22 @@ public static class SweepRenderer
     private static void WriteGateCurve(TextWriter writer, string provider, SweptGate gate)
     {
         writer.WriteLine($"gate curve for binding '{provider}', margin on {Names.Camel(gate.Kind)}, on {gate.ChosenOn}");
-        TextTable table = new("gate", "abstained", "abstention rate", "decided", "accuracy");
+
+        // With no later binding there is nowhere to pass a row on to, and a column of zeros would suggest there was.
+        string[] passedOn = gate.Curve.Points.Any(point => point.PassedOn.HasValue) ? ["passed on"] : [];
+        TextTable table = new(["gate", .. passedOn, "abstained", "abstention rate", "decided", "accuracy"]);
         foreach (GatePoint point in gate.Curve.Points)
         {
+            string[] passed = point.PassedOn is { } count ? [Count(count)] : [];
             table.AddRow(
+            [
                 point.Below is { } below ? Rounded(below) : "none",
+                .. passed,
                 Count(point.Abstained),
                 Rate(point.AbstentionRate),
                 Count(point.Decided),
-                Rate(point.Accuracy));
+                Rate(point.Accuracy),
+            ]);
         }
 
         table.Write(writer);
@@ -221,16 +228,24 @@ public static class SweepRenderer
             writer.WriteLine(RungLine(rung, section.Split));
         }
 
-        IReadOnlyList<(SweptRung Lower, SweptRung Higher)> conflicts = OperatingPointSweep.Conflicts(section.Rungs);
-        if (conflicts.Count > 0)
+        foreach ((SweptRung lower, SweptRung higher) in OperatingPointSweep.Conflicts(section.Rungs))
         {
-            string pairs = string.Join(
-                "; ",
-                conflicts.Select(pair =>
-                    $"{Names.Camel(pair.Lower.Rung)} {Number(pair.Lower.Recommendation.Threshold!.Value)} is not below "
-                    + $"{Names.Camel(pair.Higher.Rung)} {Number(pair.Higher.Recommendation.Threshold!.Value)}"));
+            string low = Names.Camel(lower.Rung);
+            string high = Names.Camel(higher.Rung);
+            double lowAt = lower.Recommendation.Threshold!.Value;
+            double highAt = higher.Recommendation.Threshold!.Value;
             writer.WriteLine(
-                $"conflict: {pairs}; thresholds must increase with severity, and these are reported as chosen, not reordered");
+                $"conflict: {low} {Number(lowAt)} is not below {high} {Number(highAt)}, so any row that crosses {low} "
+                + $"crosses {high} too and {low} is never reached; the library refuses thresholds that do not increase "
+                + "with severity, so the pair cannot go into the policy file as printed");
+            string covered = Covers(lower, highAt)
+                ? $"at {Number(highAt)} {low} would meet "
+                    + string.Join(", ", lower.Recommendation.Constraints.Select(constraint => constraint.ToString()))
+                    + $" too, so {high} alone already does what {low} was asked to; "
+                : string.Empty;
+            writer.WriteLine(
+                $"  {covered}set {low} below {Number(highAt)} or {high} above {Number(lowAt)} by hand, reading on the "
+                + "curves what each would flag, or change a goal");
         }
 
         if (section.Gate is { } gate)
@@ -238,6 +253,14 @@ public static class SweepRenderer
             writer.WriteLine(GateLine(gate, section.Split));
         }
     }
+
+    // Every rung's curve is the same table, each one replayed on a single-rung ladder, so a higher rung's threshold
+    // is a point on the lower rung's curve too. Where the lower rung's goals hold at that point, the higher rung on
+    // its own already flags the rows the lower one was asked to.
+    private static bool Covers(SweptRung lower, double threshold) =>
+        lower.Recommendation.Swept
+        && lower.Curve.Points.FirstOrDefault(point => point.Threshold == threshold) is { } point
+        && ThresholdSweep.Meets(point.Matrix, lower.Recommendation.Constraints);
 
     private static string RungLine(SweptRung rung, SplitWording split)
     {
@@ -329,7 +352,12 @@ public static class SweepRenderer
     ];
 
     private static string GateRates(GatePoint point) =>
-        $"(abstention rate {Rate(point.AbstentionRate)}, accuracy {Rate(point.Accuracy)})";
+        $"({PassedOn(point)}abstention rate {Rate(point.AbstentionRate)}, accuracy {Rate(point.Accuracy)})";
+
+    // A gate on a binding with a later one is cheap in abstentions and paid for in the rows that binding decides
+    // instead, so a line that shows the one shows the other.
+    private static string PassedOn(GatePoint point) =>
+        point.PassedOn is { } count ? $"{Count(count)} passed on to the next binding, " : string.Empty;
 
     private static string Gate(double? below) => below is { } value ? $"gate {Number(value)}" : "no gate";
 
