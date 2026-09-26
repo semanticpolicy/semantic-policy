@@ -4,16 +4,21 @@ using SemanticPolicy.Evals.Curves;
 using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Evals.Metrics;
 using SemanticPolicy.Evals.Replay;
+using SemanticPolicy.Evaluation;
 using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy.Evals.Sweeping;
 
 /// <summary>
 /// One candidate margin gate on the swept binding and what the rule would have concluded there: how many rows
-/// the gate held back and how accurate the rule was on the rest. A gate buys accuracy with abstentions, and a
-/// point shows both sides of that trade.
+/// the gate held back and how accurate the rule was on the rest. A gate buys accuracy with abstentions, or with
+/// rows a later binding decides instead, and a point shows both sides of that trade.
 /// </summary>
 /// <param name="Below">The gate, or <see langword="null"/> for the binding with no gate at all.</param>
+/// <param name="PassedOn">
+/// Rows the gate held back and sent on to a later binding, which decides them at its own latency and cost, or
+/// abstains or fails on them in turn; <see langword="null"/> when the swept binding is the last in the chain.
+/// </param>
 /// <param name="Abstained">Rows the chain ran out of bindings on under the gate.</param>
 /// <param name="AbstentionRate">Abstained rows over every row of the selection.</param>
 /// <param name="Decided">Rows a provider's answer decided.</param>
@@ -21,7 +26,13 @@ namespace SemanticPolicy.Evals.Sweeping;
 /// Accuracy on the decided rows: for a Boolean rule, its lowest ladder rung at the policy's thresholds; for a
 /// Choice or Score rule, the share answered as labelled. <see langword="null"/> when nothing was decided.
 /// </param>
-public sealed record GatePoint(double? Below, int Abstained, double AbstentionRate, int Decided, double? Accuracy);
+public sealed record GatePoint(
+    double? Below,
+    int? PassedOn,
+    int Abstained,
+    double AbstentionRate,
+    int Decided,
+    double? Accuracy);
 
 /// <summary>The abstention-against-accuracy curve of one binding's gate, from no gate up to the widest margin seen.</summary>
 /// <param name="Points">
@@ -260,7 +271,20 @@ public static class GateSweep
     {
         List<RowOutcome> outcomes = Outcomes(set, Variant(policy, bindingIndex, rule.Id, gate), rule, selected);
         OutcomeCounts counts = OutcomeCounts.Compute(outcomes);
-        return new GatePoint(gate?.Below, counts.Abstained, counts.AbstentionRate ?? 0, counts.Classified, Accuracy(outcomes, rule));
+
+        // Only the gate's own hand-offs: a failure moves a row on whatever the gate is, so it is no part of the
+        // trade the curve shows.
+        int? passedOn = bindingIndex < policy.Bindings.Count - 1
+            ? outcomes.Count(outcome => outcome.Row.Verdict.Attempts.Any(attempt =>
+                attempt.BindingIndex == bindingIndex && attempt.Disposition == AttemptDisposition.MovedOnByGate))
+            : null;
+        return new GatePoint(
+            gate?.Below,
+            passedOn,
+            counts.Abstained,
+            counts.AbstentionRate ?? 0,
+            counts.Classified,
+            Accuracy(outcomes, rule));
     }
 
     private static Policy Variant(Policy policy, int bindingIndex, string ruleId, MarginGate? gate)

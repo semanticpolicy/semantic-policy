@@ -351,8 +351,11 @@ A goal (`<constraint>` in `--help`) is one of these, with `v` from 0 to 1:
 - Curves round to four decimals; a recommended number prints exactly, ready to copy into the policy
   file.
 - If nothing meets a goal, the nearest candidate is printed and the exit code is 2.
-- If deny does not come out above warn, both are printed as chosen, with a conflict line; see
-  [Pitfalls](#pitfalls).
+- If deny does not come out above warn, both are printed as chosen, with a conflict line that says
+  what to move and whether deny's threshold already meets warn's goal; see [Pitfalls](#pitfalls).
+- When a later binding follows the swept one, the gate curve has a `passed on` column, and the
+  gate's lines say how many rows the gate sends on to that binding. On the last binding there is
+  nothing to pass on, and neither appears.
 - A Choice or Score binding's gate can be swept only if the policy file gives it one.
 
 Warn catches at least 90% of attacks, deny is right at least 95% of the time, and the rows the
@@ -502,17 +505,20 @@ failure rates, latency and usage.
 
 - **Several bindings.** `sweep` measures the chain, not one provider. A row abstains only when no
   binding decides it, so a wider gate on the first binding looks free while it sends more rows to
-  the next one, which may be slower and paid; the gate curve does not count them. Sweeping a later
-  binding mostly shows the first one's decisions. To judge one provider, use `compare` or a policy
-  with only its binding.
+  the next one, which may be slower and paid; the gate curve's `passed on` column counts them. On
+  the committed smoke recording, `--provider local --gate max-abstain=0.05` recommends gate 0.8774,
+  which passes 59 of the 60 tune rows to `jev`; the abstention rate of 0.033 is the 2 of those that
+  `jev` leaves undecided too. Sweeping a later binding mostly shows the first one's decisions. To
+  judge one provider, use `compare` or a policy with only its binding.
 - **Crossed thresholds.** Warn and deny read the same evidence and share one curve, and `min-recall`
   picks its highest threshold while `min-precision` picks its lowest. On data that separates well,
   the pair `--warn min-recall=0.9` and `--deny min-precision=0.95` can put deny at or below warn: on
   the committed smoke recording, `compare` with that pair gives `jev` warn 0.87 and deny 0.15, and
   `--deny min-precision=0.95` alone gives deny 0.15 against the policy file's warn of 0.6. Deny's
-  threshold alone then catches at least 90% of the attacks. Keep it and set warn below it by hand, reading on
-  the curve how many safe inputs each lower threshold would flag; the library refuses thresholds
-  that do not increase with severity.
+  threshold alone then catches at least 90% of the attacks, and the conflict line says so when warn
+  has a goal. Keep deny and set warn below it by hand, reading on the curve how many safe inputs
+  each lower threshold would flag; the library refuses thresholds that do not increase with
+  severity.
 - **Small test sets.** On 40 test rows, one row moves a rate by 2.5 points or more, so a threshold
   chosen at the edge of a goal on tune can miss it on test.
 - **Line endings.** A dataset's digest is taken over its bytes. Git on Windows can check a `.jsonl`
@@ -625,7 +631,8 @@ From `report` on the committed recording's test rows, shortened:
 - **`report`**: the report's sections, and `sweptProvider`, the binding the discrimination curve
   moves.
 - **`sweep`**: the swept `provider`, the split wording, each rung's curve and recommendation, any
-  `conflict`, the gate's curve and recommendation, and `feasible`.
+  `conflict`, the gate's curve and recommendation, and `feasible`. A gate point carries `passedOn`
+  only when a later binding follows the swept one.
 - **`compare`**: one entry per binding in `bindings`, and `feasible`.
 
 A member that does not apply is left out, and so is a rate with nothing to divide by, never 0 or

@@ -60,11 +60,35 @@ public sealed class SweepVerbTests
         CliRun run = await fixture.RunAsync("sweep", "--warn", "max-fpr=0", "--deny", "min-recall=1");
 
         run.ExitCode.Should().Be(ExitCodes.Success);
-        run.Output.Should().Contain("conflict:");
+        run.Output.Should().Contain(
+            "conflict: warn 0.75 is not below deny 0.35, so any row that crosses warn crosses deny too and warn is never "
+            + "reached; the library refuses thresholds that do not increase with severity, so the pair cannot go into "
+            + "the policy file as printed");
+
+        // At 0.35 warn's max-fpr=0 fails, so there is nothing to say about deny covering warn's goal.
+        run.Output.Should().Contain(
+            "\n  set warn below 0.35 or deny above 0.75 by hand, reading on the curves what each would flag, or change a goal");
+        run.Output.Should().NotContain("would meet");
         JsonElement sweep = fixture.ReadOut().GetProperty("sweep");
         sweep.GetProperty("conflict").GetBoolean().Should().BeTrue();
         Rung(sweep, "warn").GetProperty("recommendation").GetProperty("threshold").GetDouble().Should().Be(0.75);
         Rung(sweep, "deny").GetProperty("recommendation").GetProperty("threshold").GetDouble().Should().Be(0.35);
+    }
+
+    [Fact]
+    public async Task A_Conflict_Says_When_The_Higher_Threshold_Already_Meets_The_Lower_Rungs_Goal()
+    {
+        using CliFixture fixture = await CliFixture.CreateAsync(Guard(), Graded());
+
+        // Recall 0.6 holds up to 0.75 and precision 0.75 first holds at 0.55, where recall is 0.8: deny's threshold
+        // alone flags what warn was asked to.
+        CliRun run = await fixture.RunAsync("sweep", "--warn", "min-recall=0.6", "--deny", "min-precision=0.75");
+
+        run.ExitCode.Should().Be(ExitCodes.Success);
+        run.Output.Should().Contain("conflict: warn 0.75 is not below deny 0.55, ");
+        run.Output.Should().Contain(
+            "\n  at 0.55 warn would meet min-recall=0.6 too, so deny alone already does what warn was asked to; set warn "
+            + "below 0.55 or deny above 0.75 by hand, reading on the curves what each would flag, or change a goal");
     }
 
     [Fact]
@@ -187,6 +211,43 @@ public sealed class SweepVerbTests
     }
 
     [Fact]
+    public async Task A_Gate_On_A_Binding_With_A_Later_One_Counts_The_Rows_It_Passes_On()
+    {
+        // Margins 0.875, 0.75, 0.5, 0.25, 0.25, 0.5, 0.75, 0.875. With 'hosted' after it and no gate there nothing
+        // abstains, so max-abstain takes the highest gate, which passes six of the eight rows on to 'hosted'.
+        using CliFixture fixture = await CliFixture.CreateAsync(
+            Guard(EvidenceKind.Probability, "local", "hosted"),
+            Chained());
+
+        CliRun run = await fixture.RunAsync("sweep", "--provider", "local", "--gate", "max-abstain=0.05");
+
+        run.ExitCode.Should().Be(ExitCodes.Success);
+        run.Output.Should().MatchRegex(@"(?m)^gate +passed on +abstained +abstention rate +decided +accuracy *\r?$");
+        run.Output.Should().Contain("gate: max-abstain=0.05 → gate 0.875 (6 passed on to the next binding, abstention rate 0.000, ");
+        run.Output.Should().Contain(": gate 0.875, 6 passed on to the next binding, 0 abstained ");
+        JsonElement gate = fixture.ReadOut().GetProperty("sweep").GetProperty("gate");
+        gate.GetProperty("curve").GetProperty("points").EnumerateArray()
+            .Select(point => point.GetProperty("passedOn").GetInt32())
+            .Should().Equal(0, 0, 2, 4, 6);
+        gate.GetProperty("recommendation").GetProperty("chosen").GetProperty("passedOn").GetInt32().Should().Be(6);
+    }
+
+    [Fact]
+    public async Task A_Gate_On_The_Last_Binding_Has_Nothing_To_Pass_On_And_Says_Nothing_About_It()
+    {
+        using CliFixture fixture = await CliFixture.CreateAsync(
+            Guard(EvidenceKind.Probability, "local", "hosted"),
+            Chained());
+
+        CliRun run = await fixture.RunAsync("sweep", "--provider", "hosted", "--gate", "max-abstain=0.05");
+
+        run.ExitCode.Should().Be(ExitCodes.Success);
+        run.Output.Should().Contain("gate curve").And.NotContain("passed on");
+        fixture.ReadOut().GetProperty("sweep").GetProperty("gate").GetProperty("curve").GetProperty("points")
+            .EnumerateArray().Should().AllSatisfy(point => point.TryGetProperty("passedOn", out _).Should().BeFalse());
+    }
+
+    [Fact]
     public async Task Gate_Constraint_On_A_Choice_Binding_Without_A_File_Gate_Is_An_Error_Naming_The_Provider()
     {
         ChoiceRule rule = Samples.Route();
@@ -287,6 +348,21 @@ public sealed class SweepVerbTests
 
     internal static FixtureRow[] Graded(string? split = null, EvidenceKind kind = EvidenceKind.Probability) =>
         [.. _flagged.Select((value, index) => Row(_labels[index], value, split, kind))];
+
+    // Eight rows answered alike by 'local' and 'hosted', on dyadic probabilities so every margin |2p - 1| is exact.
+    private static FixtureRow[] Chained()
+    {
+        double[] flagged = [0.0625, 0.125, 0.25, 0.375, 0.625, 0.75, 0.875, 0.9375];
+        string[] labels = ["false", "false", "false", "true", "false", "true", "true", "true"];
+        return
+        [
+            .. flagged.Select((value, index) => FixtureRow.Of(
+                labels[index],
+                null,
+                ("local", Answer(EvidenceKind.Probability, value)),
+                ("hosted", Answer(EvidenceKind.Probability, value, "hosted")))),
+        ];
+    }
 
     internal static FixtureRow Row(
         string label,
