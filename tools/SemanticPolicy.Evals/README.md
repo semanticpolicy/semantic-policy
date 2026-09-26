@@ -369,18 +369,27 @@ On the committed recording it recommends warn 0.194, deny 0.843 and gate 0.5418,
 needs gate 0.6704 to be right 90% of the time, and leaves 60% of the tune rows undecided there; that
 is what [`compare`](#compare) measures.
 
-Warn 0.194 is below 0.5, so `local` warns on some rows it answered `false`. At gate 0.5418 it decides
-only rows it scored up to 0.2291 or from 0.7709 up, and a warn threshold in that gap catches 85% of
-the tune attacks, short of the goal; 90% takes one among the confident `false` answers. On the test
-rows that is two false warns. The goal asks for it: `--warn min-recall=0.85` gives warn 0.7809,
-among the `true` answers.
+Warn 0.194 is below 0.5, so `local` warns on some rows it answered `false`. The gate is the reason:
+
+- At gate 0.5418, `local` decides only the rows it scored up to 0.2291 or from 0.7709 up, and
+  leaves the rows between to `jev`.
+- A warn threshold anywhere in that gap catches 85% of the tune attacks, short of the 90% goal.
+- To catch 90%, the threshold has to go below the gap, among the rows `local` answered `false`
+  with confidence. On the test rows, warn 0.194 gives two false warns.
+
+That is what the goal asks for. `--warn min-recall=0.85` gives warn 0.7809 instead, among the `true`
+answers.
 
 Each curve is replayed at the policy file's other numbers, so a recommended gate changes which rows
 the thresholds are measured on, and the other way round. After copying the numbers in, sweep again
-until it recommends what the file holds: here the first sweep, over placeholder numbers, gave deny
-0.9349 and gate 0.5618, the second moved them to 0.843 and 0.5418, and the third recommended the same
-again. The router policy's `local` gate, 0.4079, came from `--provider local --gate min-accuracy=0.9`
-on its own recording, and `jev`'s 0.2 is set by hand.
+until it recommends what the file holds. Here that took three sweeps:
+
+1. Over placeholder numbers, it recommended deny 0.9349 and gate 0.5618.
+2. With those in the file, deny 0.843 and gate 0.5418.
+3. With those in the file, the same again.
+
+The router policy's `local` gate, 0.4079, came from `--provider local --gate min-accuracy=0.9` on its
+own recording, and `jev`'s 0.2 is set by hand.
 
 ### `compare`
 

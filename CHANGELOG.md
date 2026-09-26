@@ -1,9 +1,26 @@
 # Changelog
 
-Notable changes to the three packages, `SemanticPolicy.Core`, `SemanticPolicy.Providers.TypeSafe`
-and `SemanticPolicy.AgentFramework`, which share one version. Versions follow
-[Semantic Versioning](https://semver.org/); while the major version is 0, any release can change the
-API.
+Notable changes to the packages `SemanticPolicy.Core`, `SemanticPolicy.Providers.SystemOne` (from
+0.1.0-alpha.2), `SemanticPolicy.Providers.TypeSafe` and `SemanticPolicy.AgentFramework`, which share
+one version. Versions follow [Semantic Versioning](https://semver.org/); while the major version is
+0, any release can change the API.
+
+## 0.1.0-alpha.2
+
+The System One provider, for a decision model you run yourself.
+
+- **`SemanticPolicy.Providers.SystemOne`.** New. Any server that answers TypeSafe's System One API at
+  `/v1/systemone`, registered with `AddSystemOne`. It reports the server's numbers as a score unless
+  you declare them a probability, refuses plain `http` to anything but a loopback host unless you
+  allow it, and can refuse a context longer than a limit you set.
+- **`SemanticPolicy.Providers.TypeSafe`.** Built on the System One provider, which it now brings
+  along at exactly its own version.
+
+In the repository, not in a package: the evaluation CLI gains a `local` binding for a Von server
+beside `jev`, and its recordings of the smoke and router sets are answered by both. It builds a
+provider only when a policy binds it, and a curve replays at most 101 candidates.
+[Local setup](README.md#local-setup) starts Von, and [docs/local-models.md](docs/local-models.md)
+has what a probe measured on it and on two other local servers.
 
 ## 0.1.0-alpha.1 - 2026-09-24
 
