@@ -95,8 +95,10 @@ public abstract class ProviderContractTests
     {
         ProviderHarness harness = CreateHarness();
         DecisionRequest request = harness.CreateRequest(DecisionType.Boolean, ProviderHarness.Marker);
-        harness.ScriptHang();
-        using CancellationTokenSource caller = new(TimeSpan.FromMilliseconds(50));
+        using CancellationTokenSource caller = new();
+        // Cancelled from the transport, not on a timer of its own: two timers both due on a loaded machine
+        // fire in no set order, and the adapter's firing first turns this call into a Timeout result.
+        harness.ScriptHang(caller.Cancel);
 
         Func<Task> act = () => harness.Provider.DecideAsync(request, caller.Token);
 

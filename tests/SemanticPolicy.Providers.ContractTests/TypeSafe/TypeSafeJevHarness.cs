@@ -9,8 +9,7 @@ namespace SemanticPolicy.Providers.ContractTests.TypeSafe;
 
 /// <summary>
 /// The Jev adapter on a scripted transport. The timeout is short so the suite's own timeout case
-/// returns in well under a second and a 50 ms caller cancellation fires before the adapter's timer;
-/// tests that need another timeout configure their own.
+/// returns in well under a second; tests that need another timeout configure their own.
 /// </summary>
 public sealed class TypeSafeJevHarness : ProviderHarness
 {
@@ -120,5 +119,5 @@ public sealed class TypeSafeJevHarness : ProviderHarness
         }
     }
 
-    public override void ScriptHang() => Handler.Hang();
+    public override void ScriptHang(Action onHang) => Handler.Hang(onHang);
 }

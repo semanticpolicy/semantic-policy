@@ -10,7 +10,7 @@ namespace SemanticPolicy.Providers.ContractTests.SystemOne;
 /// <summary>
 /// The System One client on a scripted transport, as a user would first register it: <c>Score</c>
 /// evidence, plain <c>http</c> on loopback and no key. The timeout is short so the suite's own timeout
-/// case returns in well under a second and a 50 ms caller cancellation fires before the client's timer.
+/// case returns in well under a second.
 /// </summary>
 public sealed class SystemOneHarness : ProviderHarness
 {
@@ -123,5 +123,5 @@ public sealed class SystemOneHarness : ProviderHarness
         }
     }
 
-    public override void ScriptHang() => Handler.Hang();
+    public override void ScriptHang(Action onHang) => Handler.Hang(onHang);
 }
