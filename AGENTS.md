@@ -30,6 +30,7 @@ tests/SemanticPolicy.Providers.ContractTests/  the suite every provider must pas
 tests/SemanticPolicy.AgentFramework.Tests/  the adapter's tests, on a scripted model and provider
 tests/SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, on a scripted provider
 docs/adr/                                   architecture decisions, immutable once merged
+docs/local-models.md                        what a probe measured on three local System One servers
 docs/protocol-v0.md                         the language-neutral request/result shape
 docs/THREAT_MODEL.md                        the threats the library is designed around
 ```
