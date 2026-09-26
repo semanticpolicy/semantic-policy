@@ -1,9 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <!-- Not published yet: the package ships together with its packaging metadata and the
-         documentation of a local setup. Remove this line then. -->
-    <IsPackable>false</IsPackable>
+    <Description>Decision provider for any server that speaks the System One wire at /v1/systemone, such as a decision model you run yourself.</Description>
+    <PackageTags>$(PackageTags);systemone;self-hosted</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
