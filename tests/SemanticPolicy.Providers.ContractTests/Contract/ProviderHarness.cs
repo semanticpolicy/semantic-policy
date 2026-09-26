@@ -32,6 +32,9 @@ public abstract class ProviderHarness
     /// <summary>Script the next call to fail with the kind; whatever body it takes carries <see cref="Marker"/>.</summary>
     public abstract void ScriptFailure(FailureKind kind);
 
-    /// <summary>Script the next call to hang until the token the transport was given is cancelled.</summary>
-    public abstract void ScriptHang();
+    /// <summary>
+    /// Script the next call to hang until the token the transport was given is cancelled, running
+    /// <paramref name="onHang"/> once the request has reached the transport and is waiting.
+    /// </summary>
+    public abstract void ScriptHang(Action onHang);
 }

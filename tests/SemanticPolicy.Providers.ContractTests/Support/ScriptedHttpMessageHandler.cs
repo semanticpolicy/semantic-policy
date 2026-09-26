@@ -79,11 +79,17 @@ internal sealed class ScriptedHttpMessageHandler : HttpMessageHandler
     /// <summary>Throw the exception from the transport, before any response exists.</summary>
     public void Throw(Exception exception) => _script = (_, _) => throw exception;
 
-    /// <summary>Never answer; complete only when the token the transport was given is cancelled.</summary>
-    public void Hang() =>
+    /// <summary>
+    /// Never answer; complete only when the token the transport was given is cancelled.
+    /// <paramref name="onHang"/>, when given, runs once the request is waiting, so a cancellation it
+    /// requests lands during the hang.
+    /// </summary>
+    public void Hang(Action? onHang = null) =>
         _script = async (_, cancellationToken) =>
         {
-            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            Task hang = Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            onHang?.Invoke();
+            await hang;
             throw new InvalidOperationException("unreachable");
         };
 
