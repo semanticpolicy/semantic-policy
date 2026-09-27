@@ -8,6 +8,7 @@
   <Folder Name="/src/">
     <Project Path="src/SemanticPolicy.AgentFramework/SemanticPolicy.AgentFramework.csproj" />
     <Project Path="src/SemanticPolicy.Core/SemanticPolicy.Core.csproj" />
+    <Project Path="src/SemanticPolicy.FluentValidation/SemanticPolicy.FluentValidation.csproj" />
     <Project Path="src/SemanticPolicy.Providers.Local/SemanticPolicy.Providers.Local.csproj" />
     <Project Path="src/SemanticPolicy.Providers.SystemOne/SemanticPolicy.Providers.SystemOne.csproj" />
     <Project Path="src/SemanticPolicy.Providers.TypeSafe/SemanticPolicy.Providers.TypeSafe.csproj" />
@@ -16,6 +17,7 @@
     <Project Path="tests/SemanticPolicy.AgentFramework.Tests/SemanticPolicy.AgentFramework.Tests.csproj" />
     <Project Path="tests/SemanticPolicy.Core.Tests/SemanticPolicy.Core.Tests.csproj" />
     <Project Path="tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj" />
+    <Project Path="tests/SemanticPolicy.FluentValidation.Tests/SemanticPolicy.FluentValidation.Tests.csproj" />
     <Project Path="tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj" />
   </Folder>
   <Folder Name="/tools/">

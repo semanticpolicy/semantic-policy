@@ -23,11 +23,13 @@ src/SemanticPolicy.Providers.SystemOne/     decision provider for any System One
 src/SemanticPolicy.Providers.TypeSafe/      hosted decision provider, built on SystemOne
 src/SemanticPolicy.Providers.Local/         skeleton, not published
 src/SemanticPolicy.AgentFramework/          Microsoft Agent Framework integration
+src/SemanticPolicy.FluentValidation/        FluentValidation integration: semantic rules on validators
 tools/SemanticPolicy.Evals/                 evaluation CLI
 examples/                                   four demos: PromptInjectionGuard, ToolIntentGuard, ToolResultGuard, AgentRouter
 tests/SemanticPolicy.Core.Tests/            unit tests
 tests/SemanticPolicy.Providers.ContractTests/  the suite every provider must pass
 tests/SemanticPolicy.AgentFramework.Tests/  the adapter's tests, on a scripted model and provider
+tests/SemanticPolicy.FluentValidation.Tests/  the integration's tests, on a scripted provider
 tests/SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, on a scripted provider
 docs/adr/                                   architecture decisions, immutable once merged
 docs/local-models.md                        what a probe measured on three local System One servers
@@ -49,6 +51,7 @@ Run the narrowest command that reads what you changed. All three must pass befor
 | `src/SemanticPolicy.Core/**` | `dotnet test tests/SemanticPolicy.Core.Tests/SemanticPolicy.Core.Tests.csproj` |
 | `src/SemanticPolicy.Providers.**` | `dotnet test tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj` |
 | `src/SemanticPolicy.AgentFramework/**` | `dotnet test tests/SemanticPolicy.AgentFramework.Tests/SemanticPolicy.AgentFramework.Tests.csproj` |
+| `src/SemanticPolicy.FluentValidation/**` | `dotnet test tests/SemanticPolicy.FluentValidation.Tests/SemanticPolicy.FluentValidation.Tests.csproj` |
 | `tools/SemanticPolicy.Evals/**` | `dotnet test tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj` |
 | any `.cs` — whitespace and `.editorconfig` style only | `dotnet format --verify-no-changes` |
 
