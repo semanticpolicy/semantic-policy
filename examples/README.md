@@ -16,10 +16,9 @@ directly. Between them the demos reach every verdict: `Allow`, `Warn` (A), `Esca
 (A, B, C) and `Abstain` (D). [Where it gets it wrong](#where-it-gets-it-wrong) shows the cases they
 get wrong, and [How long a check takes](#how-long-a-check-takes) what each check costs in time.
 
-[`CustomProvider`](CustomProvider/README.md) is not a demo: it shows how to write a provider of your
-own, an `IDecisionProvider` over a Text Embeddings Inference server running a prompt-injection
-classifier, with its own tests. It needs that server running on your machine instead of an OpenRouter
-key, and its README says how to start it.
+[`CustomProvider`](CustomProvider/README.md) is not a demo but a provider of your own to copy, over a
+classifier on your machine, with its own tests. It needs no key, and its README says how to start the
+classifier.
 
 **Not a security boundary.** A verdict is probabilistic: a rule here helps detect a prompt injection
 or a tool call that does not match the request, and flags it. A denied verdict is not proof of an
@@ -30,7 +29,7 @@ person in the loop for anything irreversible. [`SECURITY.md`](../SECURITY.md) sa
 
 The four demos need `OPENROUTER_API_KEY`. One OpenRouter key covers both the chat model the agents
 talk to and the decision model the policies ask. B scripts its chat model, but its policy still needs
-the key. `CustomProvider` needs no key; its README says how to run it.
+the key.
 
 ```bash
 dotnet run --project examples/PromptInjectionGuard

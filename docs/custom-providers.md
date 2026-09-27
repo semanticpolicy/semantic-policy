@@ -1,10 +1,8 @@
 # Custom providers
 
 A provider answers a rule's question and reports what it observed: a value with evidence of a
-declared kind, or a failure. It decides nothing. Thresholds, verdicts and what a failure means belong
-to the policy, and the verdict a policy reaches is probabilistic: a denied verdict is not proof of an
-attack, and an allowed verdict is not proof of safety. No provider turns a rule into a security
-boundary. A prompt-injection rule raises the cost of an attack; it does not close the attack
+declared kind, or a failure. It decides nothing: thresholds, verdicts and what a failure means
+belong to the policy, and no provider turns a rule into a security boundary
 ([`SECURITY.md`](../SECURITY.md)).
 
 This guide says which way to plug a model in and, when that way is code of your own, the rules the
@@ -38,8 +36,62 @@ public interface IDecisionProvider
 ```
 
 `DecideAsync` gets one question, its decision type and the context to judge, and returns one
-`ProviderResult`. The rules below are what the evaluator relies on. Each names the code that keeps it
-in the example and in the Http client, and the tests that hold it there.
+`ProviderResult`. Over HTTP, a provider has this shape; `SendAsync` and `Read` stand for the parts
+that depend on the server, which the example writes out in full:
+
+```csharp
+public sealed class MyProvider(string id, Func<HttpClient> clientSource, MyOptions options) : IDecisionProvider
+{
+    public string Id { get; } = id;
+
+    public ProviderCapabilities Capabilities { get; } = new(
+        new HashSet<DecisionType> { DecisionType.Boolean },
+        new HashSet<EvidenceKind> { EvidenceKind.Score },
+        RawOutput: true,
+        StructuredContext: false);
+
+    public async Task<ProviderResult> DecideAsync(DecisionRequest request, CancellationToken cancellationToken = default)
+    {
+        using CancellationTokenSource timer = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timer.CancelAfter(options.Timeout);
+        Stopwatch clock = Stopwatch.StartNew();
+        HttpStatusCode status;
+        byte[]? body;
+        try
+        {
+            // Sends SemanticContext.ToCanonicalText(request.Context), reads the headers first and
+            // then a body of at most 1 MiB, or null when it is longer.
+            (status, body) = await SendAsync(clientSource(), request, timer.Token);
+        }
+        catch (OperationCanceledException) when (timer.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            return Failed(request, FailureKind.Timeout, $"no response within {options.Timeout.TotalMilliseconds:0} ms", clock);
+        }
+        catch (HttpRequestException exception)
+        {
+            return Failed(request, FailureKind.Unavailable, $"HttpRequestException: {exception.HttpRequestError}", clock);
+        }
+        catch (HttpIOException exception)
+        {
+            return Failed(request, FailureKind.Unavailable, $"HttpIOException: {exception.HttpRequestError}", clock);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return Failed(request, FailureKind.Unknown, $"{exception.GetType().Name} from the HTTP pipeline", clock);
+        }
+
+        // A value with evidence, or a failure of the kind the status maps to.
+        return Read(request, status, body, clock);
+    }
+
+    private ProviderResult Failed(DecisionRequest request, FailureKind kind, string message, Stopwatch clock) =>
+        ProviderResult.Failed(request.Type, kind, message, new ProviderMetadata(Id, options.Model, clock.Elapsed.TotalMilliseconds));
+}
+```
+
+The rules below are what the evaluator relies on, and the shape above already keeps the first two.
+[Where each rule is kept](#where-each-rule-is-kept) names the code and the tests that hold each rule
+in the example and in the library.
 
 ### A failure is a result, never an exception
 
@@ -74,19 +126,6 @@ such body to read and go by the status alone.
 A failed call is reported once, never retried inside the provider; a host that wants retries
 configures them on the `HttpClient`.
 
-- Code: the `catch` blocks and `KindOf` in the example's
-  [`TeiClassifierProvider`](../examples/CustomProvider/CustomProvider/TeiClassifierProvider.cs); the
-  clients' shared [`ProviderHttpCall`](../src/Shared/ProviderHttpCall.cs) and `KindOf` in
-  [`ProviderHttp`](../src/Shared/ProviderHttp.cs); `FailureKindOf` in the Http client's
-  [`HttpProviderResponse`](../src/SemanticPolicy.Providers.Http/HttpProviderResponse.cs).
-- Tests: the example's `Status_Maps_To_A_Failure_Kind`, `Connection_Failure_Reads_As_Unavailable`,
-  `Answer_Outside_The_Expected_Shape_Reads_As_Malformed` and
-  `Caller_Cancellation_Throws_OperationCanceledException`; the contract suite's
-  `Provider_Reports_Every_Failure_Kind_As_A_Failure_Result_Without_Throwing`, which also checks that a
-  failed call is not retried; the Http client's `Failure_Body_Kind_Wins_Over_The_Status`; Core's
-  `Provider_Exception_Propagates_Unchanged` and
-  `Budget_Expiry_Becomes_Failure_Timeout_Under_The_Failure_Behaviour`.
-
 ### A timer of your own, separate from the caller's token
 
 Link a `CancellationTokenSource` to the token you are given, start its timer with `CancelAfter`, and
@@ -103,15 +142,6 @@ propagates. `AddHttpProvider`, `AddSystemOne` and the example's registration all
 On Windows, a connection to a loopback port nothing listens on takes about two seconds to be refused,
 so a timer shorter than that reports a missing local server as a `Timeout` rather than as
 `Unavailable`. The example's timer is three seconds for that reason.
-
-- Code: `DecideAsync` in the example's provider, and the `ConfigureHttpClient` line in its
-  [`Program.cs`](../examples/CustomProvider/CustomProvider/Program.cs); the clients' shared
-  `ProviderHttpCall`, and the same line in `AddClient` in
-  [`ProviderHttp`](../src/Shared/ProviderHttp.cs).
-- Tests: the example's `Silent_Server_Ends_In_A_Timeout_Failure` and
-  `Caller_Cancellation_Throws_OperationCanceledException`; the Http client's
-  `Registered_Provider_Reports_The_Declared_Capabilities_Under_The_Registration_Name`, which checks
-  that the named client's timeout is infinite.
 
 ### The honest evidence kind
 
@@ -134,16 +164,6 @@ and the evaluator completes it as 1 − p. Any other kind has no complement, so 
 a Boolean rule reads the result as `Malformed` and the policy's `OnFailure` decides.
 `Evidence.Scale` names the scale for a reader, such as `softmax`, and claims nothing.
 
-- Code: `Read` in the example's provider, which reports TEI's two labels as `Score` evidence with both
-  keys on the `softmax` scale; the Boolean check in Core's
-  [`PolicyEvaluation`](../src/SemanticPolicy.Core/Evaluation/PolicyEvaluation.cs); the Http client's
-  `Relay` in [`HttpProvider`](../src/SemanticPolicy.Providers.Http/HttpProvider.cs), which passes on
-  only the kinds the registration declares.
-- Tests: the example's `Classifier_Answer_Becomes_A_Boolean_With_Score_Evidence`; Core's
-  `Success_That_Breaks_The_Contract_Is_Malformed_For_That_Attempt`, whose "one-key score evidence"
-  case is a `Score` with only `true`; the Http client's `Server_Answer_Is_Relayed_Under_The_Client_Id`,
-  which drops a `logit` the registration did not declare.
-
 ### Declared capabilities, checked before any call
 
 [`Capabilities`](../src/SemanticPolicy.Core/Providers/ProviderCapabilities.cs) says, in-process, what
@@ -160,34 +180,20 @@ Declare what the provider produces and nothing more: an absent capability is abs
 `StructuredContext` false, render the context with `SemanticContext.ToCanonicalText`, so every
 text-only provider reads the same text.
 
-- Code: `Capabilities` in the example's provider — Boolean, `Score`, `RawOutput`, no structured
-  context; the check in Core's [`PolicyEvaluator`](../src/SemanticPolicy.Core/PolicyEvaluator.cs); the
-  Http client's [`HttpProviderOptions`](../src/SemanticPolicy.Providers.Http/HttpProviderOptions.cs),
-  which refuse a registration that leaves a capability undeclared.
-- Tests: Core's `Registered_Policies_Are_Validated_When_The_Evaluator_Is_Constructed` and
-  `Ad_Hoc_Policy_Is_Validated_Before_Its_First_Provider_Call`; the Http client's
-  `Registration_With_An_Undeclared_Or_Invalid_Option_Throws_At_The_Call`.
-
 ### No content in messages or logs, the body in `Raw`
 
 A failure's message says what happened in terms that quote nothing: the status, an error code or type
 the server returned when it is one the API documents or at least an identifier, the body's length,
 `no response within N ms`, a transport failure's `HttpRequestError`. Never the question, the context,
 or any free text the server wrote, since an error text can quote the input. The same holds for
-exception messages and for anything the provider logs, and the simplest provider logs nothing. A
-successful result's strings follow the same rule: evidence is keyed only by the request's answers,
+exception messages and for anything the provider logs, and the simplest provider logs nothing.
+
+A successful result's strings follow the same rule: evidence is keyed only by the request's answers,
 and a model, a request id or a scale from the server is kept only when it is an identifier, 1 to 200
 printable ASCII characters without a space. Keep the parsed body in the result's `Raw`, which stays
 in memory and is never serialized, so a caller can read it without it travelling wherever a result
-is written.
-Register the named `HttpClient` with `RemoveAllLoggers()`, so that no log line can print an
-`Authorization` header.
-
-- Code: `DescribeError` in the example's provider; `Describe` in the Http client's
-  `HttpProviderResponse`.
-- Tests: the example's `Failure_Message_Names_The_Error_Type_But_Never_The_Server_Text`; the contract
-  suite's `Failure_Message_And_ToString_Never_Contain_The_Marker`; the Http client's
-  `Server_Text_Never_Reaches_The_Outcome_Message`.
+is written. Register the named `HttpClient` with `RemoveAllLoggers()`, so that no log line can print
+an `Authorization` header.
 
 ### Refuse an input the model would cut
 
@@ -198,16 +204,14 @@ check its length before the call, or ask the server to refuse rather than cut. T
 `FailureBehavior.Fallback(Verdict.Deny)`. Under `FailureBehavior.Allow`, anyone who pads an input past
 the limit skips the rule.
 
-- `MaxContextLength` on both clients,
-  [`SystemOneOptions`](../src/SemanticPolicy.Providers.SystemOne/SystemOneOptions.cs) and
-  `HttpProviderOptions`, refuses a context whose canonical text is longer, without calling the server.
-  [Local decision models](local-models.md#long-contexts) gives the limits a probe measured on Von and
-  Laya. They are characters of English text; code, numbers or another language need a lower limit.
-- The example sends TEI `truncate: false`, which overrides TEI's default of cutting silently: TEI then
-  answers an over-long input with a 422, which the provider reads as `RejectedInput`.
-- Tests: the Http client's `Context_Length_Against_MaxContextLength_Decides_Whether_The_Server_Is_Called`;
-  the example's `Request_Carries_The_Canonical_Text_Of_The_Context_And_Not_The_Question`, which checks
-  `truncate: false`, and `Status_Maps_To_A_Failure_Kind`, whose 422 case reads as `RejectedInput`.
+Both clients check the length: `MaxContextLength` on
+[`SystemOneOptions`](../src/SemanticPolicy.Providers.SystemOne/SystemOneOptions.cs) and
+`HttpProviderOptions` refuses a context whose canonical text is longer, without calling the server.
+[Local decision models](local-models.md#long-contexts) gives the limits a probe measured on Von and
+Laya; they are characters of English text, and code, numbers or another language need a lower limit.
+The example asks the server: it sends TEI `truncate: false`, which overrides TEI's default of cutting
+silently, and TEI then answers an over-long input with a 422, which the provider reads as
+`RejectedInput`.
 
 ### Every result names a model
 
@@ -216,13 +220,6 @@ the server's answer names a model, report that one. When it names none, as TEI's
 provider builds the result itself, report the model the registration configured. A threshold is
 measured against one model, so a verdict that cannot say which model answered cannot be checked
 against that measurement.
-
-- Code: `Metadata` in the example's provider, from `TeiClassifierOptions.Model`; `Relay` and `Failed`
-  in the Http client's `HttpProvider`, from `HttpProviderOptions.Model`, which is required.
-- Tests: the example's `Status_Maps_To_A_Failure_Kind`, `Connection_Failure_Reads_As_Unavailable`,
-  `Answer_Outside_The_Expected_Shape_Reads_As_Malformed` and `Silent_Server_Ends_In_A_Timeout_Failure`,
-  each of which checks the configured model on a failure; the Http client's
-  `Result_Without_A_Server_Model_Reports_The_Configured_Model`.
 
 ### One name for the binding, the client and the id
 
@@ -234,7 +231,8 @@ and a client's configuration then never disagree. From the example's `Program.cs
 ```csharp
 services.AddHttpClient("tei")
     .RemoveAllLoggers()
-    .ConfigureHttpClient(client => client.Timeout = Timeout.InfiniteTimeSpan);
+    .ConfigureHttpClient(client => client.Timeout = Timeout.InfiniteTimeSpan)
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
 
 services.AddSemanticPolicy()
     .AddProvider("tei", container =>
@@ -245,20 +243,17 @@ services.AddSemanticPolicy()
     .AddPolicy(policy);
 ```
 
-The provider is a singleton, so it asks the factory for a client on every call rather than keeping
-one: a kept client would hold its first connections, and the address they resolved, until the process
-restarts.
+The client follows no redirect, because a 307 or a 308 would send the text again to wherever the
+server points; the redirect reads as `Unknown` instead. The provider is a singleton, so it asks the
+factory for a client on every call rather than keeping one: a kept client would hold its first
+connections, and the address they resolved, until the process restarts.
 
 A provider you hand to others deserves an `Add<Provider>` extension on `ISemanticPolicyBuilder` that
 does the same work. It takes the name and an options delegate, validates the options at the call so a
-mistake fails before a container exists, registers the named client with no loggers and no timeout of
-its own, and defaults the provider's id to the name. `AddHttpProvider` in
+mistake fails before a container exists, registers the named client with no loggers, no timeout of
+its own and no redirects, and defaults the provider's id to the name. `AddHttpProvider` in
 `HttpProviderBuilderExtensions` is one to copy; `AddSystemOne` and `AddTypeSafeJev` have the same
 shape.
-
-- Tests: the example's `Every_Call_Asks_The_Source_For_A_Client`; the Http client's
-  `Registered_Provider_Reports_The_Declared_Capabilities_Under_The_Registration_Name` and
-  `Registration_With_An_Undeclared_Or_Invalid_Option_Throws_At_The_Call`.
 
 ## Warm a cold server
 
@@ -277,21 +272,19 @@ alone — so nothing stops a policy from binding it to a rule that asks somethin
 would then be to a question nobody asked. Declare only the decision type it answers, say in the
 provider's documentation which question that is, and bind it only to a rule that asks exactly that.
 
-- Test: the example's `Request_Carries_The_Canonical_Text_Of_The_Context_And_Not_The_Question`, which
-  checks that the question never reaches the server.
-
 ## Test on a fake transport
 
 Test the provider through an `HttpMessageHandler` of your own that stands in for the server, never
 against a live one. The example's
 [`FakeTeiHandler`](../examples/CustomProvider/CustomProvider.Tests/FakeTeiHandler.cs) answers the way
-a test scripted it, throws as a transport does when nothing listens, or hangs until the token it was
-given is cancelled, and keeps the last request's method, URI and body for the test to check.
+a test scripted it, throws what a transport or a handler would, or hangs until the token it was given
+is cancelled, and keeps the last request's method, URI and body for the test to check.
 [`TeiClassifierProviderTests`](../examples/CustomProvider/CustomProvider.Tests/TeiClassifierProviderTests.cs)
 then covers the rules above: an answer read into a value and evidence, the request the server
-receives, the status table, a refused connection, an answer it cannot read, its own timer, the
-caller's cancellation, a failure message without the server's text, and a client asked for on every
-call. Every fixture is synthetic: no real content, no key, no live endpoint.
+receives, the status table, a refused connection, a handler's exception, a body over the limit, an
+answer it cannot read, its own timer, the caller's cancellation, a failure message without the
+server's text, and a client asked for on every call. Every fixture is synthetic: no real content, no
+key, no live endpoint.
 
 ```bash
 dotnet test examples/CustomProvider/CustomProvider.Tests
@@ -301,3 +294,28 @@ The library's own contract suite,
 [`tests/SemanticPolicy.Providers.ContractTests`](../tests/SemanticPolicy.Providers.ContractTests/),
 runs the same kind of cases against every provider in this repository. It is not published as a
 package, so copy the cases your provider needs, as the example does.
+
+## Where each rule is kept
+
+In the example, the code is
+[`TeiClassifierProvider`](../examples/CustomProvider/CustomProvider/TeiClassifierProvider.cs) and
+[`Program.cs`](../examples/CustomProvider/CustomProvider/Program.cs), and the tests are
+`TeiClassifierProviderTests`. In the library, the clients share
+[`ProviderHttpCall`](../src/Shared/ProviderHttpCall.cs) and
+[`ProviderHttp`](../src/Shared/ProviderHttp.cs), the Http client adds
+[`HttpProvider`](../src/SemanticPolicy.Providers.Http/HttpProvider.cs) and
+[`HttpProviderResponse`](../src/SemanticPolicy.Providers.Http/HttpProviderResponse.cs), and the tests
+are in the contract suite and in
+[`tests/SemanticPolicy.Core.Tests`](../tests/SemanticPolicy.Core.Tests/).
+
+| Rule | In the example | In the library |
+|---|---|---|
+| A failure is a result | The `catch` blocks and `KindOf`. Tests: `Status_Maps_To_A_Failure_Kind`, `Connection_Failure_Reads_As_Unavailable`, `Handler_Exception_Reads_As_Unknown_Naming_Only_Its_Type`, `Body_Over_The_Limit_Is_Not_Read`, `Answer_Outside_The_Expected_Shape_Reads_As_Malformed`. | `ProviderHttpCall`, `KindOf` in `ProviderHttp`, `FailureKindOf` in `HttpProviderResponse`. Tests: `Provider_Reports_Every_Failure_Kind_As_A_Failure_Result_Without_Throwing`, which also checks that a failed call is not retried; `HttpTransportTests`, run on each client; `Failure_Body_Kind_Wins_Over_The_Status`; Core's `Provider_Exception_Propagates_Unchanged`. |
+| A timer of your own | `DecideAsync`, and the `ConfigureHttpClient` line in `Program.cs`. Tests: `Silent_Server_Ends_In_A_Timeout_Failure`, `Caller_Cancellation_Throws_OperationCanceledException`. | `ProviderHttpCall`, and `AddClient` in `ProviderHttp`. Tests: `Registered_Provider_Reports_The_Declared_Capabilities_Under_The_Registration_Name`, which checks that the named client's timeout is infinite; Core's `Budget_Expiry_Becomes_Failure_Timeout_Under_The_Failure_Behaviour`. |
+| The honest evidence kind | `Read`, which reports TEI's two labels as `Score` evidence with both keys on the `softmax` scale. Test: `Classifier_Answer_Becomes_A_Boolean_With_Score_Evidence`. | The Boolean check in Core's `PolicyEvaluation`; `Relay` in `HttpProvider`, which passes on only the declared kinds. Tests: Core's `Success_That_Breaks_The_Contract_Is_Malformed_For_That_Attempt`; `Server_Answer_Is_Relayed_Under_The_Client_Id`; `Undeclared_Evidence_Is_Dropped_Without_Being_Checked`. |
+| Declared capabilities | `Capabilities`: Boolean, `Score`, `RawOutput`, no structured context. | The check in Core's `PolicyEvaluator`; `HttpProviderOptions`, which refuse a registration that leaves a capability undeclared. Tests: Core's `Registered_Policies_Are_Validated_When_The_Evaluator_Is_Constructed` and `Ad_Hoc_Policy_Is_Validated_Before_Its_First_Provider_Call`; `Registration_With_An_Undeclared_Or_Invalid_Option_Throws_At_The_Call`. |
+| No content in messages or logs | `DescribeError`, which names only TEI's own error types. Tests: `Failure_Message_Names_The_Error_Type_But_Never_The_Server_Text`, `Failure_Message_Leaves_Out_An_Error_Type_TEI_Does_Not_Use`. | `Identifier` in `ProviderHttp`; `Describe` and `EvidenceDeviation` in `HttpProviderResponse`. Tests: `Failure_Message_And_ToString_Never_Contain_The_Marker`, `Server_Text_Never_Reaches_The_Outcome_Message`, `Server_String_That_Is_Not_An_Identifier_Is_Not_Relayed`, `Answer_On_200_Outside_The_Contract_Reads_As_Malformed`. |
+| Refuse an input the model would cut | `truncate: false` in `DecideAsync`. Tests: `Request_Carries_The_Canonical_Text_Of_The_Context_And_Not_The_Question`, which checks `truncate: false`; the 422 case of `Status_Maps_To_A_Failure_Kind`. | `MaxContextLength` on both clients. Test: `Context_Length_Against_MaxContextLength_Decides_Whether_The_Server_Is_Called`. |
+| Every result names a model | `Metadata`, from `TeiClassifierOptions.Model`. Tests: `Status_Maps_To_A_Failure_Kind`, `Connection_Failure_Reads_As_Unavailable`, `Answer_Outside_The_Expected_Shape_Reads_As_Malformed` and `Silent_Server_Ends_In_A_Timeout_Failure`, each of which checks the configured model on a failure. | `Relay` and `Failed` in `HttpProvider`, from `HttpProviderOptions.Model`, which is required. Test: `Result_Without_A_Server_Model_Reports_The_Configured_Model`. |
+| One name, no redirects | The registration in `Program.cs`. Test: `Every_Call_Asks_The_Source_For_A_Client`. | `AddClient` in `ProviderHttp`. Tests: `Registered_Client_Follows_No_Redirect`, run on each client; `Registered_Provider_Reports_The_Declared_Capabilities_Under_The_Registration_Name`; `Registration_With_An_Undeclared_Or_Invalid_Option_Throws_At_The_Call`. |
+| A fixed-task classifier | Only the context goes out. Test: `Request_Carries_The_Canonical_Text_Of_The_Context_And_Not_The_Question`, which checks that the question never reaches the server. | Not applicable: both clients send the question. |

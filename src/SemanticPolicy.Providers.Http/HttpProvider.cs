@@ -17,10 +17,10 @@ namespace SemanticPolicy.Providers.Http;
 /// <remarks>
 /// A <c>200</c> carries a <c>success</c> or an <c>abstain</c>; anything else on a <c>200</c>, and any
 /// other 2xx, is <see cref="FailureKind.Malformed"/>. A status outside 2xx is a failure whose kind a
-/// v0 failure body names, or else the status. A body over 1 MiB is not read, and an exception from a
-/// handler the host added is <see cref="FailureKind.Unknown"/>. The provider retries nothing and reads no
-/// <c>Retry-After</c>: a host that wants either configures the <see cref="HttpClient"/> it hands in.
-/// It logs nothing and starts no activity, and no message, exception or
+/// v0 failure body names, or else the status. A body over 1 MiB is not read, and an exception from
+/// a handler the host added is <see cref="FailureKind.Unknown"/>. The provider retries nothing and
+/// reads no <c>Retry-After</c>: a host that wants either configures the <see cref="HttpClient"/> it
+/// hands in. It logs nothing and starts no activity, and no message, exception or
 /// <see cref="ProviderResult.ToString"/> it produces carries the question, the context or any text
 /// the server wrote; the server's body stays in <see cref="ProviderResult.Raw"/>.
 /// </remarks>
@@ -42,9 +42,9 @@ public sealed class HttpProvider : IDecisionProvider
     /// timer, and a shorter client timeout surfaces as an <see cref="OperationCanceledException"/> with
     /// no token cancelled, which the evaluator treats as a programming error. Its handler should
     /// follow no redirect, as a registration's does: a 307 or 308 resends the request, context and
-    /// all, to wherever the server points. The client is neither modified nor disposed here.
-    /// The options are validated and copied, so a later change to them
-    /// changes nothing. This constructor never reads the environment: only a registration reads
+    /// all, to wherever the server points. The client is neither modified nor disposed here. The
+    /// options are validated and copied, so a later change to them changes nothing. This constructor
+    /// never reads the environment: only a registration reads
     /// <see cref="HttpProviderOptions.ApiKeyVariable"/>, so a key for a provider built here goes on
     /// <see cref="HttpProviderOptions.ApiKey"/>, or there is none.
     /// </summary>
