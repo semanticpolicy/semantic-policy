@@ -1,7 +1,7 @@
 # Examples
 
-Four programs, each a single `dotnet run` that plays a fixed scenario and prints what the policy
-concluded and what the application did about it.
+Four demos, each a single `dotnet run` that plays a fixed scenario and prints what the policy
+concluded and what the application did about it, and one example of a provider of your own.
 
 | | Demo | Point | What it shows |
 |---|---|---|---|
@@ -16,6 +16,11 @@ directly. Between them the demos reach every verdict: `Allow`, `Warn` (A), `Esca
 (A, B, C) and `Abstain` (D). [Where it gets it wrong](#where-it-gets-it-wrong) shows the cases they
 get wrong, and [How long a check takes](#how-long-a-check-takes) what each check costs in time.
 
+[`CustomProvider`](CustomProvider/README.md) is not a demo: it shows how to write a provider of your
+own, an `IDecisionProvider` over a Text Embeddings Inference server running a prompt-injection
+classifier, with its own tests. It needs that server running on your machine instead of an OpenRouter
+key, and its README says how to start it.
+
 **Not a security boundary.** A verdict is probabilistic: a rule here helps detect a prompt injection
 or a tool call that does not match the request, and flags it. A denied verdict is not proof of an
 attack and an allowed one is not proof of safety, so keep authorization, least-privilege tools and a
@@ -23,8 +28,9 @@ person in the loop for anything irreversible. [`SECURITY.md`](../SECURITY.md) sa
 
 ## Running them
 
-Set `OPENROUTER_API_KEY`. One OpenRouter key covers both the chat model the agents talk to and the
-decision model the policies ask. B scripts its chat model, but its policy still needs the key.
+The four demos need `OPENROUTER_API_KEY`. One OpenRouter key covers both the chat model the agents
+talk to and the decision model the policies ask. B scripts its chat model, but its policy still needs
+the key. `CustomProvider` needs no key; its README says how to run it.
 
 ```bash
 dotnet run --project examples/PromptInjectionGuard
@@ -33,10 +39,10 @@ dotnet run --project examples/ToolResultGuard
 dotnet run --project examples/AgentRouter
 ```
 
-Without the key, every demo prints one line naming the variable and exits with code 2, before an agent
-runs and before anything is sent.
+Without the key, each of the four demos prints one line naming the variable and exits with code 2,
+before an agent runs and before anything is sent.
 
-The first line of every run names both models. In A, C and D:
+The first line of every demo's run names both models. In A, C and D:
 
 ```
 chat model: openai/gpt-4.1-mini   decision model: typesafe/jev-1.13   both through OpenRouter
@@ -248,7 +254,7 @@ decision call runs out of time: the verdict then comes from the declared failure
 `source: FailureBehavior`. That is "the check did not happen", not "the model said no", and it is why
 a failure behaviour is mandatory.
 
-**`Abstain` is reachable in every demo.** D shows it, and every security binding declares
+**`Abstain` is reachable in every demo.** D shows it, and every binding in A, B and C declares
 `WhenProbabilityMarginBelow(0.10)`, so an answer too close to call crosses no threshold, and with
 nothing to fall back to the policy abstains. Each handler decides what that means at its point: A and
 C carry on, B refuses the call, D hands the request to a person.
