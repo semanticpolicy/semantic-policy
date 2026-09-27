@@ -9,11 +9,13 @@ SemanticPolicy evaluates semantic decisions — "is this input trying to manipul
 this tool call consistent with what the user asked for" — through a pluggable decision provider, and
 makes those decisions testable. Alpha: `src/SemanticPolicy.Core/`,
 `src/SemanticPolicy.Providers.TypeSafe/` and `src/SemanticPolicy.AgentFramework/` are implemented and
-tested, and the four examples run on them; `src/SemanticPolicy.Providers.SystemOne/`, the provider for
-any System One server and the base TypeSafe is built on, is implemented and tested too;
+tested, and the demos under `examples/` run on them; `src/SemanticPolicy.Providers.SystemOne/`, the
+provider for any System One server and the base TypeSafe is built on, is implemented and tested too;
 `tools/SemanticPolicy.Evals/` is implemented and tested, and its `run` verb calls Jev through
 OpenRouter and a local Von server through SystemOne; `src/SemanticPolicy.Providers.Http/`, the
-client for any protocol v0 server, is implemented and tested.
+client for any protocol v0 server, is implemented and tested. `examples/CustomProvider/` is a
+provider of your own, over a local classifier and with its own tests, and
+`docs/custom-providers.md` gives the rules it follows.
 
 ## Layout
 
@@ -24,12 +26,14 @@ src/SemanticPolicy.Providers.TypeSafe/      hosted decision provider, built on S
 src/SemanticPolicy.Providers.Http/          decision provider for any protocol v0 server
 src/SemanticPolicy.AgentFramework/          Microsoft Agent Framework integration
 tools/SemanticPolicy.Evals/                 evaluation CLI
-examples/                                   four demos: PromptInjectionGuard, ToolIntentGuard, ToolResultGuard, AgentRouter
+examples/                                   demos on Jev: PromptInjectionGuard, ToolIntentGuard, ToolResultGuard, AgentRouter
+examples/CustomProvider/                    a provider of your own over a local classifier, and its tests
 tests/SemanticPolicy.Core.Tests/            unit tests
 tests/SemanticPolicy.Providers.ContractTests/  the suite every provider must pass
 tests/SemanticPolicy.AgentFramework.Tests/  the adapter's tests, on a scripted model and provider
 tests/SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, on a scripted provider
 docs/adr/                                   architecture decisions, immutable once merged
+docs/custom-providers.md                    which provider to use, and the rules for writing your own
 docs/local-models.md                        what a probe measured on three local System One servers
 docs/protocol-v0.md                         the language-neutral request/result shape
 docs/THREAT_MODEL.md                        the threats the library is designed around
@@ -54,8 +58,10 @@ Run the narrowest command that reads what you changed. All three must pass befor
 
 CI runs the same commands on a pull request into `main`, then packs `tools/SemanticPolicy.Evals/` as
 the `SemanticPolicy.Evals` dotnet tool, installs it from that package alone and runs it outside the
-checkout on the datasets it carries, with no key. The examples need `OPENROUTER_API_KEY` and a live
-model, so neither CI nor this table runs them; `examples/README.md` says how to run them by hand.
+checkout on the datasets it carries, with no key. The demos need `OPENROUTER_API_KEY` and a live
+model, and `examples/CustomProvider/` a local TEI server, so neither CI nor this table runs them;
+`examples/README.md` says how to run them by hand. CI's `dotnet test` does run
+`examples/CustomProvider/CustomProvider.Tests/`, which needs neither.
 
 The evaluation CLI's documentation shows the installed command, `semantic-policy <command>`; its
 from-source equivalent, which runs the code in the checkout, is
