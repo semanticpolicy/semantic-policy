@@ -52,7 +52,7 @@ provider does not declare, and let the token's cancellation propagate as an
 evaluator turns the budget's expiry into a `Timeout` itself. Any other exception propagates out of
 `EvaluateAsync` unchanged, with no verdict.
 
-For an HTTP server, both clients and the example read an answer the same way:
+For an HTTP server, both clients and the example map what came back the same way:
 
 | What came back | Failure kind |
 |---|---|
@@ -64,18 +64,25 @@ For an HTTP server, both clients and the example read an answer the same way:
 | no connection: `HttpRequestException`, `HttpIOException` | `Unavailable` |
 | nothing within the provider's own timer | `Timeout` |
 
+The Http client reads one thing first: a status outside 2xx whose body is a protocol v0 failure takes
+the `kind` that body names, which the status only approximates, so a 504 naming `timeout` reads
+`Timeout` ([HTTP binding](protocol-v0.md#response)). The System One client and the example have no
+such body to read and go by the status alone.
+
 A failed call is reported once, never retried inside the provider; a host that wants retries
 configures them on the `HttpClient`.
 
 - Code: the `catch` blocks and `KindOf` in the example's
   [`TeiClassifierProvider`](../examples/CustomProvider/CustomProvider/TeiClassifierProvider.cs); the
   Http client's [`HttpProviderCall`](../src/SemanticPolicy.Providers.Http/HttpProviderCall.cs) and
-  `KindOf` in [`HttpProviderResponse`](../src/SemanticPolicy.Providers.Http/HttpProviderResponse.cs).
+  `KindOf` and `FailureKindOf` in
+  [`HttpProviderResponse`](../src/SemanticPolicy.Providers.Http/HttpProviderResponse.cs).
 - Tests: the example's `Status_Maps_To_A_Failure_Kind`, `Connection_Failure_Reads_As_Unavailable`,
   `Answer_Outside_The_Expected_Shape_Reads_As_Malformed` and
   `Caller_Cancellation_Throws_OperationCanceledException`; the contract suite's
   `Provider_Reports_Every_Failure_Kind_As_A_Failure_Result_Without_Throwing`, which also checks that a
-  failed call is not retried; Core's `Provider_Exception_Propagates_Unchanged` and
+  failed call is not retried; the Http client's `Failure_Body_Kind_Wins_Over_The_Status`; Core's
+  `Provider_Exception_Propagates_Unchanged` and
   `Budget_Expiry_Becomes_Failure_Timeout_Under_The_Failure_Behaviour`.
 
 ### A timer of your own, separate from the caller's token
