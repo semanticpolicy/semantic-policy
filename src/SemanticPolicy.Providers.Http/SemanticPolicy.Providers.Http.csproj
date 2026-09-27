@@ -1,10 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>A client for any protocol v0 server: a decision provider that posts each request to a server speaking SemanticPolicy's protocol v0 over HTTP, local or hosted.</Description>
-    <!-- Nothing is implemented here yet, so nothing is published. Remove this line when the
-         provider lands. -->
-    <IsPackable>false</IsPackable>
+    <Description>Decision provider for any server that speaks SemanticPolicy's protocol v0 over HTTP at /v0/decide, such as a classifier you run yourself.</Description>
+    <PackageTags>$(PackageTags);protocol-v0;http;self-hosted</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

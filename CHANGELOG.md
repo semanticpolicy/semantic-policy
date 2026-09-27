@@ -1,19 +1,29 @@
 # Changelog
 
 Notable changes to the packages `SemanticPolicy.Core`, `SemanticPolicy.Providers.SystemOne` (from
-0.1.0-alpha.2), `SemanticPolicy.Providers.TypeSafe`, `SemanticPolicy.AgentFramework` and
-`SemanticPolicy.Evals` (from 0.1.0-alpha.2), which share one version. Versions follow
+0.1.0-alpha.2), `SemanticPolicy.Providers.Http` (from 0.1.0-alpha.2),
+`SemanticPolicy.Providers.TypeSafe`, `SemanticPolicy.AgentFramework` and `SemanticPolicy.Evals` (from
+0.1.0-alpha.2), which share one version. Versions follow
 [Semantic Versioning](https://semver.org/); while the major version is 0, any release can change the
 API.
 
 ## 0.1.0-alpha.2
 
-The System One provider, for a decision model you run yourself, and the evaluation CLI as a package.
+The System One provider, for a decision model you run yourself, a provider for any server that
+speaks protocol v0, a guide to writing a provider of your own, and the evaluation CLI as a package.
 
 - **`SemanticPolicy.Providers.SystemOne`.** New. Any server that answers TypeSafe's System One API at
   `/v1/systemone`, registered with `AddSystemOne`. It reports the server's numbers as a score unless
   you declare them a probability, refuses plain `http` to anything but a loopback host unless you
   allow it, and can refuse a context longer than a limit you set.
+- **`SemanticPolicy.Providers.Http`.** New. Any server that speaks [protocol v0](docs/protocol-v0.md)
+  over HTTP, registered with `AddHttpProvider`. You declare the decision types the server answers,
+  the evidence kinds it sends and whether it reads a structured context, and the provider reports
+  nothing beyond that declaration. Like the System One provider, it refuses plain `http` to anything
+  but a loopback host unless you allow it, and can refuse a context longer than a limit you set.
+  Nothing the server writes reaches a failure's message. `docs/protocol-v0.md` gains the
+  [HTTP binding](docs/protocol-v0.md#http-binding): what such a server answers, how the provider
+  reads it, and a minimal server to start from.
 - **`SemanticPolicy.Providers.TypeSafe`.** Built on the System One provider, which it now brings
   along at exactly its own version.
 - **`SemanticPolicy.Evals`.** New. The evaluation CLI, until now run from a clone, as a dotnet tool
@@ -25,6 +35,13 @@ The System One provider, for a decision model you run yourself, and the evaluati
 
 [Local setup](README.md#local-setup) starts Von, and [docs/local-models.md](docs/local-models.md)
 has what a probe measured on it and on two other local servers.
+
+[docs/custom-providers.md](docs/custom-providers.md) says which provider fits a model of your own
+and, when none does, the rules an `IDecisionProvider` you write has to keep;
+[examples/CustomProvider](examples/CustomProvider/README.md) is one, over a prompt-injection
+classifier behind a Text Embeddings Inference server, with its own tests. Whichever provider answers,
+its answer is an estimate for the policy to threshold: a denied verdict is not proof of an attack, and
+an allowed verdict is not proof of safety.
 
 ## 0.1.0-alpha.1 - 2026-09-24
 
