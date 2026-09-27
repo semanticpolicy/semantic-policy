@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
-using System.Reflection;
 using System.Text.Json;
 using SemanticPolicy.Protocol;
 
@@ -24,9 +23,7 @@ namespace SemanticPolicy.Providers.SystemOne;
 /// </remarks>
 public sealed class SystemOneProvider : IDecisionProvider
 {
-    private const string _product = "SemanticPolicy.Providers.SystemOne";
-
-    private static readonly ProductInfoHeaderValue _userAgent = new(_product, PackageVersion());
+    private static readonly ProductInfoHeaderValue _userAgent = ProviderHttp.UserAgent(typeof(SystemOneProvider).Assembly);
 
     private readonly Func<HttpClient> _clientSource;
     private readonly Uri _endpoint;
@@ -76,8 +73,7 @@ public sealed class SystemOneProvider : IDecisionProvider
 
         _clientSource = clientSource;
 
-        // Joined as text: Uri's own combination would drop a base path such as a gateway's /api.
-        _endpoint = new Uri(options.BaseUrl!.AbsoluteUri.TrimEnd('/') + options.Path);
+        _endpoint = ProviderHttp.Endpoint(options.BaseUrl!, options.Path);
         _model = options.Model!;
         _apiKey = string.IsNullOrWhiteSpace(options.ApiKey) ? null : options.ApiKey;
         _evidence = options.Evidence;
@@ -121,7 +117,7 @@ public sealed class SystemOneProvider : IDecisionProvider
         }
 
         using HttpRequestMessage message = CreateMessage(request);
-        return await SystemOneCall.SendAsync(
+        return await ProviderHttpCall.SendAsync(
                 _clientSource(),
                 message,
                 _timeout,
@@ -135,21 +131,6 @@ public sealed class SystemOneProvider : IDecisionProvider
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         return () => httpClient;
-    }
-
-    // The informational version cut at the first '+': the SDK appends the commit hash there, and a
-    // hash is not a version. The assembly version's three components when the attribute is absent.
-    private static string PackageVersion()
-    {
-        Assembly assembly = typeof(SystemOneProvider).Assembly;
-        string? informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        if (!string.IsNullOrEmpty(informational))
-        {
-            int plus = informational.IndexOf('+', StringComparison.Ordinal);
-            return plus < 0 ? informational : informational[..plus];
-        }
-
-        return (assembly.GetName().Version ?? new Version(0, 0, 0)).ToString(3);
     }
 
     private static double Elapsed(long started) => Stopwatch.GetElapsedTime(started).TotalMilliseconds;
@@ -174,10 +155,10 @@ public sealed class SystemOneProvider : IDecisionProvider
 
     private ProviderResult Interpret(DecisionRequest request, HttpResponseMessage response, byte[] body, long started)
     {
-        JsonElement? raw = SystemOneResponse.TryParse(body);
+        JsonElement? raw = ProviderHttp.TryParse(body);
         if (response.StatusCode != HttpStatusCode.OK)
         {
-            FailureKind kind = SystemOneResponse.KindOf(response.StatusCode);
+            FailureKind kind = ProviderHttp.KindOf(response.StatusCode);
             string message = SystemOneResponse.DescribeError(response.StatusCode, raw, body.Length);
             return Failed(request.Type, kind, message, started) with { Raw = raw };
         }

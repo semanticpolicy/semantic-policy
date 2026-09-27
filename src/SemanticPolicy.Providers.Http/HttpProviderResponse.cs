@@ -14,25 +14,9 @@ namespace SemanticPolicy.Providers.Http;
 internal static class HttpProviderResponse
 {
     /// <summary>
-    /// Every status other than 200 as a failure kind, when no v0 failure body names one. 400 and 422
-    /// are the server's verdict on the request, so they are <see cref="FailureKind.RejectedInput"/>; a
-    /// 2xx that is not 200 carries no answer the binding allows, so it is
-    /// <see cref="FailureKind.Malformed"/>.
-    /// </summary>
-    public static FailureKind KindOf(HttpStatusCode status) =>
-        (int)status switch
-        {
-            401 or 403 => FailureKind.Unauthorized,
-            400 or 404 or 413 or 422 => FailureKind.RejectedInput,
-            408 or 429 => FailureKind.Unavailable,
-            >= 500 and <= 599 => FailureKind.Unavailable,
-            >= 200 and <= 299 => FailureKind.Malformed,
-            _ => FailureKind.Unknown,
-        };
-
-    /// <summary>
-    /// The kind a v0 failure body names, or <see langword="null"/> when the body is not one. Only a
-    /// whole v0 result counts, so a proxy's or a framework's own error object cannot steer the kind.
+    /// The kind a v0 failure body names, or <see langword="null"/> when the body is not one, in which
+    /// case the status decides. Only a whole v0 result counts, so a proxy's or a framework's own error
+    /// object cannot steer the kind.
     /// </summary>
     public static FailureKind? FailureKindOf(JsonElement? body) =>
         body is { } json && ReadResult(json) is { Outcome: { Status: OutcomeStatus.Failure, Kind: { } kind } }
@@ -41,20 +25,6 @@ internal static class HttpProviderResponse
 
     /// <summary>A failure kind as the wire spells it, such as <c>rejectedInput</c>.</summary>
     public static string WireName(FailureKind kind) => JsonNamingPolicy.CamelCase.ConvertName(kind.ToString());
-
-    /// <summary>The body parsed and detached from its document, or <see langword="null"/> when it is not JSON.</summary>
-    public static JsonElement? TryParse(byte[] body)
-    {
-        try
-        {
-            using JsonDocument document = JsonDocument.Parse(body);
-            return document.RootElement.Clone();
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
 
     /// <summary>
     /// The body as a v0 result, or <see langword="null"/> when it is not one. Every member the protocol

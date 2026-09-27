@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
-using System.Reflection;
 using System.Text.Json;
 using SemanticPolicy.Protocol;
 using SemanticPolicy.Providers.SystemOne;
@@ -23,10 +22,9 @@ namespace SemanticPolicy.Providers.TypeSafe;
 /// </remarks>
 public sealed class TypeSafeJevProvider : IDecisionProvider
 {
-    private const string _product = "SemanticPolicy.Providers.TypeSafe";
     private const string _requestIdHeader = "x-typesafe-request-id";
 
-    private static readonly ProductInfoHeaderValue _userAgent = new(_product, PackageVersion());
+    private static readonly ProductInfoHeaderValue _userAgent = ProviderHttp.UserAgent(typeof(TypeSafeJevProvider).Assembly);
     private static readonly ProviderCapabilities _capabilities = new(
         new HashSet<DecisionType> { DecisionType.Boolean, DecisionType.Choice, DecisionType.Score },
         new HashSet<EvidenceKind> { EvidenceKind.Probability },
@@ -75,8 +73,7 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
         TypeSafeJevRoute route = options.Route!;
         _clientSource = clientSource;
 
-        // Joined as text: Uri's own combination would drop a base path such as OpenRouter's /api.
-        _endpoint = new Uri(route.BaseUrl.AbsoluteUri.TrimEnd('/') + route.Path);
+        _endpoint = ProviderHttp.Endpoint(route.BaseUrl, route.Path);
         _model = options.Model ?? route.Model;
         _apiKey = options.ApiKey;
         _timeout = options.Timeout;
@@ -97,7 +94,7 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
 
         long started = Stopwatch.GetTimestamp();
         using HttpRequestMessage message = CreateMessage(request);
-        return await SystemOneCall.SendAsync(
+        return await ProviderHttpCall.SendAsync(
                 _clientSource(),
                 message,
                 _timeout,
@@ -111,21 +108,6 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         return () => httpClient;
-    }
-
-    // The informational version cut at the first '+': the SDK appends the commit hash there, and a
-    // hash is not a version. The assembly version's three components when the attribute is absent.
-    private static string PackageVersion()
-    {
-        Assembly assembly = typeof(TypeSafeJevProvider).Assembly;
-        string? informational = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
-        if (!string.IsNullOrEmpty(informational))
-        {
-            int plus = informational.IndexOf('+', StringComparison.Ordinal);
-            return plus < 0 ? informational : informational[..plus];
-        }
-
-        return (assembly.GetName().Version ?? new Version(0, 0, 0)).ToString(3);
     }
 
     private static double Elapsed(long started) => Stopwatch.GetElapsedTime(started).TotalMilliseconds;
@@ -146,10 +128,10 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
 
     private ProviderResult Interpret(DecisionRequest request, HttpResponseMessage response, byte[] body, long started)
     {
-        JsonElement? raw = SystemOneResponse.TryParse(body);
+        JsonElement? raw = ProviderHttp.TryParse(body);
         if (response.StatusCode != HttpStatusCode.OK)
         {
-            FailureKind kind = SystemOneResponse.KindOf(response.StatusCode);
+            FailureKind kind = ProviderHttp.KindOf(response.StatusCode);
             string message = SystemOneResponse.DescribeError(response.StatusCode, raw, body.Length);
             return Failed(request.Type, kind, message, started) with { Raw = raw };
         }
