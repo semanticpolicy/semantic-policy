@@ -12,10 +12,12 @@ logic, around a model call, or inside an AI agent's loop.
 > **Status: alpha.** `0.1.0-alpha.1` is the first release: the core library (policies, the evaluation
 > engine, telemetry, DI registration), the TypeSafe Jev provider and the Microsoft Agent Framework
 > integration, as prerelease packages on NuGet. The System One provider, for a decision model you run
-> on your own machine ([Local setup][local-setup]), and the evaluation CLI, the `semantic-policy`
-> dotnet tool, are in this repository, and on NuGet from `0.1.0-alpha.2`. The CLI calls Jev through
-> OpenRouter and a local Von server; the four [examples][examples] call Jev. Every part of the API can
-> still change between alpha releases.
+> on your own machine ([Local setup][local-setup]), the Http provider, for any server that speaks
+> protocol v0, and the evaluation CLI, the `semantic-policy` dotnet tool, are in this repository, and
+> on NuGet from `0.1.0-alpha.2`. The CLI calls Jev through OpenRouter and a local Von server. The
+> demos among the [examples][examples] call Jev, and `CustomProvider` beside them is a provider of
+> your own over a classifier on your machine ([Custom providers][custom-providers]). Every part of the
+> API can still change between alpha releases.
 
 ## The idea
 
@@ -76,12 +78,13 @@ handling and least-privilege tools. [`SECURITY.md`][security] and
 
 ## Install
 
-The packages are prereleases, so `dotnet add package` needs `--prerelease`. All four target .NET 10.
+The packages are prereleases, so `dotnet add package` needs `--prerelease`. They all target .NET 10.
 
 ```bash
 dotnet add package SemanticPolicy.Core --prerelease                # policies, rules and the evaluator
 dotnet add package SemanticPolicy.Providers.TypeSafe --prerelease  # the TypeSafe Jev provider
 dotnet add package SemanticPolicy.Providers.SystemOne --prerelease # any System One server, from 0.1.0-alpha.2
+dotnet add package SemanticPolicy.Providers.Http --prerelease      # any protocol v0 server, from 0.1.0-alpha.2
 dotnet add package SemanticPolicy.AgentFramework --prerelease      # for a Microsoft Agent Framework agent
 ```
 
@@ -252,6 +255,18 @@ outside 2xx, of the kind the server names in a v0 failure body or else the kind 
 Nothing the server writes reaches a failure's message; its whole answer stays in the result's `Raw`,
 which is never serialized.
 
+### A provider of your own
+
+When your model is behind neither kind of server — another vendor's API, a server you cannot change,
+a model in your own process — implement `IDecisionProvider` and register it with `AddProvider`.
+[Custom providers][custom-providers] says which path fits a model of your own and gives the rules a
+provider you write has to keep: a failure is a result, never an exception; a timer of its own; the
+honest evidence kind; declared capabilities; no content in a message or a log; an input the model
+would cut refused rather than sent. [`examples/CustomProvider`][custom-provider-example] is one,
+over a prompt-injection classifier behind a Text Embeddings Inference server, with its own tests on a
+fake transport. Like every provider, it reports an estimate for the policy to threshold, not a
+ruling.
+
 ## Local setup
 
 A decision model on your own machine keeps the content it judges there, and which provider runs a
@@ -333,8 +348,8 @@ points, what each one asks the policy, and every outcome a handler can return.
 
 ## Examples
 
-Four programs, each a single `dotnet run` on TypeSafe Jev through OpenRouter. Set
-`OPENROUTER_API_KEY` — one key covers both the chat model and the decision model — then:
+Each demo is a single `dotnet run` on TypeSafe Jev through OpenRouter. Set `OPENROUTER_API_KEY` —
+one key covers both the chat model and the decision model — then:
 
 ```bash
 dotnet run --project examples/PromptInjectionGuard   # an instruction planted in the user's input
@@ -346,6 +361,11 @@ dotnet run --project examples/AgentRouter            # the same runtime routing 
 Each security example runs twice, in Shadow and then in Enforce, and prints what the policy concluded
 and what the application did about it. [examples/README.md][examples] says what each one
 shows, what five live runs of it returned, where the rules get it wrong, and how long a check takes.
+
+`examples/CustomProvider` is not a demo but a pattern to copy: a provider of your own over a
+prompt-injection classifier that a Text Embeddings Inference server runs on your machine, with its own
+tests. It needs no key. [Its README][custom-provider-example] says how to start the server, and
+[Custom providers][custom-providers] which rules the provider follows.
 
 ## Evals
 
@@ -381,6 +401,7 @@ tools/
   SemanticPolicy.Evals/                 the evaluation CLI — runs on TypeSafe Jev and a local Von
 examples/
   PromptInjectionGuard/ ToolIntentGuard/ ToolResultGuard/ AgentRouter/
+  CustomProvider/                       a provider of your own over a local classifier, with its tests
 tests/
   SemanticPolicy.Core.Tests/            unit tests
   SemanticPolicy.Providers.ContractTests/  one suite every provider must pass
@@ -388,6 +409,7 @@ tests/
   SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, no key needed
 docs/
   adr/                                  architecture decisions, immutable once merged
+  custom-providers.md                   which provider to use, and the rules for writing your own
   local-models.md                       what a probe measured on three local System One servers
   protocol-v0.md                        the shape every provider speaks, and its HTTP binding
   THREAT_MODEL.md                       the threats the library is designed around
@@ -426,6 +448,8 @@ Apache-2.0. See [`LICENSE`][licence].
 [local-models]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/local-models.md
 [protocol-v0]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/protocol-v0.md
 [http-binding]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/protocol-v0.md#http-binding
+[custom-providers]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/custom-providers.md
+[custom-provider-example]: https://github.com/semanticpolicy/semantic-policy/blob/main/examples/CustomProvider/README.md
 [system-one-api]: https://docs.typesafe.ai/api
 [von]: https://github.com/wfzyx/von
 [adapter-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/src/SemanticPolicy.AgentFramework/README.md
