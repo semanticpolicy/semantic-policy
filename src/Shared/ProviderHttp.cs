@@ -18,6 +18,9 @@ namespace SemanticPolicy.Providers;
 /// </remarks>
 internal static class ProviderHttp
 {
+    /// <summary>The longest string <see cref="Identifier"/> accepts.</summary>
+    public const int MaxIdentifierLength = 200;
+
     /// <summary>
     /// Every status other than 200 as a failure kind. 400 and 422 are the server's verdict on the
     /// request, so they are <see cref="FailureKind.RejectedInput"/>; a 2xx that is not 200 carries no
@@ -33,6 +36,17 @@ internal static class ProviderHttp
             >= 200 and <= 299 => FailureKind.Malformed,
             _ => FailureKind.Unknown,
         };
+
+    /// <summary>
+    /// <paramref name="value"/> when it reads as an identifier, such as a model name, a request id, a
+    /// scale or an error code: 1 to 200 characters of printable ASCII with no space. Otherwise
+    /// <see langword="null"/>. The server wrote it and a result carries it wherever the result is
+    /// written, so a string that could hold a sentence, a line break or a quoted input is dropped.
+    /// </summary>
+    public static string? Identifier(string? value) =>
+        value is { Length: > 0 and <= MaxIdentifierLength } && !value.AsSpan().ContainsAnyExceptInRange('!', '~')
+            ? value
+            : null;
 
     /// <summary>The body parsed and detached from its document, or <see langword="null"/> when it is not JSON.</summary>
     public static JsonElement? TryParse(byte[] body)

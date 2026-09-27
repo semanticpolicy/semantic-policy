@@ -55,6 +55,34 @@ internal static class HttpProviderResponse
     }
 
     /// <summary>
+    /// What is wrong with the evidence a result would relay, or <see langword="null"/> when nothing
+    /// is. Every key must be one of the request's answers: <c>true</c> or <c>false</c>, an option or a
+    /// level. A key is text the server wrote, so one outside the request would reach the result's JSON
+    /// and its ToString, and a threshold would find nothing under the key it reads. A probability must
+    /// be in [0, 1], as protocol v0 defines it.
+    /// </summary>
+    public static string? EvidenceDeviation(DecisionRequest request, IEnumerable<Evidence> evidence)
+    {
+        foreach (Evidence entry in evidence)
+        {
+            foreach ((string key, double value) in entry.Values)
+            {
+                if (!IsAnswer(request, key))
+                {
+                    return "evidence keyed outside the request's answers";
+                }
+
+                if (entry.Kind == EvidenceKind.Probability && value is < 0 or > 1)
+                {
+                    return "a probability outside [0, 1]";
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// The status, what the client made of the body when there is something to say, and the body's
     /// length: <c>HTTP 503, kind unavailable, body 187 bytes</c>. Nothing the server wrote appears.
     /// </summary>
@@ -68,6 +96,15 @@ internal static class HttpProviderResponse
 
         return text.Append(", body ").Append(length.ToString(CultureInfo.InvariantCulture)).Append(" bytes").ToString();
     }
+
+    private static bool IsAnswer(DecisionRequest request, string key) =>
+        request.Type switch
+        {
+            DecisionType.Boolean => key is "true" or "false",
+            DecisionType.Choice => request.Options!.ContainsKey(key),
+            DecisionType.Score => request.Levels!.Contains(key, StringComparer.Ordinal),
+            _ => false,
+        };
 
     private static bool IsResult(JsonElement body) =>
         body.ValueKind == JsonValueKind.Object

@@ -24,21 +24,19 @@ internal static class SystemOneResponse
     private const string _systemOneScale = "systemone";
 
     /// <summary>
-    /// The status, the vendor's <c>error.code</c> or <c>error_type</c> when the body carries one, and
-    /// the body's length: <c>HTTP 400, code 400, body 87 bytes</c>. A vendor's free-text message quotes
-    /// the request, so it never appears; the parsed body goes to the result's raw element instead.
+    /// The status, the vendor's <c>error.code</c> or <c>error_type</c> when the body carries one that
+    /// is an identifier, and the body's length: <c>HTTP 400, code 400, body 87 bytes</c>. A vendor's
+    /// free-text message quotes the request, so it never appears; the parsed body goes to the result's
+    /// raw element instead.
     /// </summary>
     public static string DescribeError(HttpStatusCode status, JsonElement? body, int length)
     {
         StringBuilder text = new StringBuilder("HTTP ").Append((int)status);
         if (body is { ValueKind: JsonValueKind.Object } json)
         {
-            if (json.TryGetProperty("error", out JsonElement error)
-                && error.ValueKind == JsonValueKind.Object
-                && error.TryGetProperty("code", out JsonElement code)
-                && code.ValueKind is JsonValueKind.String or JsonValueKind.Number)
+            if (ErrorCode(json) is { } code)
             {
-                text.Append(", code ").Append(code.ToString());
+                text.Append(", code ").Append(code);
             }
             else if (ErrorType(json) is { } errorType)
             {
@@ -49,11 +47,17 @@ internal static class SystemOneResponse
         return text.Append(", body ").Append(length).Append(" bytes").ToString();
     }
 
-    /// <summary>The <c>model</c> the body reports, or <see langword="null"/> when it reports none.</summary>
-    public static string? Model(JsonElement body) => StringProperty(body, "model");
+    /// <summary>
+    /// The <c>model</c> the body reports, or <see langword="null"/> when it reports none or one that is
+    /// not an identifier.
+    /// </summary>
+    public static string? Model(JsonElement body) => ProviderHttp.Identifier(StringProperty(body, "model"));
 
-    /// <summary>The <c>id</c> the body reports, or <see langword="null"/> when it reports none.</summary>
-    public static string? RequestId(JsonElement body) => StringProperty(body, "id");
+    /// <summary>
+    /// The <c>id</c> the body reports, or <see langword="null"/> when it reports none or one that is not
+    /// an identifier.
+    /// </summary>
+    public static string? RequestId(JsonElement body) => ProviderHttp.Identifier(StringProperty(body, "id"));
 
     /// <summary>The body's <c>usage</c> element as the vendor shaped it, or <see langword="null"/>.</summary>
     public static JsonElement? Usage(JsonElement body) =>
@@ -302,14 +306,24 @@ internal static class SystemOneResponse
             ? value
             : null;
 
+    private static string? ErrorCode(JsonElement body) =>
+        body.TryGetProperty("error", out JsonElement error)
+        && error.ValueKind == JsonValueKind.Object
+        && error.TryGetProperty("code", out JsonElement code)
+        && code.ValueKind is JsonValueKind.String or JsonValueKind.Number
+            ? ProviderHttp.Identifier(code.ToString())
+            : null;
+
     private static string? ErrorType(JsonElement body)
     {
         if (StringProperty(body, "error_type") is { } top)
         {
-            return top;
+            return ProviderHttp.Identifier(top);
         }
 
-        return body.TryGetProperty("detail", out JsonElement detail) ? StringProperty(detail, "error_type") : null;
+        return body.TryGetProperty("detail", out JsonElement detail)
+            ? ProviderHttp.Identifier(StringProperty(detail, "error_type"))
+            : null;
     }
 
     /// <summary>

@@ -201,7 +201,9 @@ no evidence.
 
 - On a `200`, anything but a v0 `success` or `abstain` of the request's `type` is `malformed`: a
   failure, a body that is not JSON, JSON that is not a v0 result, a result of another type, a
-  `success` whose `value` is missing or is not one of the request's `options` or `levels`.
+  `success` whose `value` is missing or is not one of the request's `options` or `levels`. So is
+  evidence of a declared kind keyed by anything but the request's answers (`true` and `false`, an
+  option, a level), and a `probability` outside [0, 1].
 - On any other 2xx the call is `malformed`, whatever the body says.
 - On a status outside 2xx the body is a failure body only when it is a v0 result whose outcome is
   `failure` with a `kind` the outcome's list names. HTML, `{"error": …}`, an object without
@@ -211,7 +213,9 @@ no evidence.
 
 From a `success` or an `abstain`: a success's `value`, the outcome's status, the evidence whose kind
 the registration declares, with any other kind dropped, and `provider.model` and `provider.requestId`.
-The result names the client's own id and the latency the client measured. The outcome's `message`,
+An evidence `scale`, the model and the request id are relayed only as identifiers, 1 to 200 printable
+ASCII characters without a space; a model that is not one gives way to the configured model, and the
+others are dropped. The result names the client's own id and the latency the client measured. The outcome's `message`,
 `provider.usage`, `provider.extra` and any `value` on an abstain are not relayed: text and JSON the
 library cannot vouch for would otherwise travel wherever a result is written. A failure's message
 carries the status, the `kind` when it came from a failure body, and the body's length, never

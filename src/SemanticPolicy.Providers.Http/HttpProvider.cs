@@ -188,7 +188,7 @@ public sealed class HttpProvider : IDecisionProvider
             { Outcome.Status: OutcomeStatus.Failure } => "a failure outcome",
             { } other when other.Type != request.Type => "a result of another type",
             { Outcome.Status: OutcomeStatus.Success } success when !Allows(request, success.Value) => "a value the request does not allow",
-            _ => null,
+            { } relayed => HttpProviderResponse.EvidenceDeviation(request, Declared(relayed)),
         };
         if (deviation is not null)
         {
@@ -199,8 +199,8 @@ public sealed class HttpProvider : IDecisionProvider
         return Relay(request, answer!, json, started);
     }
 
-    // A value is the one string the server wrote that a relayed result carries, so it must be one the
-    // request offered: an option or a level outside it would reach the result's JSON and its ToString.
+    // A value is text the server wrote, so it must be one the request offered: an option or a level
+    // outside it would reach the result's JSON and its ToString.
     private static bool Allows(DecisionRequest request, DecisionValue? value) =>
         value switch
         {
@@ -214,18 +214,23 @@ public sealed class HttpProvider : IDecisionProvider
         };
 
     // What the server answered, inside the declaration and under this client's name: a success's value,
-    // the outcome's status, the evidence of declared kinds, the server's model and request id. Its
+    // the outcome's status, the evidence of declared kinds, and the server's scale, model and request
+    // id where each is an identifier; a model that is not one gives way to the configured model. Its
     // outcome message, usage and extra, and any value on an abstain, are text and JSON the library
     // cannot vouch for, so they stay in Raw, which is never serialized.
     private ProviderResult Relay(DecisionRequest request, ProviderResult answer, JsonElement json, long started)
     {
         bool succeeded = answer.Outcome.Status == OutcomeStatus.Success;
         ProviderOutcome outcome = succeeded ? ProviderOutcome.Success : ProviderOutcome.Abstain(message: null);
-        List<Evidence> evidence = [.. answer.Evidence.Where(entry => Capabilities.Evidence.Contains(entry.Kind))];
-        string model = string.IsNullOrWhiteSpace(answer.Provider.Model) ? _model : answer.Provider.Model;
-        ProviderMetadata metadata = new(Id, model, Elapsed(started), answer.Provider.RequestId);
+        List<Evidence> evidence = [.. Declared(answer).Select(entry => entry with { Scale = ProviderHttp.Identifier(entry.Scale) })];
+        string model = ProviderHttp.Identifier(answer.Provider.Model) ?? _model;
+        ProviderMetadata metadata = new(Id, model, Elapsed(started), ProviderHttp.Identifier(answer.Provider.RequestId));
         return new ProviderResult(request.Type, outcome, succeeded ? answer.Value : null, evidence, metadata, json);
     }
+
+    // The evidence of the kinds the registration declares; any other kind is dropped unread.
+    private IEnumerable<Evidence> Declared(ProviderResult answer) =>
+        answer.Evidence.Where(entry => Capabilities.Evidence.Contains(entry.Kind));
 
     private ProviderResult Failed(DecisionType type, FailureKind kind, string message, long started) =>
         ProviderResult.Failed(type, kind, message, new ProviderMetadata(Id, _model, Elapsed(started)));

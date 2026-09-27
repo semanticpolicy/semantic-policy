@@ -167,9 +167,12 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
     }
 
     // A gateway puts the call's id in the body; the vendor's own endpoint is reported to put it in a
-    // header instead, so the header is the fallback and its absence is not an error.
+    // header instead, so the header is the fallback and its absence is not an error. Either is kept
+    // only when it is an identifier.
     private static string? HeaderRequestId(HttpResponseMessage response) =>
-        response.Headers.TryGetValues(_requestIdHeader, out IEnumerable<string>? values) ? values.FirstOrDefault() : null;
+        response.Headers.TryGetValues(_requestIdHeader, out IEnumerable<string>? values)
+            ? ProviderHttp.Identifier(values.FirstOrDefault())
+            : null;
 
     private ProviderResult Failed(DecisionType type, FailureKind kind, string message, long started) =>
         ProviderResult.Failed(type, kind, message, new ProviderMetadata(Id, _model, Elapsed(started)));

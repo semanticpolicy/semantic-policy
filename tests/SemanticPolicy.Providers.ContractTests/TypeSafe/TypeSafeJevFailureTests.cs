@@ -26,6 +26,20 @@ public sealed class TypeSafeJevFailureTests
             "HTTP 401, error_type authentication_error"
         },
         {
+            "a code that is a sentence",
+            400,
+            JsonSerializer.Serialize(new { error = new { code = $"bad input near {ProviderHarness.Marker}", message = "invalid" } }),
+            "application/json",
+            "HTTP 400"
+        },
+        {
+            "an error type that is a sentence",
+            422,
+            SystemOneFixtures.TypeSafeError($"rejected: {ProviderHarness.Marker}", "invalid"),
+            "application/json",
+            "HTTP 422"
+        },
+        {
             "a gateway's HTML page",
             503,
             SystemOneFixtures.Html(ProviderHarness.Marker),

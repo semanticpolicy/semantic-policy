@@ -130,6 +130,7 @@ public sealed class SystemOneProviderTests
     [Theory]
     [InlineData("server-reported-model", "server-reported-model")]
     [InlineData(null, SystemOneHarness.Model)]
+    [InlineData("a server model with spaces", SystemOneHarness.Model)]
     public async Task Result_Model_Is_The_Response_Model_Else_The_Configured_One(string? answered, string expected)
     {
         SystemOneHarness harness = new();

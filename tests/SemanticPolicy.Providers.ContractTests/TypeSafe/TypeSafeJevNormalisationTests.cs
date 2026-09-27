@@ -140,17 +140,26 @@ public sealed class TypeSafeJevNormalisationTests
     [InlineData("everything in the body")]
     [InlineData("a request id header only")]
     [InlineData("nothing")]
+    [InlineData("strings that are not identifiers")]
     public async Task Metadata_Comes_From_The_Response_With_Configured_Fallbacks(string shape)
     {
         TypeSafeJevHarness harness = new();
-        string body = shape == "everything in the body"
-            ? SystemOneFixtures.BooleanAnswer(
+        string body = shape switch
+        {
+            "everything in the body" => SystemOneFixtures.BooleanAnswer(
                 0.8,
-                envelope: new SystemOneFixtures.Envelope("jev-1.13.0-20260901", "gen-dec-0001", Usage: true, Provider: "TypeSafe"))
-            : SystemOneFixtures.BooleanAnswer(0.8);
-        Dictionary<string, string>? headers = shape == "a request id header only"
-            ? new Dictionary<string, string> { ["x-typesafe-request-id"] = "req-0002" }
-            : null;
+                envelope: new SystemOneFixtures.Envelope("jev-1.13.0-20260901", "gen-dec-0001", Usage: true, Provider: "TypeSafe")),
+            "strings that are not identifiers" => SystemOneFixtures.BooleanAnswer(
+                0.8,
+                envelope: new SystemOneFixtures.Envelope($"jev {ProviderHarness.Marker}", $"gen\n{ProviderHarness.Marker}")),
+            _ => SystemOneFixtures.BooleanAnswer(0.8),
+        };
+        Dictionary<string, string>? headers = shape switch
+        {
+            "a request id header only" => new Dictionary<string, string> { ["x-typesafe-request-id"] = "req-0002" },
+            "strings that are not identifiers" => new Dictionary<string, string> { ["x-typesafe-request-id"] = $"req {ProviderHarness.Marker}" },
+            _ => null,
+        };
         harness.Handler.Respond(HttpStatusCode.OK, body, headers: headers);
 
         ProviderResult result = await Decide(harness, DecisionType.Boolean);
@@ -173,6 +182,7 @@ public sealed class TypeSafeJevNormalisationTests
             default:
                 provider.Model.Should().Be("jev-1.13.0");
                 provider.RequestId.Should().BeNull();
+                result.ToString().Should().NotContain(ProviderHarness.Marker);
                 break;
         }
 
