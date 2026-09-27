@@ -21,20 +21,21 @@ public sealed class TeiClassifierProvider : IDecisionProvider
     // and `calibrated` or `sigmoid` would each claim something the numbers are not.
     private const string _scale = "softmax";
 
-    private readonly HttpClient _client;
+    private readonly Func<HttpClient> _clientSource;
     private readonly TeiClassifierOptions _options;
     private readonly Uri _predict;
 
     /// <param name="id">The provider's id, normally the name it is registered under.</param>
-    /// <param name="client">
-    /// The client to send with, with no timeout of its own: the provider keeps the timer. The caller
-    /// owns it.
+    /// <param name="clientSource">
+    /// Where each call gets the client to send with. It is asked once per call, so that a factory's
+    /// handler rotation reaches a provider registered for the life of the process. The client needs no
+    /// timeout of its own, because the provider keeps the timer, and the provider never disposes it.
     /// </param>
     /// <param name="options">The server and what it serves.</param>
-    public TeiClassifierProvider(string id, HttpClient client, TeiClassifierOptions options)
+    public TeiClassifierProvider(string id, Func<HttpClient> clientSource, TeiClassifierOptions options)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(clientSource);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(options.BaseUrl, nameof(options.BaseUrl));
         if (!options.BaseUrl.IsAbsoluteUri)
@@ -47,7 +48,7 @@ public sealed class TeiClassifierProvider : IDecisionProvider
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.Timeout, TimeSpan.Zero, nameof(options.Timeout));
 
         Id = id;
-        _client = client;
+        _clientSource = clientSource;
         _options = options;
         _predict = new Uri(options.BaseUrl.AbsoluteUri.TrimEnd('/') + "/predict");
     }
@@ -87,7 +88,7 @@ public sealed class TeiClassifierProvider : IDecisionProvider
         Stopwatch clock = Stopwatch.StartNew();
         try
         {
-            using HttpResponseMessage response = await _client
+            using HttpResponseMessage response = await _clientSource()
                 .SendAsync(message, HttpCompletionOption.ResponseContentRead, timer.Token)
                 .ConfigureAwait(false);
             byte[] body = await response.Content.ReadAsByteArrayAsync(timer.Token).ConfigureAwait(false);

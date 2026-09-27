@@ -159,11 +159,33 @@ public sealed class TeiClassifierProviderTests : IDisposable
         result.ToString().Should().NotContain("MARKER-7f3c");
     }
 
+    // The provider is registered as a singleton, so a client kept from its construction would hold the
+    // same connections, and the address they resolved, for the life of the process.
+    [Fact]
+    public async Task Every_Call_Asks_The_Source_For_A_Client()
+    {
+        _handler.Respond(HttpStatusCode.OK, """[{"score":0.9,"label":"SAFE"},{"score":0.1,"label":"INJECTION"}]""");
+        int asked = 0;
+        TeiClassifierProvider provider = new(
+            "tei",
+            () =>
+            {
+                asked++;
+                return _client;
+            },
+            new TeiClassifierOptions(_baseUrl));
+
+        await provider.DecideAsync(Request("a synthetic note"), TestContext.Current.CancellationToken);
+        await provider.DecideAsync(Request("another synthetic note"), TestContext.Current.CancellationToken);
+
+        asked.Should().Be(2);
+    }
+
     private static TeiClassifierOptions Configured() => new(_baseUrl) { Model = _configuredModel };
 
     private static DecisionRequest Request(string text) =>
         new(DecisionType.Boolean, _question, SemanticContext.FromText(text).ToJson());
 
     private TeiClassifierProvider Provider(TeiClassifierOptions? options = null) =>
-        new("tei", _client, options ?? new TeiClassifierOptions(_baseUrl));
+        new("tei", () => _client, options ?? new TeiClassifierOptions(_baseUrl));
 }

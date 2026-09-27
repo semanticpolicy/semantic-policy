@@ -31,11 +31,14 @@ services.AddHttpClient("tei")
     .RemoveAllLoggers()
     .ConfigureHttpClient(client => client.Timeout = Timeout.InfiniteTimeSpan);
 
+// The provider is a singleton, so it gets a client from the factory on every call rather than keeping
+// one: a kept client would hold its first connections, and the address they resolved, until restart.
 services.AddSemanticPolicy()
-    .AddProvider("tei", container => new TeiClassifierProvider(
-        "tei",
-        container.GetRequiredService<IHttpClientFactory>().CreateClient("tei"),
-        options))
+    .AddProvider("tei", container =>
+    {
+        IHttpClientFactory factory = container.GetRequiredService<IHttpClientFactory>();
+        return new TeiClassifierProvider("tei", () => factory.CreateClient("tei"), options);
+    })
     .AddPolicy(policy);
 
 using ServiceProvider container = services.BuildServiceProvider();
