@@ -5,6 +5,11 @@ safe inputs, how often it misses bad ones, and which thresholds meet a goal you 
 must be right 95% of the time". Provider errors and "not sure" answers are counted apart, so they
 never hide in the error rates.
 
+It is the command-line tool of [SemanticPolicy](https://github.com/semanticpolicy/semantic-policy),
+which adds testable semantic decisions to .NET applications: you write a decision no `if` or regex
+can make as a rule, and a decision model answers it. The library makes the decisions; this tool
+measures them.
+
 ## What the numbers are not
 
 - **A verdict is an estimate.** A provider's probabilistic answer, put through your thresholds, can
@@ -15,7 +20,7 @@ never hide in the error rates.
   no number it ships is a recommendation.
 - **A rule is not a security boundary.** A prompt-injection rule makes an attack harder, not
   impossible. A good score does not make a rule an authorization check or a reason to drop another
-  defence; see [`SECURITY.md`](../../SECURITY.md).
+  defence; see [`SECURITY.md`](https://github.com/semanticpolicy/semantic-policy/blob/main/SECURITY.md).
 
 ## How it works
 
@@ -51,10 +56,13 @@ The tool registers two providers, and a binding's `providerId` refers to one of 
 one that leaves `local` out needs no server.
 
 - **`local`** is a Von server at the address in `SEMANTICPOLICY_EVALS_LOCAL_URL`, or at
-  `http://127.0.0.1:8000` when the variable is unset. `run` sends content to that address and
-  nowhere else, and needs no key. The address must be `https`, or plain `http` to a loopback host;
-  any other value stops `run` with exit code 1 and a message naming the variable. Its answers carry
-  `score` evidence, not `probability`, so a `local` binding's thresholds and gate read `score`.
+  `http://127.0.0.1:8000` when the variable is unset. Von (`von-sdk` on PyPI) serves a decision
+  model on your own machine, and
+  [Local setup](https://github.com/semanticpolicy/semantic-policy#local-setup) in the project's
+  README installs, starts and warms it. `run` sends content to that address and nowhere else, and
+  needs no key. The address must be `https`, or plain `http` to a loopback host; any other value
+  stops `run` with exit code 1 and a message naming the variable. Its answers carry `score`
+  evidence, not `probability`, so a `local` binding's thresholds and gate read `score`.
 - **`jev`** is TypeSafe's Jev model, reached through OpenRouter.
   - **`run` needs `OPENROUTER_API_KEY`** in the environment for a policy that binds it. Without it,
     `run` stops before its first call with exit code 1 and a message naming the variable.
@@ -66,39 +74,49 @@ one that leaves `local` out needs no server.
 
 ## Quick start
 
-The smoke set ships with a recording of one `run` of its policy through both providers, a local Von
-server and Jev, so the three commands that read a recording work on a fresh clone, with no key, no
-server and at no cost. From the repository root:
+The tool is a .NET global tool for .NET 10 and later, on NuGet from 0.1.0-alpha.2:
 
 ```bash
-P=tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.policy.json
-D=tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.smoke.jsonl
-R=tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.recording.jsonl
-
-# 1. Measure the policy at the thresholds it has.
-dotnet run --project tools/SemanticPolicy.Evals -- report --policy $P --dataset $D --recording $R
-
-# 2. The lowest deny threshold for local, the first binding, at which at least 95% of denials are right.
-dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy $P --dataset $D --recording $R --provider local --deny min-precision=0.95
-
-# 3. The same goal for each binding on its own, side by side.
-dotnet run --project tools/SemanticPolicy.Evals -- compare --policy $P --dataset $D --recording $R --deny min-precision=0.95
-
-# 4. Record a run of your own. The only step that calls a provider: it needs a Von server on
-#    127.0.0.1:8000 and OPENROUTER_API_KEY, and sends every input to both. Call the server once
-#    before: its first answer can take longer than the 30-second --timeout, which records a timeout.
-#    It writes a new file, so the committed recording stays as it is.
-dotnet run --project tools/SemanticPolicy.Evals -- run --policy $P --dataset $D --record smoke.recording.jsonl
+dotnet tool install --global SemanticPolicy.Evals --prerelease
 ```
 
-Part of what step 1 prints:
+The package carries the example and smoke datasets, and the smoke set comes with a recording of one
+`run` of its policy through both providers, a local Von server and Jev. `samples` writes them out, so
+the three commands that read a recording work right after the install, with no key, no server and at
+no cost. From an empty directory:
+
+```bash
+# 1. Write the shipped datasets, policies and recordings under ./datasets.
+semantic-policy samples datasets
+
+P=datasets/smoke/prompt-injection.policy.json
+D=datasets/smoke/prompt-injection.smoke.jsonl
+R=datasets/smoke/prompt-injection.recording.jsonl
+
+# 2. Measure the policy at the thresholds it has.
+semantic-policy report --policy $P --dataset $D --recording $R
+
+# 3. The lowest deny threshold for local, the first binding, at which at least 95% of denials are right.
+semantic-policy sweep --policy $P --dataset $D --recording $R --provider local --deny min-precision=0.95
+
+# 4. The same goal for each binding on its own, side by side.
+semantic-policy compare --policy $P --dataset $D --recording $R --deny min-precision=0.95
+
+# 5. Record a run of your own. The only step that calls a provider: it needs a Von server on
+#    127.0.0.1:8000 and OPENROUTER_API_KEY, and sends every input to both. Call the server once
+#    before: its first answer can take longer than the 30-second --timeout, which records a timeout.
+#    It writes a new file, so the shipped recording stays as it is.
+semantic-policy run --policy $P --dataset $D --record smoke.recording.jsonl
+```
+
+Part of what step 2 prints:
 
 ```text
 SemanticPolicy evals report
 policy prompt-injection-smoke, mode shadow
 rule prompt-injection, boolean
-recording tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.recording.jsonl
-tool version 0.1.0-alpha.1+<commit>
+recording datasets/smoke/prompt-injection.recording.jsonl
+tool version <version>+<commit>
 Measured on this dataset only: a verdict is an estimate and can be wrong in either direction.
 
 rows
@@ -229,7 +247,7 @@ smoke policy, with the question and criteria shortened:
   `sweep` chose on the smoke set's sixty tune rows (see [`sweep`](#sweep)), and `jev`'s are
   placeholders that let the tool run. A threshold belongs to one provider on one dataset; choose
   yours with `sweep` on your own data
-  ([ADR 0005](../../docs/adr/0005-evaluation-and-threshold-ownership.md)).
+  ([ADR 0005](https://github.com/semanticpolicy/semantic-policy/blob/main/docs/adr/0005-evaluation-and-threshold-ownership.md)).
 
 ## Tune and test
 
@@ -251,16 +269,30 @@ the command line instead of editing the file keeps the dataset's digest, and so 
 
 ## Commands
 
-Every command runs from the repository root; the tool is not packed as a dotnet tool:
-
 ```bash
-dotnet run --project tools/SemanticPolicy.Evals -- <command> [options]
+semantic-policy <command> [options]
 ```
 
-`--help` after a command lists its options. Reports go to standard output, progress and errors to
-standard error.
+Paths are relative to the current directory. `--help` after a command lists its options. Reports go
+to standard output, progress and errors to standard error.
 
-### Options every command takes
+### `samples`
+
+Writes the datasets, policies and recordings the package carries (see
+[Shipped datasets](#shipped-datasets)) under a directory, and lists each file it wrote.
+
+```bash
+semantic-policy samples <dir>
+```
+
+- **`<dir>`** is required, and is created, with the subdirectories it needs, when it does not exist.
+  Each file keeps its path below `datasets/`, such as `<dir>/smoke/prompt-injection.recording.jsonl`
+  or `<dir>/examples/agent-router.jsonl`, and its bytes, so each recording still replays against its
+  dataset.
+- **It overwrites nothing.** If any file it would write exists, it writes none, names that file and
+  exits with code 1; choose another directory.
+
+### Options of `run`, `report`, `sweep` and `compare`
 
 | Option | Meaning |
 |---|---|
@@ -310,7 +342,7 @@ Replays a recording at the policy file's thresholds and gates and prints what it
 The test rows only, with `$P`, `$D` and `$R` as in the quick start:
 
 ```bash
-dotnet run --project tools/SemanticPolicy.Evals -- report --policy $P --dataset $D --recording $R --where metadata.split=test
+semantic-policy report --policy $P --dataset $D --recording $R --where metadata.split=test
 ```
 
 ### `sweep`
@@ -362,11 +394,11 @@ Warn catches at least 90% of attacks, deny is right at least 95% of the time, an
 policy decides are decided right at least 90% of the time:
 
 ```bash
-dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy $P --dataset $D --recording $R \
+semantic-policy sweep --policy $P --dataset $D --recording $R \
   --provider local --warn min-recall=0.9 --deny min-precision=0.95 --gate min-accuracy=0.9
 ```
 
-On the committed recording it recommends warn 0.194, deny 0.843 and gate 0.5418, the smoke policy's
+On the shipped recording it recommends warn 0.194, deny 0.843 and gate 0.5418, the smoke policy's
 `local` numbers. A sweep replays the whole policy, so these rates are the chain's: a row under
 `local`'s gate is decided by `jev`, and only a row both leave undecided abstains. On its own `local`
 needs gate 0.6704 to be right 90% of the time, and leaves 60% of the tune rows undecided there; that
@@ -406,7 +438,7 @@ under the same goals and prints one table on the test rows. `--recording` and `-
 
 If any binding cannot meet its goals, `compare` still prints everything and exits with code 2.
 
-Step 3 of the quick start, shortened:
+Step 4 of the quick start, shortened:
 
 ```text
 compare of rule 'prompt-injection', policy 'prompt-injection-smoke': bindings 'local', 'jev', each alone
@@ -433,12 +465,13 @@ the policy, and with no binding after it they abstain. Its rates cover only the 
 `jev`'s deny threshold comes out below the policy's warn of 0.6, so the output has a conflict line;
 [Pitfalls](#pitfalls) says why and what to do.
 
-The router set's Choice rule has no rungs, so only the gate is compared. Here each binding gets the
-lowest gate at which the rows it decides on its own are right at least 90% of the time:
+The router set's Choice rule has no rungs, so only the gate is compared. Here, in the quick start's
+directory, each binding gets the lowest gate at which the rows it decides on its own are right at
+least 90% of the time:
 
 ```bash
-S=tools/SemanticPolicy.Evals/datasets/smoke
-dotnet run --project tools/SemanticPolicy.Evals -- compare --policy $S/support-router.policy.json \
+S=datasets/smoke
+semantic-policy compare --policy $S/support-router.policy.json \
   --dataset $S/support-router.smoke.jsonl --recording $S/support-router.recording.jsonl --gate min-accuracy=0.9
 ```
 
@@ -506,14 +539,14 @@ failure rates, latency and usage.
 - **Several bindings.** `sweep` measures the chain, not one provider. A row abstains only when no
   binding decides it, so a wider gate on the first binding looks free while it sends more rows to
   the next one, which may be slower and paid; the gate curve's `passed on` column counts them. On
-  the committed smoke recording, `--provider local --gate max-abstain=0.05` recommends gate 0.8774,
+  the shipped smoke recording, `--provider local --gate max-abstain=0.05` recommends gate 0.8774,
   which passes 59 of the 60 tune rows to `jev`; the abstention rate of 0.033 is the 2 of those that
   `jev` leaves undecided too. Sweeping a later binding mostly shows the first one's decisions. To
   judge one provider, use `compare` or a policy with only its binding.
 - **Crossed thresholds.** Warn and deny read the same evidence and share one curve, and `min-recall`
   picks its highest threshold while `min-precision` picks its lowest. On data that separates well,
   the pair `--warn min-recall=0.9` and `--deny min-precision=0.95` can put deny at or below warn: on
-  the committed smoke recording, `compare` with that pair gives `jev` warn 0.87 and deny 0.15, and
+  the shipped smoke recording, `compare` with that pair gives `jev` warn 0.87 and deny 0.15, and
   `--deny min-precision=0.95` alone gives deny 0.15 against the policy file's warn of 0.6. Deny's
   threshold alone then catches at least 90% of the attacks, and the conflict line says so when warn
   has a goal. Keep deny and set warn below it by hand, reading on the curve how many safe inputs
@@ -536,7 +569,7 @@ failure rates, latency and usage.
 ## The recording
 
 JSONL: a header line, then one line per dataset row, in dataset order. The header says what produced
-the answers; from the committed smoke recording, spread over lines and with the policy cut:
+the answers; from the shipped smoke recording, spread over lines and with the policy cut:
 
 ```json
 {
@@ -557,7 +590,7 @@ carry it. The `model` is what the server answered, not what was asked for: the V
 behind `local` names its model `von-1.2.0`, whatever the request says.
 
 A row is the dataset row's `id` and every answer it got, keyed by rule id and provider name, as the
-library serializes it. The committed recording's first row, without its request id:
+library serializes it. The shipped recording's first row, without its request id:
 
 ```json
 {
@@ -604,19 +637,19 @@ Replaying checks that the recording still fits:
 | Code | Meaning |
 |---|---|
 | 0 | Done. A conflict in `sweep` still exits 0, because each recommendation met its goals. |
-| 1 | A usage or data error: a bad option, an unreadable file, a bad row, label or split, a recording that does not fit, a provider that is not registered, a key that is not set. The message names the file, the line or the id, never a row's input. |
+| 1 | A usage or data error: a bad option, an unreadable file, a bad row, label or split, a recording that does not fit, a provider that is not registered, a key that is not set, a file `samples` would overwrite. The message names the file, the line or the id, never a row's input. |
 | 2 | A goal that no threshold or gate can meet. Everything is still printed, and `--out` is written. |
 
 ## The JSON result
 
 `--out <file>` writes what the text shows as JSON, in the format `semanticpolicy/evals-result/v0`.
-From `report` on the committed recording's test rows, shortened:
+From `report` on the shipped recording's test rows, shortened:
 
 ```json
 {
   "format": "semanticpolicy/evals-result/v0",
   "verb": "report",
-  "toolVersion": "0.1.0-alpha.1+<commit>",
+  "toolVersion": "<version>+<commit>",
   "generatedAt": "2026-09-25T12:23:14.0460115+00:00",
   "policyId": "prompt-injection-smoke",
   "mode": "shadow",
@@ -624,7 +657,7 @@ From `report` on the committed recording's test rows, shortened:
   "decisionType": "boolean",
   "rows": { "datasetRows": 100, "recordedRows": 100, "afterFilter": 40, "filters": [ "metadata.split=test" ], "splitSource": "metadata", "tuneRows": 0, "testRows": 40 },
   "report": { "outcomes": { ... }, "verdicts": { ... }, "rungs": [ ... ], "discrimination": [ ... ], "calibration": { ... }, "providers": [ ... ], "notes": [ ... ], "sweptProvider": "local" },
-  "recordingPath": "tools/SemanticPolicy.Evals/datasets/smoke/prompt-injection.recording.jsonl"
+  "recordingPath": "datasets/smoke/prompt-injection.recording.jsonl"
 }
 ```
 
@@ -641,8 +674,10 @@ code 2 too.
 
 ## Shipped datasets
 
-Everything under `datasets/` is synthetic and written for this repository: no row comes from a
-public benchmark or holds a real name, address, key, email address or URL.
+The package carries every file under the repository's `datasets/`, and `semantic-policy samples <dir>`
+writes them out under `<dir>` at the same paths; the quick start writes them to `datasets/`.
+Everything there is synthetic and written for this repository: no row comes from a public benchmark
+or holds a real name, address, key, email address or URL.
 
 - **`datasets/examples/`**: ten rows per rule type, each beside its policy: `prompt-injection`
   (Boolean), `agent-router` (Choice, with two-part inputs) and `harm-severity` (Score). They show the
@@ -676,4 +711,3 @@ public benchmark or holds a real name, address, key, email address or URL.
 - **Per-slice metrics** in one run; filter one slice at a time with `--where`.
 - **A CI gate** that fails a build when a number drops.
 - **Expected cost** from the cost of each kind of error.
-- **Packing as a dotnet tool.**

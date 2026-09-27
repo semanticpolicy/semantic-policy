@@ -2,9 +2,32 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Description>The semantic-policy command: measures a policy's rules on a labelled dataset, sweeps thresholds against goals you set and compares providers, replaying a recording of their answers.</Description>
+    <PackageTags>$(PackageTags);evaluation;cli;dotnet-tool</PackageTags>
   </PropertyGroup>
+
+  <!-- Packed as a dotnet tool: one framework-dependent package that carries Core, SystemOne and TypeSafe as assemblies
+       beside its own, with their .pdb files, and declares no NuGet dependency. That leaves the symbol package
+       Directory.Build.props asks of every project nothing to carry, so the tool has none. -->
+  <PropertyGroup>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>semantic-policy</ToolCommandName>
+    <RollForward>Major</RollForward>
+    <IncludeSymbols>false</IncludeSymbols>
+  </PropertyGroup>
+
+  <!-- English only: help's headings, such as "Options:" and "Commands:", come from System.CommandLine, whose
+       translations would print them in the user's display language beside the tool's English descriptions. -->
+  <PropertyGroup>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <!-- The package's README is the tool's own, in place of the repository's that Directory.Build.props packs. -->
+  <ItemGroup>
+    <None Remove="$(MSBuildThisFileDirectory)..\..\README.md" />
+    <None Update="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
@@ -15,6 +38,15 @@
     <ProjectReference Include="..\..\src\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
     <ProjectReference Include="..\..\src\SemanticPolicy.Providers.SystemOne\SemanticPolicy.Providers.SystemOne.csproj" />
     <ProjectReference Include="..\..\src\SemanticPolicy.Providers.TypeSafe\SemanticPolicy.Providers.TypeSafe.csproj" />
+  </ItemGroup>
+
+  <!-- The shipped datasets travel as files beside the assembly, where `samples` reads them: in the build output, in a
+       project that references this one, and through the publish directory in the tool package. Selected by extension
+       and given an explicit lower-case path, because on a case-insensitive file system datasets\ is one folder with
+       Datasets\, which holds the dataset reader's source files. -->
+  <ItemGroup>
+    <None Remove="datasets\**" />
+    <None Include="datasets\**\*.json;datasets\**\*.jsonl" Link="datasets\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.CommandLine.Help;
 
 namespace SemanticPolicy.Evals.Cli;
 
@@ -10,12 +11,20 @@ public static class EvalsCli
     /// <param name="configureProviders">
     /// Registers the providers <c>run</c> may call, as an application would on its own builder; none when omitted.
     /// </param>
-    public static RootCommand Build(CliIo? io = null, Action<ISemanticPolicyBuilder>? configureProviders = null)
+    public static Command Build(CliIo? io = null, Action<ISemanticPolicyBuilder>? configureProviders = null)
     {
         CliIo writers = io ?? CliIo.ForConsole();
-        RootCommand root = new("Evaluates a SemanticPolicy policy against a labelled JSONL dataset.");
 
-        // In the order they are used, which is the order help lists them: record once, then read the recording.
+        // Not a RootCommand: that one is named after the running executable, which is the assembly or a test host
+        // rather than the command a user types, and every help page's usage line starts with the root's name. What a
+        // RootCommand would add is added here: help, which reaches every verb, and version, which stays on the root.
+        Command root = new("semantic-policy", "Evaluates a SemanticPolicy policy against a labelled JSONL dataset.");
+        root.Options.Add(new HelpOption());
+        root.Options.Add(new VersionOption());
+
+        // In the order they are used, which is the order help lists them: write out the shipped datasets, record once,
+        // then read the recording.
+        root.Subcommands.Add(SamplesVerb.Build(writers));
         root.Subcommands.Add(RunCommand.Create(writers, configureProviders));
         root.Subcommands.Add(ReportCommand.Create(writers));
         root.Subcommands.Add(SweepVerb.Build(writers));
@@ -66,7 +75,7 @@ public static class EvalsCli
 
     // With no verb there is nothing to do, so the usage text is the error message: the help renderer is
     // pointed at the error stream and the exit code says the invocation was wrong.
-    private static int WithoutVerb(RootCommand root, CliIo io)
+    private static int WithoutVerb(Command root, CliIo io)
     {
         root.Parse(["--help"]).Invoke(new InvocationConfiguration { Output = io.Error, Error = io.Error });
         return ExitCodes.UsageOrData;

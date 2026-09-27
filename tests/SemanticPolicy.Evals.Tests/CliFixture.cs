@@ -101,7 +101,7 @@ internal sealed class CliFixture : IDisposable
     {
         StringWriter output = new();
         StringWriter error = new();
-        RootCommand root = EvalsCli.Build(new CliIo(output, error));
+        Command root = EvalsCli.Build(new CliIo(output, error));
         InvocationConfiguration configuration = new()
         {
             Output = output,

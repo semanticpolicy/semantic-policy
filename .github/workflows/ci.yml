@@ -34,3 +34,15 @@ jobs:
 
       - name: Test
         run: dotnet test --no-build --configuration Release
+
+      # The evaluation tool as a user gets it: packed as the release packs it, installed with --source, which replaces
+      # every configured feed, so a version already on nuget.org cannot stand in for this build, and run outside the
+      # checkout on the files the package carries. Nothing here needs a key or calls a provider.
+      - name: Pack, install and run the evaluation tool
+        run: |
+          dotnet pack tools/SemanticPolicy.Evals/SemanticPolicy.Evals.csproj --no-build --configuration Release --output "$RUNNER_TEMP/evals-feed"
+          dotnet tool install SemanticPolicy.Evals --tool-path "$RUNNER_TEMP/evals-tool" --source "$RUNNER_TEMP/evals-feed" --prerelease
+          mkdir "$RUNNER_TEMP/evals-run"
+          cd "$RUNNER_TEMP/evals-run"
+          "$RUNNER_TEMP/evals-tool/semantic-policy" samples datasets
+          "$RUNNER_TEMP/evals-tool/semantic-policy" report --policy datasets/smoke/prompt-injection.policy.json --dataset datasets/smoke/prompt-injection.smoke.jsonl --recording datasets/smoke/prompt-injection.recording.jsonl

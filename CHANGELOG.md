@@ -1,13 +1,14 @@
 # Changelog
 
 Notable changes to the packages `SemanticPolicy.Core`, `SemanticPolicy.Providers.SystemOne` (from
-0.1.0-alpha.2), `SemanticPolicy.Providers.TypeSafe` and `SemanticPolicy.AgentFramework`, which share
-one version. Versions follow [Semantic Versioning](https://semver.org/); while the major version is
-0, any release can change the API.
+0.1.0-alpha.2), `SemanticPolicy.Providers.TypeSafe`, `SemanticPolicy.AgentFramework` and
+`SemanticPolicy.Evals` (from 0.1.0-alpha.2), which share one version. Versions follow
+[Semantic Versioning](https://semver.org/); while the major version is 0, any release can change the
+API.
 
 ## 0.1.0-alpha.2
 
-The System One provider, for a decision model you run yourself.
+The System One provider, for a decision model you run yourself, and the evaluation CLI as a package.
 
 - **`SemanticPolicy.Providers.SystemOne`.** New. Any server that answers TypeSafe's System One API at
   `/v1/systemone`, registered with `AddSystemOne`. It reports the server's numbers as a score unless
@@ -15,10 +16,13 @@ The System One provider, for a decision model you run yourself.
   allow it, and can refuse a context longer than a limit you set.
 - **`SemanticPolicy.Providers.TypeSafe`.** Built on the System One provider, which it now brings
   along at exactly its own version.
+- **`SemanticPolicy.Evals`.** New. The evaluation CLI, until now run from a clone, as a dotnet tool
+  whose command is `semantic-policy`. Its new `samples` command writes out the datasets and
+  recordings the package carries, and `report`, `sweep` and `compare` replay those without a key.
+  `run` gains a `local` binding for a Von server beside `jev`, and the recordings of the smoke and
+  router sets are answered by both. It builds a provider only when a policy binds it, and a curve
+  replays at most 101 candidates.
 
-In the repository, not in a package: the evaluation CLI gains a `local` binding for a Von server
-beside `jev`, and its recordings of the smoke and router sets are answered by both. It builds a
-provider only when a policy binds it, and a curve replays at most 101 candidates.
 [Local setup](README.md#local-setup) starts Von, and [docs/local-models.md](docs/local-models.md)
 has what a probe measured on it and on two other local servers.
 
