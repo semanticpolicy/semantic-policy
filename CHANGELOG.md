@@ -46,9 +46,7 @@ has what a probe measured on it and on two other local servers.
 [docs/custom-providers.md](docs/custom-providers.md) says which provider fits a model of your own
 and, when none does, the rules an `IDecisionProvider` you write has to keep;
 [examples/CustomProvider](examples/CustomProvider/README.md) is one, over a prompt-injection
-classifier behind a Text Embeddings Inference server, with its own tests. Whichever provider answers,
-its answer is an estimate for the policy to threshold: a denied verdict is not proof of an attack, and
-an allowed verdict is not proof of safety.
+classifier behind a Text Embeddings Inference server, with its own tests.
 
 ## 0.1.0-alpha.1 - 2026-09-24
 

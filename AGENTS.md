@@ -51,17 +51,18 @@ Run the narrowest command that reads what you changed. All three must pass befor
 |---|---|
 | anything under `src/`, `tools/`, `examples/`, `tests/` | `dotnet build` |
 | `src/SemanticPolicy.Core/**` | `dotnet test tests/SemanticPolicy.Core.Tests/SemanticPolicy.Core.Tests.csproj` |
-| `src/SemanticPolicy.Providers.**` | `dotnet test tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj` |
+| `src/SemanticPolicy.Providers.**`, `src/Shared/**` | `dotnet test tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj` |
 | `src/SemanticPolicy.AgentFramework/**` | `dotnet test tests/SemanticPolicy.AgentFramework.Tests/SemanticPolicy.AgentFramework.Tests.csproj` |
 | `tools/SemanticPolicy.Evals/**` | `dotnet test tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj` |
+| `examples/CustomProvider/**` | `dotnet test examples/CustomProvider/CustomProvider.Tests/CustomProvider.Tests.csproj` |
 | any `.cs` — whitespace and `.editorconfig` style only | `dotnet format --verify-no-changes` |
 
 CI runs the same commands on a pull request into `main`, then packs `tools/SemanticPolicy.Evals/` as
 the `SemanticPolicy.Evals` dotnet tool, installs it from that package alone and runs it outside the
 checkout on the datasets it carries, with no key. The demos need `OPENROUTER_API_KEY` and a live
-model, and `examples/CustomProvider/` a local TEI server, so neither CI nor this table runs them;
-`examples/README.md` says how to run them by hand. CI's `dotnet test` does run
-`examples/CustomProvider/CustomProvider.Tests/`, which needs neither.
+model, and `examples/CustomProvider/` a local TEI server, so neither CI nor this table runs those
+programs; `examples/README.md` says how to run them by hand. CI's `dotnet test`, like the table's
+row, runs `examples/CustomProvider/CustomProvider.Tests/`, which needs neither.
 
 The evaluation CLI's documentation shows the installed command, `semantic-policy <command>`; its
 from-source equivalent, which runs the code in the checkout, is

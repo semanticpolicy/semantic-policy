@@ -11,13 +11,9 @@ logic, around a model call, or inside an AI agent's loop.
 
 > **Status: alpha.** `0.1.0-alpha.1` is the first release: the core library (policies, the evaluation
 > engine, telemetry, DI registration), the TypeSafe Jev provider and the Microsoft Agent Framework
-> integration, as prerelease packages on NuGet. The System One provider, for a decision model you run
-> on your own machine ([Local setup][local-setup]), the Http provider, for any server that speaks
-> protocol v0, and the evaluation CLI, the `semantic-policy` dotnet tool, are in this repository, and
-> on NuGet from `0.1.0-alpha.2`. The CLI calls Jev through OpenRouter and a local Von server. The
-> demos among the [examples][examples] call Jev, and `CustomProvider` beside them is a provider of
-> your own over a classifier on your machine ([Custom providers][custom-providers]). Every part of the
-> API can still change between alpha releases.
+> integration, as prerelease packages on NuGet. The System One and Http providers and the evaluation
+> CLI, the `semantic-policy` dotnet tool, are in this repository, and on NuGet from `0.1.0-alpha.2`.
+> Every part of the API can still change between alpha releases.
 
 ## The idea
 
@@ -259,13 +255,9 @@ which is never serialized.
 
 When your model is behind neither kind of server — another vendor's API, a server you cannot change,
 a model in your own process — implement `IDecisionProvider` and register it with `AddProvider`.
-[Custom providers][custom-providers] says which path fits a model of your own and gives the rules a
-provider you write has to keep: a failure is a result, never an exception; a timer of its own; the
-honest evidence kind; declared capabilities; no content in a message or a log; an input the model
-would cut refused rather than sent. [`examples/CustomProvider`][custom-provider-example] is one,
-over a prompt-injection classifier behind a Text Embeddings Inference server, with its own tests on a
-fake transport. Like every provider, it reports an estimate for the policy to threshold, not a
-ruling.
+[Custom providers][custom-providers] gives the rules such a provider keeps, and
+[`examples/CustomProvider`][custom-provider-example] is one, over a prompt-injection classifier behind
+a Text Embeddings Inference server, with its own tests.
 
 ## Local setup
 
@@ -362,10 +354,8 @@ Each security example runs twice, in Shadow and then in Enforce, and prints what
 and what the application did about it. [examples/README.md][examples] says what each one
 shows, what five live runs of it returned, where the rules get it wrong, and how long a check takes.
 
-`examples/CustomProvider` is not a demo but a pattern to copy: a provider of your own over a
-prompt-injection classifier that a Text Embeddings Inference server runs on your machine, with its own
-tests. It needs no key. [Its README][custom-provider-example] says how to start the server, and
-[Custom providers][custom-providers] which rules the provider follows.
+`examples/CustomProvider` is not a demo but a pattern to copy, and it needs no key:
+[its README][custom-provider-example] says how to start the classifier it calls on your machine.
 
 ## Evals
 

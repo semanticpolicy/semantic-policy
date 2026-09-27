@@ -39,9 +39,9 @@ public sealed class SystemOneProvider : IDecisionProvider
     /// timer, and a shorter client timeout surfaces as an <see cref="OperationCanceledException"/> with
     /// no token cancelled, which the evaluator treats as a programming error. Its handler should
     /// follow no redirect, as a registration's does: a 307 or 308 resends the request, context and
-    /// all, to wherever the server points. The client is neither modified nor disposed here.
-    /// The options are validated and copied, so a later change to them
-    /// changes nothing. This constructor never reads the environment: only a registration reads
+    /// all, to wherever the server points. The client is neither modified nor disposed here. The
+    /// options are validated and copied, so a later change to them changes nothing. This constructor
+    /// never reads the environment: only a registration reads
     /// <see cref="SystemOneOptions.ApiKeyVariable"/>, so a key for a provider built here goes on
     /// <see cref="SystemOneOptions.ApiKey"/>, or there is none.
     /// </summary>

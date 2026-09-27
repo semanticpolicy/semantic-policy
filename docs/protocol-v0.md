@@ -4,9 +4,10 @@ The language-neutral shape of a semantic decision request and its result. The .N
 `SemanticPolicy.Core` mirror it: every provider adapter, an `IDecisionProvider`, takes the request
 and returns the result, whatever its provider's own API looks like. `SemanticPolicy.Providers.Http`
 speaks the shape itself over HTTP, so a provider written in another language can be a server that
-answers it, as the [HTTP binding](#http-binding) describes, rather than a .NET adapter. Frozen with [ADR 0002](adr/0002-provider-contract-and-capabilities.md) after the same
-request passed through a hosted decision model and a local zero-shot classifier. A change to the
-shape is a new version, not an edit.
+answers it, as the [HTTP binding](#http-binding) describes, rather than a .NET adapter. Frozen with
+[ADR 0002](adr/0002-provider-contract-and-capabilities.md) after the same request passed through a
+hosted decision model and a local zero-shot classifier. A change to the shape is a new version, not
+an edit.
 
 JSON, camel case, enums as camel-case strings. Absent means absent: a field a provider cannot fill is
 omitted, never `null`, `0`, `false` or `""`.
@@ -215,15 +216,14 @@ From a `success` or an `abstain`: a success's `value`, the outcome's status, the
 the registration declares, with any other kind dropped, and `provider.model` and `provider.requestId`.
 An evidence `scale`, the model and the request id are relayed only as identifiers, 1 to 200 printable
 ASCII characters without a space; a model that is not one gives way to the configured model, and the
-others are dropped. The result names the client's own id and the latency the client measured. The outcome's `message`,
-`provider.usage`, `provider.extra` and any `value` on an abstain are not relayed: text and JSON the
-library cannot vouch for would otherwise travel wherever a result is written. A failure's message
-carries the status, the `kind` when it came from a failure body, and the body's length, never
-anything the server wrote. The whole body stays in the result's `raw`, in memory only.
+others are dropped. The result names the client's own id and the latency the client measured. The
+outcome's `message`, `provider.usage`, `provider.extra` and any `value` on an abstain are not
+relayed: text and JSON the library cannot vouch for would otherwise travel wherever a result is
+written. A failure's message carries the status, the `kind` when it came from a failure body, and the
+body's length, never anything the server wrote. The whole body stays in the result's `raw`, in memory
+only.
 
-The server's answer is an estimate for a policy to threshold, not a verdict. What a value or a number
-means for the application is the policy's decision, and the verdict it reaches is a probabilistic
-signal, not a security boundary.
+The server's answer is an estimate for a policy to threshold, not a verdict.
 
 ### A minimal server
 
