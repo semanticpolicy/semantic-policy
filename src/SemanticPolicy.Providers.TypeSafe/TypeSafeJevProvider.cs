@@ -41,8 +41,10 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
     /// Builds the provider on a client the caller owns. The client's <see cref="HttpClient.Timeout"/>
     /// should be <see cref="System.Threading.Timeout.InfiniteTimeSpan"/>: the adapter keeps its own
     /// timer, and a shorter client timeout surfaces as an <see cref="OperationCanceledException"/> with
-    /// no token cancelled, which the evaluator treats as a programming error. The client is neither
-    /// modified nor disposed here. The options are validated and copied, so a later change to them
+    /// no token cancelled, which the evaluator treats as a programming error. Its handler should
+    /// follow no redirect, as a registration's does: a 307 or 308 resends the request, context and
+    /// all, to wherever the server points. The client is neither modified nor disposed here.
+    /// The options are validated and copied, so a later change to them
     /// changes nothing; the key must be on them, because this constructor never reads the environment.
     /// </summary>
     /// <param name="httpClient">The client every call is sent through.</param>

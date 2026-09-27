@@ -26,6 +26,10 @@ speaks protocol v0, a guide to writing a provider of your own, and the evaluatio
   reads it, and a minimal server to start from.
 - **`SemanticPolicy.Providers.TypeSafe`.** Built on the System One provider, which it now brings
   along at exactly its own version.
+- **Every HTTP provider.** An exception from a handler the host added, such as a circuit breaker or a
+  rate limiter, is an `Unknown` failure for the policy's `OnFailure`, no longer an exception out of
+  `EvaluateAsync`. A body over 1 MiB is not read, and the client a registration sets up follows no
+  redirect. For `SemanticPolicy.Providers.TypeSafe` all three are changes from 0.1.0-alpha.1.
 - **`SemanticPolicy.Evals`.** New. The evaluation CLI, until now run from a clone, as a dotnet tool
   whose command is `semantic-policy`. Its new `samples` command writes out the datasets and
   recordings the package carries, and `report`, `sweep` and `compare` replay those without a key.

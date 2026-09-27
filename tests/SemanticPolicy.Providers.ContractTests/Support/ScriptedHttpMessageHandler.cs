@@ -76,6 +76,20 @@ internal sealed class ScriptedHttpMessageHandler : HttpMessageHandler
         };
     }
 
+    /// <summary>
+    /// Answer every request with a JSON string <paramref name="length"/> bytes long. With
+    /// <paramref name="declareLength"/> the response carries its length, as a buffered one does;
+    /// without it the body arrives in chunks of unknown total, as a streamed one does.
+    /// </summary>
+    public void RespondLong(HttpStatusCode status, int length, bool declareLength)
+    {
+        byte[] body = Encoding.ASCII.GetBytes("\"" + new string('a', length - 2) + "\"");
+        _script = (_, _) => Task.FromResult(new HttpResponseMessage(status)
+        {
+            Content = declareLength ? new ByteArrayContent(body) : new ChunkedContent(body),
+        });
+    }
+
     /// <summary>Throw the exception from the transport, before any response exists.</summary>
     public void Throw(Exception exception) => _script = (_, _) => throw exception;
 
@@ -140,6 +154,31 @@ internal sealed class ScriptedHttpMessageHandler : HttpMessageHandler
         }
 
         return snapshot;
+    }
+
+    private sealed class ChunkedContent(byte[] body) : HttpContent
+    {
+        private const int _chunk = 64 * 1024;
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            SerializeToStreamAsync(stream, context, CancellationToken.None);
+
+        protected override async Task SerializeToStreamAsync(
+            Stream stream,
+            TransportContext? context,
+            CancellationToken cancellationToken)
+        {
+            for (int offset = 0; offset < body.Length; offset += _chunk)
+            {
+                await stream.WriteAsync(body.AsMemory(offset, Math.Min(_chunk, body.Length - offset)), cancellationToken);
+            }
+        }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
     }
 
     private sealed class HangingContent : HttpContent

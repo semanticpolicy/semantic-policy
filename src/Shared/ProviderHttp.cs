@@ -78,12 +78,30 @@ internal static class ProviderHttp
     /// must never print the <c>Authorization</c> header, and a host that wants the factory's logging
     /// back calls <c>AddDefaultLogger()</c> on the same name, with its own redaction. The client's own
     /// timeout is disabled because the provider keeps its own timer over the whole call: a shorter
-    /// client timeout would surface as a cancellation with no token cancelled.
+    /// client timeout would surface as a cancellation with no token cancelled. Redirects are not
+    /// followed: a 307 or 308 would resend the context to wherever the server points, so a redirect
+    /// reads as a failure instead.
     /// </summary>
     public static void AddClient(IServiceCollection services, string name) =>
         services.AddHttpClient(name)
             .RemoveAllLoggers()
-            .ConfigureHttpClient(client => client.Timeout = Timeout.InfiniteTimeSpan);
+            .ConfigureHttpClient(client => client.Timeout = Timeout.InfiniteTimeSpan)
+            .ConfigurePrimaryHttpMessageHandler((handler, _) => DisableRedirects(handler));
+
+    // The factory's default primary handler is one of these two; a handler the host sets on the same
+    // name after the registration replaces this one, and its redirects are the host's to decide.
+    private static void DisableRedirects(HttpMessageHandler handler)
+    {
+        switch (handler)
+        {
+            case SocketsHttpHandler sockets:
+                sockets.AllowAutoRedirect = false;
+                break;
+            case HttpClientHandler client:
+                client.AllowAutoRedirect = false;
+                break;
+        }
+    }
 
     /// <summary>
     /// An optional key: <paramref name="apiKey"/> when set, else the value of

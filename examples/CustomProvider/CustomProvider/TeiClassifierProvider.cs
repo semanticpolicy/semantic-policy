@@ -17,6 +17,12 @@ namespace CustomProvider;
 /// </summary>
 public sealed class TeiClassifierProvider : IDecisionProvider
 {
+    /// <summary>
+    /// The longest body the provider reads, 1 MiB. TEI's answer is a few dozen bytes, so a longer body
+    /// is not an answer, and reading it whole would let a misbehaving server fill the host's memory.
+    /// </summary>
+    public const int MaxBodyBytes = 1024 * 1024;
+
     // TEI returns a softmax over the classifier's labels. Protocol v0 leaves the scale's name open,
     // and `calibrated` or `sigmoid` would each claim something the numbers are not.
     private const string _scale = "softmax";
@@ -86,27 +92,76 @@ public sealed class TeiClassifierProvider : IDecisionProvider
         using CancellationTokenSource timer = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timer.CancelAfter(_options.Timeout);
         Stopwatch clock = Stopwatch.StartNew();
+        HttpResponseMessage? response = null;
         try
         {
-            using HttpResponseMessage response = await _clientSource()
-                .SendAsync(message, HttpCompletionOption.ResponseContentRead, timer.Token)
-                .ConfigureAwait(false);
-            byte[] body = await response.Content.ReadAsByteArrayAsync(timer.Token).ConfigureAwait(false);
+            byte[]? body;
+            try
+            {
+                // Headers first, so a body too long to be an answer is refused rather than buffered.
+                response = await _clientSource()
+                    .SendAsync(message, HttpCompletionOption.ResponseHeadersRead, timer.Token)
+                    .ConfigureAwait(false);
+                body = await ReadBoundedAsync(response.Content, timer.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (timer.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                long milliseconds = (long)Math.Round(_options.Timeout.TotalMilliseconds);
+                return Failed(FailureKind.Timeout, $"no response within {milliseconds} ms", clock);
+            }
+            catch (HttpRequestException exception)
+            {
+                return Failed(FailureKind.Unavailable, $"HttpRequestException: {exception.HttpRequestError}", clock);
+            }
+            catch (HttpIOException exception)
+            {
+                return Failed(FailureKind.Unavailable, $"HttpIOException: {exception.HttpRequestError}", clock);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // A handler the host added, such as a circuit breaker, throws its own type, and its
+                // message may quote the request, so only the type is kept.
+                return Failed(FailureKind.Unknown, $"{exception.GetType().Name} from the HTTP pipeline", clock);
+            }
+
+            if (body is null)
+            {
+                FailureKind kind = response.StatusCode == HttpStatusCode.OK ? FailureKind.Malformed : KindOf(response.StatusCode);
+                return Failed(kind, $"HTTP {(int)response.StatusCode}, body over {MaxBodyBytes} bytes", clock);
+            }
+
             return Read(response.StatusCode, body, clock.Elapsed.TotalMilliseconds);
         }
-        catch (OperationCanceledException) when (timer.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        finally
         {
-            long milliseconds = (long)Math.Round(_options.Timeout.TotalMilliseconds);
-            return Failed(FailureKind.Timeout, $"no response within {milliseconds} ms", clock);
+            response?.Dispose();
         }
-        catch (HttpRequestException exception)
+    }
+
+    // The body, or null when it is longer than the limit: a declared length over it is refused before
+    // any byte is read, and an undeclared one is read no further than the chunk that crosses it.
+    private static async Task<byte[]?> ReadBoundedAsync(HttpContent content, CancellationToken cancellationToken)
+    {
+        if (content.Headers.ContentLength > MaxBodyBytes)
         {
-            return Failed(FailureKind.Unavailable, $"HttpRequestException: {exception.HttpRequestError}", clock);
+            return null;
         }
-        catch (HttpIOException exception)
+
+        using Stream stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using MemoryStream body = new();
+        byte[] chunk = new byte[16 * 1024];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
         {
-            return Failed(FailureKind.Unavailable, $"HttpIOException: {exception.HttpRequestError}", clock);
+            if (body.Length + read > MaxBodyBytes)
+            {
+                return null;
+            }
+
+            body.Write(chunk, 0, read);
         }
+
+        return body.ToArray();
     }
 
     private static FailureKind KindOf(HttpStatusCode status) =>

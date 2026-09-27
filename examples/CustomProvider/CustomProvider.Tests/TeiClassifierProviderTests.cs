@@ -99,6 +99,32 @@ public sealed class TeiClassifierProviderTests : IDisposable
         result.Provider.Model.Should().Be(_configuredModel);
     }
 
+    // A circuit breaker or a rate limiter the host adds throws its own type; the policy still decides.
+    [Fact]
+    public async Task Handler_Exception_Reads_As_Unknown_Naming_Only_Its_Type()
+    {
+        _handler.Throw(new InvalidOperationException("MARKER-7f3c the circuit is open"));
+
+        ProviderResult result = await Provider(Configured()).DecideAsync(Request("a synthetic note"), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.Should().Be(FailureKind.Unknown);
+        result.Outcome.Message.Should().Be("InvalidOperationException from the HTTP pipeline");
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.OK, FailureKind.Malformed)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, FailureKind.Unavailable)]
+    public async Task Body_Over_The_Limit_Is_Not_Read(HttpStatusCode status, FailureKind kind)
+    {
+        _handler.Respond(status, new string(' ', TeiClassifierProvider.MaxBodyBytes) + "[]");
+
+        ProviderResult result = await Provider(Configured()).DecideAsync(Request("a synthetic note"), TestContext.Current.CancellationToken);
+
+        result.Outcome.Kind.Should().Be(kind);
+        result.Outcome.Message.Should().Be($"HTTP {(int)status}, body over {TeiClassifierProvider.MaxBodyBytes} bytes");
+        result.Raw.Should().BeNull();
+    }
+
     [Theory]
     [InlineData("not json")]
     [InlineData("[]")]
