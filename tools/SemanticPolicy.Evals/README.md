@@ -5,6 +5,11 @@ safe inputs, how often it misses bad ones, and which thresholds meet a goal you 
 must be right 95% of the time". Provider errors and "not sure" answers are counted apart, so they
 never hide in the error rates.
 
+It is the command-line tool of [SemanticPolicy](https://github.com/semanticpolicy/semantic-policy),
+which adds testable semantic decisions to .NET applications: you write a decision no `if` or regex
+can make as a rule, and a decision model answers it. The library makes the decisions; this tool
+measures them.
+
 ## What the numbers are not
 
 - **A verdict is an estimate.** A provider's probabilistic answer, put through your thresholds, can
@@ -51,10 +56,13 @@ The tool registers two providers, and a binding's `providerId` refers to one of 
 one that leaves `local` out needs no server.
 
 - **`local`** is a Von server at the address in `SEMANTICPOLICY_EVALS_LOCAL_URL`, or at
-  `http://127.0.0.1:8000` when the variable is unset. `run` sends content to that address and
-  nowhere else, and needs no key. The address must be `https`, or plain `http` to a loopback host;
-  any other value stops `run` with exit code 1 and a message naming the variable. Its answers carry
-  `score` evidence, not `probability`, so a `local` binding's thresholds and gate read `score`.
+  `http://127.0.0.1:8000` when the variable is unset. Von (`von-sdk` on PyPI) serves a decision
+  model on your own machine, and
+  [Local setup](https://github.com/semanticpolicy/semantic-policy#local-setup) in the project's
+  README installs, starts and warms it. `run` sends content to that address and nowhere else, and
+  needs no key. The address must be `https`, or plain `http` to a loopback host; any other value
+  stops `run` with exit code 1 and a message naming the variable. Its answers carry `score`
+  evidence, not `probability`, so a `local` binding's thresholds and gate read `score`.
 - **`jev`** is TypeSafe's Jev model, reached through OpenRouter.
   - **`run` needs `OPENROUTER_API_KEY`** in the environment for a policy that binds it. Without it,
     `run` stops before its first call with exit code 1 and a message naming the variable.
@@ -108,7 +116,7 @@ SemanticPolicy evals report
 policy prompt-injection-smoke, mode shadow
 rule prompt-injection, boolean
 recording datasets/smoke/prompt-injection.recording.jsonl
-tool version 0.1.0-alpha.1+<commit>
+tool version <version>+<commit>
 Measured on this dataset only: a verdict is an estimate and can be wrong in either direction.
 
 rows
@@ -641,7 +649,7 @@ From `report` on the shipped recording's test rows, shortened:
 {
   "format": "semanticpolicy/evals-result/v0",
   "verb": "report",
-  "toolVersion": "0.1.0-alpha.1+<commit>",
+  "toolVersion": "<version>+<commit>",
   "generatedAt": "2026-09-25T12:23:14.0460115+00:00",
   "policyId": "prompt-injection-smoke",
   "mode": "shadow",
