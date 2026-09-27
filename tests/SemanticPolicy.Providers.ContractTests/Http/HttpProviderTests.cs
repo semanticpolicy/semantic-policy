@@ -263,6 +263,57 @@ public sealed class HttpProviderTests
         }
     }
 
+    public static TheoryData<string> ValuesTheRequestDoesNotAllow =>
+    [
+        "a success without a value", "a string on a Boolean question", "an option the request does not offer",
+        "a level the request does not have", "an index that does not match its level", "an abstain with a value",
+    ];
+
+    // A value is the only server-written string a relayed result carries, so it must be one the request
+    // offered: anything else would reach the result's JSON and its ToString.
+    [Theory]
+    [MemberData(nameof(ValuesTheRequestDoesNotAllow))]
+    public async Task Value_The_Request_Does_Not_Allow_Is_Never_Relayed(string shape)
+    {
+        HttpHarness harness = new();
+        string marker = $"\"{ProviderHarness.Marker}\"";
+        (DecisionType type, string body) = shape switch
+        {
+            "a success without a value" => (DecisionType.Boolean, HttpHarness.Answer(value: null)),
+            "a string on a Boolean question" => (DecisionType.Boolean, HttpHarness.Answer(value: marker)),
+            "an option the request does not offer" => (DecisionType.Choice, HttpHarness.Answer(type: "\"choice\"", value: marker)),
+            "a level the request does not have" => (
+                DecisionType.Score,
+                HttpHarness.Answer(type: "\"score\"", value: $$"""{"level":{{marker}},"index":0}""")),
+            "an index that does not match its level" => (
+                DecisionType.Score,
+                HttpHarness.Answer(type: "\"score\"", value: """{"level":"high","index":0}""")),
+            "an abstain with a value" => (
+                DecisionType.Choice,
+                HttpHarness.Answer(type: "\"choice\"", outcome: """{"status":"abstain"}""", value: marker)),
+            _ => throw new ArgumentOutOfRangeException(nameof(shape)),
+        };
+        harness.Handler.Respond(HttpStatusCode.OK, body);
+
+        ProviderResult result = await harness.Provider.DecideAsync(
+            harness.CreateRequest(type, ProviderHarness.Marker),
+            TestContext.Current.CancellationToken);
+
+        if (shape == "an abstain with a value")
+        {
+            result.Outcome.Should().Be(new ProviderOutcome(OutcomeStatus.Abstain));
+        }
+        else
+        {
+            result.Outcome.Status.Should().Be(OutcomeStatus.Failure);
+            result.Outcome.Kind.Should().Be(FailureKind.Malformed);
+        }
+
+        result.Value.Should().BeNull();
+        result.ToString().Should().NotContain(ProviderHarness.Marker);
+        JsonElement.DeepEquals(result.Raw!.Value, JsonDocument.Parse(body).RootElement).Should().BeTrue();
+    }
+
     public static TheoryData<int, string?, FailureKind> StatusTable => new()
     {
         { 401, null, FailureKind.Unauthorized },
