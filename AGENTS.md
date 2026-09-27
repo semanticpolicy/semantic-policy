@@ -28,12 +28,14 @@ src/SemanticPolicy.Providers.SystemOne/     decision provider for any System One
 src/SemanticPolicy.Providers.TypeSafe/      hosted decision provider, built on SystemOne
 src/SemanticPolicy.Providers.Http/          decision provider for any protocol v0 server
 src/SemanticPolicy.AgentFramework/          Microsoft Agent Framework integration
+src/SemanticPolicy.FluentValidation/        FluentValidation integration: semantic rules on validators
 tools/SemanticPolicy.Evals/                 evaluation CLI
 examples/                                   demos on Jev: PromptInjectionGuard, ToolIntentGuard, ToolResultGuard, AgentRouter
 examples/CustomProvider/                    a provider of your own over a local classifier, and its tests
 tests/SemanticPolicy.Core.Tests/            unit tests
 tests/SemanticPolicy.Providers.ContractTests/  the suite every provider must pass
 tests/SemanticPolicy.AgentFramework.Tests/  the adapter's tests, on a scripted model and provider
+tests/SemanticPolicy.FluentValidation.Tests/  the integration's tests, on a scripted provider
 tests/SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, on a scripted provider
 docs/adr/                                   architecture decisions, immutable once merged
 docs/custom-providers.md                    which provider to use, and the rules for writing your own
@@ -56,6 +58,7 @@ Run the narrowest command that reads what you changed. All three must pass befor
 | `src/SemanticPolicy.Core/**` | `dotnet test tests/SemanticPolicy.Core.Tests/SemanticPolicy.Core.Tests.csproj` |
 | `src/SemanticPolicy.Providers.**`, `src/Shared/**` | `dotnet test tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj` |
 | `src/SemanticPolicy.AgentFramework/**` | `dotnet test tests/SemanticPolicy.AgentFramework.Tests/SemanticPolicy.AgentFramework.Tests.csproj` |
+| `src/SemanticPolicy.FluentValidation/**` | `dotnet test tests/SemanticPolicy.FluentValidation.Tests/SemanticPolicy.FluentValidation.Tests.csproj` |
 | `tools/SemanticPolicy.Evals/**` | `dotnet test tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj` |
 | `examples/CustomProvider/**` | `dotnet test examples/CustomProvider/CustomProvider.Tests/CustomProvider.Tests.csproj` |
 | any `.cs` — whitespace and `.editorconfig` style only | `dotnet format --verify-no-changes` |

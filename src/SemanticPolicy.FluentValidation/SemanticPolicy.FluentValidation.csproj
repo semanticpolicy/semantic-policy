@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>FluentValidation integration: semantic rules that ask a policy about a property and report a flagged verdict as a validation failure.</Description>
+    <PackageTags>$(PackageTags);fluentvalidation;validation</PackageTags>
+  </PropertyGroup>
+
+  <!-- The package's README is its own, in place of the repository's that Directory.Build.props packs:
+       nuget.org shows it to people who write validators, not agents. -->
+  <ItemGroup>
+    <None Remove="$(MSBuildThisFileDirectory)..\..\README.md" />
+    <None Update="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="SemanticPolicy.FluentValidation.Tests" />
+  </ItemGroup>
+
+</Project>
