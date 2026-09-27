@@ -27,6 +27,10 @@ public sealed class TeiClassifierProvider : IDecisionProvider
     // and `calibrated` or `sigmoid` would each claim something the numbers are not.
     private const string _scale = "softmax";
 
+    // The `error_type` values TEI answers with.
+    private static readonly HashSet<string> _errorTypes =
+        new(StringComparer.Ordinal) { "Unhealthy", "Backend", "Overloaded", "Validation", "Tokenizer", "Empty" };
+
     private readonly Func<HttpClient> _clientSource;
     private readonly TeiClassifierOptions _options;
     private readonly Uri _predict;
@@ -176,13 +180,15 @@ public sealed class TeiClassifierProvider : IDecisionProvider
         };
 
     // TEI's `error` text can quote the input, so the message keeps only the status, the error type and
-    // the body's length; the parsed body stays in memory, in the result's raw element.
+    // the body's length; the parsed body stays in memory, in the result's raw element. The error type
+    // is one of TEI's own names or left out, so a server that writes something else there is not quoted.
     private static string DescribeError(HttpStatusCode status, JsonElement? body, int length)
     {
         StringBuilder text = new StringBuilder("HTTP ").Append((int)status);
         if (body is { ValueKind: JsonValueKind.Object } json
             && json.TryGetProperty("error_type", out JsonElement errorType)
-            && errorType.ValueKind == JsonValueKind.String)
+            && errorType.ValueKind == JsonValueKind.String
+            && _errorTypes.Contains(errorType.GetString()!))
         {
             text.Append(", error_type ").Append(errorType.GetString());
         }

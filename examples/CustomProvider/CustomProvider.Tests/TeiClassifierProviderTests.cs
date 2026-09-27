@@ -185,6 +185,18 @@ public sealed class TeiClassifierProviderTests : IDisposable
         result.ToString().Should().NotContain("MARKER-7f3c");
     }
 
+    // Only TEI's own error types are named: any other string there is the server's text.
+    [Fact]
+    public async Task Failure_Message_Leaves_Out_An_Error_Type_TEI_Does_Not_Use()
+    {
+        const string Body = """{"error":"input is too long","error_type":"MARKER-7f3c"}""";
+        _handler.Respond(HttpStatusCode.UnprocessableEntity, Body);
+
+        ProviderResult result = await Provider().DecideAsync(Request("a synthetic note"), TestContext.Current.CancellationToken);
+
+        result.Outcome.Message.Should().Be($"HTTP 422, body {Body.Length} bytes");
+    }
+
     // The provider is registered as a singleton, so a client kept from its construction would hold the
     // same connections, and the address they resolved, for the life of the process.
     [Fact]

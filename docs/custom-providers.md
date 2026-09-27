@@ -170,12 +170,16 @@ text-only provider reads the same text.
 
 ### No content in messages or logs, the body in `Raw`
 
-A failure's message says what happened in terms that quote nothing: the status, a code or error type
-the server returned, the body's length, `no response within N ms`, a transport failure's
-`HttpRequestError`. Never the question, the context, or any text the server wrote, since an error text
-can quote the input. The same holds for exception messages and for anything the provider logs, and the
-simplest provider logs nothing. Keep the parsed body in the result's `Raw`, which stays in memory and
-is never serialized, so a caller can read it without it travelling wherever a result is written.
+A failure's message says what happened in terms that quote nothing: the status, an error code or type
+the server returned when it is one the API documents or at least an identifier, the body's length,
+`no response within N ms`, a transport failure's `HttpRequestError`. Never the question, the context,
+or any free text the server wrote, since an error text can quote the input. The same holds for
+exception messages and for anything the provider logs, and the simplest provider logs nothing. A
+successful result's strings follow the same rule: evidence is keyed only by the request's answers,
+and a model, a request id or a scale from the server is kept only when it is an identifier, 1 to 200
+printable ASCII characters without a space. Keep the parsed body in the result's `Raw`, which stays
+in memory and is never serialized, so a caller can read it without it travelling wherever a result
+is written.
 Register the named `HttpClient` with `RemoveAllLoggers()`, so that no log line can print an
 `Authorization` header.
 

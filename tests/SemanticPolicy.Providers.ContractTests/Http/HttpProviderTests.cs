@@ -10,6 +10,10 @@ namespace SemanticPolicy.Providers.ContractTests.Http;
 
 public sealed class HttpProviderTests
 {
+    // Score evidence with both ends of a Boolean and a third key the request never offered: the marker.
+    private const string _keyedOutside =
+        $$$"""[{"kind":"score","values":{"true":0.91,"false":0.09,"{{{ProviderHarness.Marker}}}":0.5}}]""";
+
     // A provider built by hand never reads the environment, so options that name only a variable would
     // send no bearer and report no error; the constructor refuses them instead.
     [Fact]
@@ -178,6 +182,72 @@ public sealed class HttpProviderTests
         JsonElement.DeepEquals(result.Raw!.Value, JsonDocument.Parse(body).RootElement).Should().BeTrue();
     }
 
+    // Only the declared kinds are checked: an undeclared kind is dropped unread, whatever its keys.
+    [Fact]
+    public async Task Undeclared_Evidence_Is_Dropped_Without_Being_Checked()
+    {
+        HttpHarness harness = new();
+        harness.Handler.Respond(
+            HttpStatusCode.OK,
+            HttpHarness.Answer(evidence: $$$"""
+                [{"kind":"score","values":{"true":0.91,"false":0.09}},
+                 {"kind":"logit","values":{"{{{ProviderHarness.Marker}}}":2.31}}]
+                """));
+
+        ProviderResult result = await harness.Provider.DecideAsync(
+            harness.CreateRequest(DecisionType.Boolean, ProviderHarness.Marker),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Should().Be(ProviderOutcome.Success);
+        result.Evidence.Should().ContainSingle().Which.Kind.Should().Be(EvidenceKind.Score);
+        result.ToString().Should().NotContain(ProviderHarness.Marker);
+    }
+
+    public static TheoryData<string> ServerStringsThatAreNotIdentifiers =>
+    [
+        "a model with a space", "a request id with a line break", "a scale over 200 characters", "an empty model",
+    ];
+
+    // The scale, the model and the request id are the strings a relayed result carries besides its
+    // value and keys, so each is kept only as an identifier: printable ASCII without a space, 1 to 200
+    // characters. A model that is not one gives way to the configured model; the others are dropped.
+    [Theory]
+    [MemberData(nameof(ServerStringsThatAreNotIdentifiers))]
+    public async Task Server_String_That_Is_Not_An_Identifier_Is_Not_Relayed(string shape)
+    {
+        HttpHarness harness = new();
+        string marker = ProviderHarness.Marker;
+        (string evidence, string provider) = shape switch
+        {
+            "a model with a space" => (
+                """[{"kind":"score","scale":"sigmoid","values":{"true":0.91,"false":0.09}}]""",
+                $$"""{"id":"v0-server","model":"model {{marker}}","latencyMs":12,"requestId":"req-0042"}"""),
+            "a request id with a line break" => (
+                """[{"kind":"score","scale":"sigmoid","values":{"true":0.91,"false":0.09}}]""",
+                $$"""{"id":"v0-server","model":"{{HttpHarness.ServerModel}}","latencyMs":12,"requestId":"req\n{{marker}}"}"""),
+            "a scale over 200 characters" => (
+                $$$"""[{"kind":"score","scale":"{{{new string('s', 201)}}}","values":{"true":0.91,"false":0.09}}]""",
+                $$"""{"id":"v0-server","model":"{{HttpHarness.ServerModel}}","latencyMs":12,"requestId":"req-0042"}"""),
+            "an empty model" => (
+                """[{"kind":"score","scale":"sigmoid","values":{"true":0.91,"false":0.09}}]""",
+                """{"id":"v0-server","model":"","latencyMs":12,"requestId":"req-0042"}"""),
+            _ => throw new ArgumentOutOfRangeException(nameof(shape)),
+        };
+        harness.Handler.Respond(HttpStatusCode.OK, HttpHarness.Answer(evidence: evidence, provider: provider));
+
+        ProviderResult result = await harness.Provider.DecideAsync(
+            harness.CreateRequest(DecisionType.Boolean, ProviderHarness.Marker),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Should().Be(ProviderOutcome.Success);
+        result.Evidence.Should().ContainSingle().Which.Scale.Should().Be(
+            shape == "a scale over 200 characters" ? null : "sigmoid");
+        result.Provider.Model.Should().Be(
+            shape is "a model with a space" or "an empty model" ? HttpHarness.Model : HttpHarness.ServerModel);
+        result.Provider.RequestId.Should().Be(shape == "a request id with a line break" ? null : "req-0042");
+        result.ToString().Should().NotContain(ProviderHarness.Marker);
+    }
+
     [Theory]
     [InlineData("a success whose provider has no model")]
     [InlineData("a bare 503")]
@@ -213,11 +283,13 @@ public sealed class HttpProviderTests
     [
         "a v0 failure", "HTML", "another JSON shape", "another protocol", "no protocol", "a JSON null",
         "no outcome", "no provider", "no type", "no outcome.status", "an evidence entry without kind",
-        "an entry without values", "a null entry", "a result of another type",
+        "an entry without values", "a null entry", "a result of another type", "evidence keyed outside the answers",
+        "an abstain with evidence keyed outside the answers", "a probability above 1", "a negative probability",
     ];
 
     // Every case but HTML is JSON, and the registration declares Probability: an entry without a kind
-    // must not reach a probability threshold as the enum's first value.
+    // must not reach a probability threshold as the enum's first value, and neither may a number
+    // outside [0, 1] or under a key the request did not offer.
     [Theory]
     [MemberData(nameof(OutsideTheContract))]
     public async Task Answer_On_200_Outside_The_Contract_Reads_As_Malformed(string shape)
@@ -239,6 +311,13 @@ public sealed class HttpProviderTests
             "an entry without values" => HttpHarness.Answer(evidence: """[{"kind":"score"}]"""),
             "a null entry" => HttpHarness.Answer(evidence: "[null]"),
             "a result of another type" => HttpHarness.Answer(type: "\"choice\"", value: "\"allow\""),
+            "evidence keyed outside the answers" => HttpHarness.Answer(evidence: _keyedOutside),
+            "an abstain with evidence keyed outside the answers" => HttpHarness.Answer(
+                outcome: """{"status":"abstain"}""",
+                value: null,
+                evidence: _keyedOutside),
+            "a probability above 1" => HttpHarness.Answer(evidence: """[{"kind":"probability","values":{"true":1.2}}]"""),
+            "a negative probability" => HttpHarness.Answer(evidence: """[{"kind":"probability","values":{"true":-0.1}}]"""),
             _ => throw new ArgumentOutOfRangeException(nameof(shape)),
         };
         harness.Handler.Respond(HttpStatusCode.OK, body, shape == "HTML" ? "text/html" : "application/json");
@@ -269,8 +348,8 @@ public sealed class HttpProviderTests
         "a level the request does not have", "an index that does not match its level", "an abstain with a value",
     ];
 
-    // A value is the only server-written string a relayed result carries, so it must be one the request
-    // offered: anything else would reach the result's JSON and its ToString.
+    // A value is text the server wrote, so it must be one the request offered: anything else would
+    // reach the result's JSON and its ToString.
     [Theory]
     [MemberData(nameof(ValuesTheRequestDoesNotAllow))]
     public async Task Value_The_Request_Does_Not_Allow_Is_Never_Relayed(string shape)
@@ -290,7 +369,7 @@ public sealed class HttpProviderTests
                 HttpHarness.Answer(type: "\"score\"", value: """{"level":"high","index":0}""")),
             "an abstain with a value" => (
                 DecisionType.Choice,
-                HttpHarness.Answer(type: "\"choice\"", outcome: """{"status":"abstain"}""", value: marker)),
+                HttpHarness.Answer(type: "\"choice\"", outcome: """{"status":"abstain"}""", value: marker, evidence: null)),
             _ => throw new ArgumentOutOfRangeException(nameof(shape)),
         };
         harness.Handler.Respond(HttpStatusCode.OK, body);
