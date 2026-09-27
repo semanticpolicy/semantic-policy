@@ -10,7 +10,7 @@ public sealed class EvalsCliTests
     {
         StringWriter output = new();
         StringWriter error = new();
-        RootCommand root = EvalsCli.Build(new CliIo(output, error));
+        Command root = EvalsCli.Build(new CliIo(output, error));
 
         int exitCode = await root.Parse([]).InvokeAsync(
             new InvocationConfiguration { Output = output, Error = error },
@@ -26,7 +26,7 @@ public sealed class EvalsCliTests
     {
         StringWriter output = new();
         StringWriter error = new();
-        RootCommand root = EvalsCli.Build(new CliIo(output, error));
+        Command root = EvalsCli.Build(new CliIo(output, error));
 
         int exitCode = await root.Parse(["--help"]).InvokeAsync(
             new InvocationConfiguration { Output = output, Error = error },
@@ -46,7 +46,32 @@ public sealed class EvalsCliTests
         int start = Array.IndexOf(lines, "Commands:") + 1;
         int end = Array.FindIndex(lines, start, string.IsNullOrWhiteSpace);
         lines[start..(end < 0 ? lines.Length : end)].Select(line => line.Trim().Split(' ')[0]).Should()
-            .Equal("run", "report", "sweep", "compare");
+            .Equal("samples", "run", "report", "sweep", "compare");
+    }
+
+    // The root, as no verb, and every verb the tool registers.
+    public static TheoryData<string> RootAndVerbs { get; } =
+        new([string.Empty, .. EvalsCli.Build().Subcommands.Select(command => command.Name)]);
+
+    // The usage line is the first thing help prints, and it names the command a user types whichever process hosts the
+    // tool: the installed tool's shim, `dotnet run`, or the host running these tests.
+    [Theory]
+    [MemberData(nameof(RootAndVerbs))]
+    public async Task Cli_Help_Usage_Names_The_Semantic_Policy_Command(string verb)
+    {
+        string[] args = verb.Length == 0 ? [] : [verb];
+        string[] lines = (await HelpAsync(args)).ReplaceLineEndings("\n").Split('\n');
+
+        string usage = lines[Array.IndexOf(lines, "Usage:") + 1].Trim();
+        if (verb.Length == 0)
+        {
+            usage.Should().Be("semantic-policy [command] [options]");
+            lines.Should().Contain(line => line.TrimStart().StartsWith("--version", StringComparison.Ordinal));
+        }
+        else
+        {
+            usage.Should().StartWith($"semantic-policy {verb} ");
+        }
     }
 
     [Theory]
@@ -69,7 +94,7 @@ public sealed class EvalsCliTests
         StringWriter output = new();
         StringWriter error = new();
         CliIo io = new(output, error);
-        RootCommand root = EvalsCli.Build(io);
+        Command root = EvalsCli.Build(io);
         Command probe = new("probe");
         probe.SetAction(_ => EvalsCli.Guard(io, () => throw new EvalsException("probe-failure", exitCode)));
         root.Subcommands.Add(probe);
@@ -103,7 +128,7 @@ public sealed class EvalsCliTests
     {
         StringWriter output = new();
         StringWriter error = new();
-        RootCommand root = EvalsCli.Build(new CliIo(output, error));
+        Command root = EvalsCli.Build(new CliIo(output, error));
 
         int exitCode = await root.Parse([.. verb, "--help"]).InvokeAsync(
             new InvocationConfiguration { Output = output, Error = error },

@@ -52,8 +52,14 @@ Run the narrowest command that reads what you changed. All three must pass befor
 | `tools/SemanticPolicy.Evals/**` | `dotnet test tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj` |
 | any `.cs` — whitespace and `.editorconfig` style only | `dotnet format --verify-no-changes` |
 
-CI runs the same commands on a pull request into `main`. The examples need `OPENROUTER_API_KEY` and a
-live model, so neither CI nor this table runs them; `examples/README.md` says how to run them by hand.
+CI runs the same commands on a pull request into `main`, then packs `tools/SemanticPolicy.Evals/` as
+the `SemanticPolicy.Evals` dotnet tool, installs it from that package alone and runs it outside the
+checkout on the datasets it carries, with no key. The examples need `OPENROUTER_API_KEY` and a live
+model, so neither CI nor this table runs them; `examples/README.md` says how to run them by hand.
+
+The evaluation CLI's documentation shows the installed command, `semantic-policy <command>`; its
+from-source equivalent, which runs the code in the checkout, is
+`dotnet run --project tools/SemanticPolicy.Evals -- <command>`.
 
 ## Architecture rules
 

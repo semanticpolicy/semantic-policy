@@ -209,7 +209,7 @@ public sealed class ReportVerbTests
     {
         StringWriter output = new();
         StringWriter error = new();
-        RootCommand root = EvalsCli.Build(new CliIo(output, error));
+        Command root = EvalsCli.Build(new CliIo(output, error));
         int exit = await root.Parse(args).InvokeAsync(
             new InvocationConfiguration { Output = output, Error = error, EnableDefaultExceptionHandler = false },
             TestContext.Current.CancellationToken);

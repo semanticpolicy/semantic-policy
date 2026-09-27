@@ -12,10 +12,10 @@ logic, around a model call, or inside an AI agent's loop.
 > **Status: alpha.** `0.1.0-alpha.1` is the first release: the core library (policies, the evaluation
 > engine, telemetry, DI registration), the TypeSafe Jev provider and the Microsoft Agent Framework
 > integration, as prerelease packages on NuGet. The System One provider, for a decision model you run
-> on your own machine ([Local setup][local-setup]), is in this repository, and on NuGet from
-> `0.1.0-alpha.2`. The evaluation CLI runs from this repository and calls Jev through OpenRouter and a
-> local Von server; the four [examples][examples] call Jev. Every part of the API can still change
-> between alpha releases.
+> on your own machine ([Local setup][local-setup]), and the evaluation CLI, the `semantic-policy`
+> dotnet tool, are in this repository, and on NuGet from `0.1.0-alpha.2`. The CLI calls Jev through
+> OpenRouter and a local Von server; the four [examples][examples] call Jev. Every part of the API can
+> still change between alpha releases.
 
 ## The idea
 
@@ -87,8 +87,14 @@ dotnet add package SemanticPolicy.AgentFramework --prerelease      # for a Micro
 
 The providers and the Agent Framework package all depend on `SemanticPolicy.Core`, so any one of
 them brings it along. From `0.1.0-alpha.2`, the TypeSafe provider is built on the System One provider
-and brings it too, at exactly its own version. The evaluation CLI is not a package yet: run it from a
-clone, as [Evals][evals] shows.
+and brings it too, at exactly its own version.
+
+The evaluation CLI is a dotnet tool whose command is `semantic-policy`, installed for your user
+rather than added to a project; [Evals][evals] shows what it does.
+
+```bash
+dotnet tool install --global SemanticPolicy.Evals --prerelease  # the semantic-policy command, from 0.1.0-alpha.2
+```
 
 The snippets on this page assume these `using` directives:
 
@@ -299,22 +305,24 @@ shows, what five live runs of it returned, where the rules get it wrong, and how
 
 ## Evals
 
-`tools/SemanticPolicy.Evals` tells you how well a rule works on examples you labelled yourself: how
-often it flags safe inputs, how often it misses bad ones, and which thresholds meet a goal such as
-"deny must be right 95% of the time". `run` asks the providers once and saves their answers;
-`report`, `sweep` and `compare` replay them without calling anything. The numbers hold for that
-dataset only.
+`semantic-policy`, the evaluation CLI, tells you how well a rule works on examples you labelled
+yourself: how often it flags safe inputs, how often it misses bad ones, and which thresholds meet a
+goal such as "deny must be right 95% of the time". `run` asks the providers once and saves their
+answers; `report`, `sweep` and `compare` replay them without calling anything. The numbers hold for
+that dataset only.
 
 ```bash
-dotnet run --project tools/SemanticPolicy.Evals -- run --policy policy.json --dataset dataset.jsonl --record run.recording.jsonl
-dotnet run --project tools/SemanticPolicy.Evals -- sweep --policy policy.json --dataset dataset.jsonl --recording run.recording.jsonl --deny min-precision=0.95
+dotnet tool install --global SemanticPolicy.Evals --prerelease  # from 0.1.0-alpha.2
+semantic-policy run --policy policy.json --dataset dataset.jsonl --record run.recording.jsonl
+semantic-policy sweep --policy policy.json --dataset dataset.jsonl --recording run.recording.jsonl --deny min-precision=0.95
 ```
 
 `run` calls the providers its policy binds: Jev through OpenRouter, which needs `OPENROUTER_API_KEY`
 and sends every dataset input to that third party, and a Von server on your machine
-([Local setup][local-setup]). A recorded run of the smoke set ships with the tool, so the other
-three commands work on a fresh clone without a key or a server. [Its README][evals-readme] explains
-the dataset format, the four commands and how to read their output.
+([Local setup][local-setup]). The package carries the example and smoke datasets and a recorded run
+of each smoke set, and `semantic-policy samples <dir>` writes them out, so the other three commands
+work right after the install, without a key or a server. [Its README][evals-readme] explains the
+dataset format, the five commands and how to read their output.
 
 ## Layout
 

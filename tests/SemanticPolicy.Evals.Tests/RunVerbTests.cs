@@ -312,7 +312,7 @@ public sealed partial class RunVerbTests
     {
         StringWriter output = new();
         StringWriter error = new();
-        RootCommand root = EvalsCli.Build(new CliIo(output, error), providers);
+        Command root = EvalsCli.Build(new CliIo(output, error), providers);
         int exit = await root.Parse(args).InvokeAsync(
             new InvocationConfiguration { Output = output, Error = error, EnableDefaultExceptionHandler = false },
             TestContext.Current.CancellationToken);

@@ -23,7 +23,7 @@ public sealed class InputsTests
         StringWriter output = new();
         StringWriter error = new();
         CliIo io = new(output, error);
-        RootCommand root = EvalsCli.Build(io);
+        Command root = EvalsCli.Build(io);
         Command probe = new("probe");
         foreach (Option option in SharedOptions.InputOptions)
         {
