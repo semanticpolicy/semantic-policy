@@ -13,4 +13,11 @@
     <ProjectReference Include="..\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
   </ItemGroup>
 
+  <!-- The call, the client setup and the status table every HTTP provider shares, compiled in as
+       internal types rather than published as an API of their own. -->
+  <ItemGroup>
+    <Compile Include="..\Shared\ProviderHttp.cs" Link="Shared\ProviderHttp.cs" />
+    <Compile Include="..\Shared\ProviderHttpCall.cs" Link="Shared\ProviderHttpCall.cs" />
+  </ItemGroup>
+
 </Project>

@@ -7,10 +7,10 @@ using SemanticPolicy.Protocol;
 namespace SemanticPolicy.Providers.SystemOne;
 
 /// <summary>
-/// Reads what came back from a System One call: a status onto a failure kind, an error body onto a
-/// message that quotes no vendor text, and a 200 body onto the protocol's value, evidence and
-/// metadata. A 200 body is read strictly, because a distribution with a key missing would let a
-/// threshold read a partial answer as a whole one.
+/// Reads what came back from a System One call: an error body onto a message that quotes no vendor
+/// text, and a 200 body onto the protocol's value, evidence and metadata. A 200 body is read strictly,
+/// because a distribution with a key missing would let a threshold read a partial answer as a whole
+/// one.
 /// </summary>
 internal static class SystemOneResponse
 {
@@ -22,36 +22,6 @@ internal static class SystemOneResponse
 
     /// <summary>The wire's own [0, 1] scale, under <see cref="EvidenceKind.Score"/>: ordered, not a probability.</summary>
     private const string _systemOneScale = "systemone";
-
-    /// <summary>
-    /// Every status other than 200 as a failure kind. 400 and 422 are the provider's verdict on the
-    /// request, so they are <see cref="FailureKind.RejectedInput"/>; a 2xx that is not 200 carries no
-    /// answer the adapter can read, so it is <see cref="FailureKind.Malformed"/>.
-    /// </summary>
-    public static FailureKind KindOf(HttpStatusCode status) =>
-        (int)status switch
-        {
-            401 or 403 => FailureKind.Unauthorized,
-            400 or 404 or 413 or 422 => FailureKind.RejectedInput,
-            408 or 429 => FailureKind.Unavailable,
-            >= 500 and <= 599 => FailureKind.Unavailable,
-            >= 200 and <= 299 => FailureKind.Malformed,
-            _ => FailureKind.Unknown,
-        };
-
-    /// <summary>The body parsed and detached from its document, or <see langword="null"/> when it is not JSON.</summary>
-    public static JsonElement? TryParse(byte[] body)
-    {
-        try
-        {
-            using JsonDocument document = JsonDocument.Parse(body);
-            return document.RootElement.Clone();
-        }
-        catch (JsonException)
-        {
-            return null;
-        }
-    }
 
     /// <summary>
     /// The status, the vendor's <c>error.code</c> or <c>error_type</c> when the body carries one, and

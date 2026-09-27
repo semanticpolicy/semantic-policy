@@ -1,14 +1,18 @@
 using SemanticPolicy.Protocol;
 
-namespace SemanticPolicy.Providers.Http;
+namespace SemanticPolicy.Providers;
 
 /// <summary>
-/// Sends one request under a timer of its own. Only that timer ends a call as a
+/// Sends one provider request under a timer of its own. Only that timer ends a call as a
 /// <see cref="FailureKind.Timeout"/>: the caller's cancellation propagates, and a cancellation with
 /// neither token cancelled is a programming error that propagates too. A transport failure is
 /// <see cref="FailureKind.Unavailable"/>, described by its error code and nothing the exception says.
 /// </summary>
-internal static class HttpProviderCall
+/// <remarks>
+/// Compiled into every HTTP provider package as a linked file rather than shipped as a public type, so
+/// the packages share one behaviour without a shared API to version.
+/// </remarks>
+internal static class ProviderHttpCall
 {
     /// <summary>
     /// Sends the message and reads the whole body before the timer stops, then hands both to

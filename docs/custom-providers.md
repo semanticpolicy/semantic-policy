@@ -74,8 +74,8 @@ configures them on the `HttpClient`.
 
 - Code: the `catch` blocks and `KindOf` in the example's
   [`TeiClassifierProvider`](../examples/CustomProvider/CustomProvider/TeiClassifierProvider.cs); the
-  Http client's [`HttpProviderCall`](../src/SemanticPolicy.Providers.Http/HttpProviderCall.cs) and
-  `KindOf` and `FailureKindOf` in
+  clients' shared [`ProviderHttpCall`](../src/Shared/ProviderHttpCall.cs) and `KindOf` in
+  [`ProviderHttp`](../src/Shared/ProviderHttp.cs); `FailureKindOf` in the Http client's
   [`HttpProviderResponse`](../src/SemanticPolicy.Providers.Http/HttpProviderResponse.cs).
 - Tests: the example's `Status_Maps_To_A_Failure_Kind`, `Connection_Failure_Reads_As_Unavailable`,
   `Answer_Outside_The_Expected_Shape_Reads_As_Malformed` and
@@ -103,9 +103,9 @@ so a timer shorter than that reports a missing local server as a `Timeout` rathe
 `Unavailable`. The example's timer is three seconds for that reason.
 
 - Code: `DecideAsync` in the example's provider, and the `ConfigureHttpClient` line in its
-  [`Program.cs`](../examples/CustomProvider/CustomProvider/Program.cs); the Http client's
-  `HttpProviderCall`, and the same line in
-  [`HttpProviderBuilderExtensions`](../src/SemanticPolicy.Providers.Http/HttpProviderBuilderExtensions.cs).
+  [`Program.cs`](../examples/CustomProvider/CustomProvider/Program.cs); the clients' shared
+  `ProviderHttpCall`, and the same line in `AddClient` in
+  [`ProviderHttp`](../src/Shared/ProviderHttp.cs).
 - Tests: the example's `Silent_Server_Ends_In_A_Timeout_Failure` and
   `Caller_Cancellation_Throws_OperationCanceledException`; the Http client's
   `Registered_Provider_Reports_The_Declared_Capabilities_Under_The_Registration_Name`, which checks

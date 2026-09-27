@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using SemanticPolicy.Providers;
 using SemanticPolicy.Providers.Http;
 
 namespace SemanticPolicy;
@@ -48,15 +49,7 @@ public static class HttpProviderBuilderExtensions
         HttpProviderOptions snapshot = Copy(configured);
         snapshot.EnsureValid();
 
-        // Every logger, not a redaction filter: whatever a host's redaction default is, a Trace level in
-        // a developer's environment must never print the Authorization header. A host that wants the
-        // factory's logging back calls AddDefaultLogger() on the same name, with its own redaction.
-        // The client's own timeout is disabled because the provider keeps its own timer over the whole
-        // call: a shorter client timeout would surface as a cancellation with no token cancelled.
-        builder.Services.AddHttpClient(name)
-            .RemoveAllLoggers()
-            .ConfigureHttpClient(client => client.Timeout = Timeout.InfiniteTimeSpan);
-
+        ProviderHttp.AddClient(builder.Services, name);
         return builder.AddProvider(name, container =>
         {
             IHttpClientFactory factory = container.GetRequiredService<IHttpClientFactory>();
@@ -64,28 +57,10 @@ public static class HttpProviderBuilderExtensions
 
             // The variable has been read once it reaches the provider, so it is cleared: an unset one
             // means no key, not a key the provider would have to look for.
-            options.ApiKey = ResolveKey(options);
+            options.ApiKey = ProviderHttp.ResolveKey(options.ApiKey, options.ApiKeyVariable);
             options.ApiKeyVariable = null;
             return new HttpProvider(() => factory.CreateClient(name), options);
         });
-    }
-
-    // Read when the evaluator is first resolved, never at the AddHttpProvider call, so the variable may
-    // be set after registration. The key is optional: a variable that is unset or blank sends no header.
-    private static string? ResolveKey(HttpProviderOptions options)
-    {
-        if (!string.IsNullOrWhiteSpace(options.ApiKey))
-        {
-            return options.ApiKey;
-        }
-
-        if (string.IsNullOrWhiteSpace(options.ApiKeyVariable))
-        {
-            return null;
-        }
-
-        string? key = Environment.GetEnvironmentVariable(options.ApiKeyVariable);
-        return string.IsNullOrWhiteSpace(key) ? null : key;
     }
 
     // The collections are copied into arrays of their own, so a list the host keeps and changes later
