@@ -35,6 +35,9 @@
          SDK's chat client into an agent. examples/ToolIntentGuard scripts its client instead and does not
          reference it. MIT. -->
     <PackageVersion Include="Microsoft.Agents.AI.OpenAI" Version="1.22.0" />
+    <!-- SemanticPolicy.FluentValidation hangs its semantic rules on FluentValidation's rule builder, and
+         FluentValidation builds the failure each rule reports. Apache-2.0. -->
+    <PackageVersion Include="FluentValidation" Version="12.1.1" />
   </ItemGroup>
 
   <ItemGroup Label="Tools">
