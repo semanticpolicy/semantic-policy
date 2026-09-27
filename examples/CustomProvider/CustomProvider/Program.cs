@@ -25,11 +25,13 @@ Policy policy = Policy.Define("prompt-injection")
 
 ServiceCollection services = new();
 
-// No client timeout, because the provider keeps its own timer, and no loggers, so nothing about a call
-// is logged unless the application adds it.
+// No client timeout, because the provider keeps its own timer; no loggers, so nothing about a call is
+// logged unless the application adds it; and no redirects, because a 307 or 308 would resend the text
+// to wherever the server points.
 services.AddHttpClient("tei")
     .RemoveAllLoggers()
-    .ConfigureHttpClient(client => client.Timeout = Timeout.InfiniteTimeSpan);
+    .ConfigureHttpClient(client => client.Timeout = Timeout.InfiniteTimeSpan)
+    .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { AllowAutoRedirect = false });
 
 // The provider is a singleton, so it gets a client from the factory on every call rather than keeping
 // one: a kept client would hold its first connections, and the address they resolved, until restart.

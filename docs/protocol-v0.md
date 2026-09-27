@@ -184,7 +184,10 @@ A failure may carry, as its body, a result whose outcome is `failure`; its `kind
 status, which only approximates it. Without one the client maps the status itself: 401 and 403
 `unauthorized`; 400, 404, 413 and 422 `rejectedInput`; 408, 429 and every 5xx `unavailable`, so a
 bare 504 reads `unavailable`, not `timeout`; any other status `unknown`. The client's own timer gives
-`timeout`, and a connection that fails gives `unavailable`.
+`timeout`, a connection that fails gives `unavailable`, and any other exception from the client's
+handlers, such as a circuit breaker's, gives `unknown`. The client reads at most 1 MiB of a body: a
+longer one is `malformed` on a `200` and the status's kind otherwise. A registered client follows no
+redirect, so a 3xx reads `unknown` rather than sending the request on.
 
 ### What the client reads as v0
 

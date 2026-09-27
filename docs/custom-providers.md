@@ -60,8 +60,10 @@ For an HTTP server, both clients and the example map what came back the same way
 | 400, 404, 413, 422 | `RejectedInput` |
 | 408, 429, any 5xx | `Unavailable` |
 | a 200 the provider cannot read, any other 2xx | `Malformed` |
-| any other status | `Unknown` |
+| any other status, a redirect included | `Unknown` |
+| a body over 1 MiB, never read whole | `Malformed` on a 200, the status's kind otherwise |
 | no connection: `HttpRequestException`, `HttpIOException` | `Unavailable` |
+| any other exception from the client or a handler, such as a circuit breaker's | `Unknown`, naming only the type |
 | nothing within the provider's own timer | `Timeout` |
 
 The Http client reads one thing first: a status outside 2xx whose body is a protocol v0 failure takes
