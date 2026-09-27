@@ -17,6 +17,12 @@
     <IncludeSymbols>false</IncludeSymbols>
   </PropertyGroup>
 
+  <!-- English only: help's headings, such as "Options:" and "Commands:", come from System.CommandLine, whose
+       translations would print them in the user's display language beside the tool's English descriptions. -->
+  <PropertyGroup>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
   <!-- The package's README is the tool's own, in place of the repository's that Directory.Build.props packs. -->
   <ItemGroup>
     <None Remove="$(MSBuildThisFileDirectory)..\..\README.md" />
