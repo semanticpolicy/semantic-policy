@@ -208,6 +208,50 @@ for this server goes to the next binding, and the rule ends in `Deny` when none 
 `FailureBehavior.Allow`, anyone who pads an input past the limit skips the rule.
 [Local decision models][local-models] gives the limits a probe measured on Von and Laya.
 
+### Any protocol v0 server
+
+[Protocol v0][protocol-v0] is the library's own request and result shape.
+`SemanticPolicy.Providers.Http` posts each request to a server that speaks it over HTTP, such as a
+classifier of your own behind a few dozen lines of Python, and reads the server's result back as the
+rule's answer. The [HTTP binding][http-binding] says what such a server answers and how, with a
+minimal server to start from. Nothing about the server is assumed: you declare what it answers, and
+the provider reports exactly that.
+
+```csharp
+services.AddSemanticPolicy()
+    .AddHttpProvider("classifier", o =>
+    {
+        o.BaseUrl = new Uri("http://127.0.0.1:8765");
+        o.Model = "my-classifier-1";       // what your server runs
+        o.Types = [DecisionType.Boolean];  // the rule types it answers
+        o.Evidence = [EvidenceKind.Score]; // the evidence kinds it sends
+        o.StructuredContext = false;       // it reads text, so the provider sends the canonical text
+    })
+    .AddPolicy(policy);
+```
+
+`DecisionType` and `EvidenceKind` are in `SemanticPolicy.Protocol`. The registration name does the
+same three jobs as for TypeSafe, and the named `HttpClient` gets the same treatment.
+
+| Option | |
+|---|---|
+| `o.BaseUrl` | Required, with the same rule as for System One: `https`, plain `http` to a loopback host, or `o.AllowInsecureHttp`. A path in it, such as a gateway's `/api`, is kept. |
+| `o.Model` | Required. A protocol v0 request carries no model, so this names what your server runs: a verdict reports the model the server names in its answer, or this one when it names none, and every failure reports this one. |
+| `o.Types` | Required and not empty: the decision types the server answers. |
+| `o.Evidence` | Required, and empty for a server that sends no evidence. Evidence of a kind not listed here is dropped from the answer. `EvidenceKind.Probability` is your claim that the server is calibrated, as for System One. |
+| `o.StructuredContext` | Required. `false` sends the context as the text `SemanticContext.ToCanonicalText` renders, so every text-only server reads the same text; `true` sends it as the application passed it. |
+| `o.ApiKey` | Optional, as for System One: a Bearer token when set, else the variable `o.ApiKeyVariable` names, else no `Authorization` header. |
+| `o.AllowInsecureHttp` | `false` by default. |
+| `o.MaxContextLength` | Off by default. A context whose canonical text is longer is not sent, and the provider reports a rejected input, as for System One. |
+| `o.Path` | `/v0/decide` by default. |
+| `o.Timeout` | Ten seconds by default. |
+
+The server's answer is an estimate, not a ruling: the provider relays its value and the evidence of
+the kinds you declared, and the policy's thresholds decide what they mean. A failure is a status
+outside 2xx, of the kind the server names in a v0 failure body or else the kind the status maps to.
+Nothing the server writes reaches a failure's message; its whole answer stays in the result's `Raw`,
+which is never serialized.
+
 ## Local setup
 
 A decision model on your own machine keeps the content it judges there, and which provider runs a
@@ -331,7 +375,7 @@ src/
   SemanticPolicy.Core/                  policies, rules, verdicts, decisions — no provider knowledge
   SemanticPolicy.Providers.SystemOne/   decision provider for any System One server, such as Von
   SemanticPolicy.Providers.TypeSafe/    hosted decision provider — TypeSafe Jev
-  SemanticPolicy.Providers.Local/       skeleton — builds, does nothing, not published
+  SemanticPolicy.Providers.Http/        decision provider for any protocol v0 server
   SemanticPolicy.AgentFramework/        Microsoft Agent Framework integration
 tools/
   SemanticPolicy.Evals/                 the evaluation CLI — runs on TypeSafe Jev and a local Von
@@ -345,7 +389,7 @@ tests/
 docs/
   adr/                                  architecture decisions, immutable once merged
   local-models.md                       what a probe measured on three local System One servers
-  protocol-v0.md                        the request and result shape every provider speaks
+  protocol-v0.md                        the shape every provider speaks, and its HTTP binding
   THREAT_MODEL.md                       the threats the library is designed around
 ```
 
@@ -380,6 +424,8 @@ Apache-2.0. See [`LICENSE`][licence].
 [local-setup]: https://github.com/semanticpolicy/semantic-policy#local-setup
 [any-system-one-server]: https://github.com/semanticpolicy/semantic-policy#any-system-one-server
 [local-models]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/local-models.md
+[protocol-v0]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/protocol-v0.md
+[http-binding]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/protocol-v0.md#http-binding
 [system-one-api]: https://docs.typesafe.ai/api
 [von]: https://github.com/wfzyx/von
 [adapter-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/src/SemanticPolicy.AgentFramework/README.md
