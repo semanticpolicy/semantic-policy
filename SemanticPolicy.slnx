@@ -2,6 +2,7 @@
   <Folder Name="/examples/">
     <Project Path="examples/AgentRouter/AgentRouter.csproj" />
     <Project Path="examples/PromptInjectionGuard/PromptInjectionGuard.csproj" />
+    <Project Path="examples/SupportTicketForm/SupportTicketForm.csproj" />
     <Project Path="examples/ToolIntentGuard/ToolIntentGuard.csproj" />
     <Project Path="examples/ToolResultGuard/ToolResultGuard.csproj" />
   </Folder>

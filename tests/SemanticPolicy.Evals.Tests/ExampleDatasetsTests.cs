@@ -102,6 +102,40 @@ public sealed class ExampleDatasetsTests
         loaded.Policy.Bindings.Select(binding => binding.ProviderId).Should().Equal("local", "jev");
     }
 
+    // A structural guard: the set measures the category rule of examples/SupportTicketForm on the parts that
+    // example's context delegate builds. Parts that drifted from the delegate would measure a different input,
+    // and a lost split would let compare choose and report on the same rows, with no other symptom.
+    [Fact]
+    public void Shipped_Support_Ticket_Set_Parses_With_Two_Parts_Both_Splits_And_Both_Labels()
+    {
+        string examples = Path.Combine(RepositoryRoot(), "tools", "SemanticPolicy.Evals", "datasets", "examples");
+        InputSelection selection = new(
+            Path.Combine(examples, "support-ticket.policy.json"),
+            RuleId: null,
+            Path.Combine(examples, "support-ticket.jsonl"),
+            TunePath: null,
+            TestPath: null,
+            new SplitNames(),
+            []);
+
+        LoadedInputs loaded = Inputs.Load(selection);
+
+        loaded.Policy.Rules.Should().ContainSingle().Which.Should().BeOfType<BooleanRule>()
+            .Which.Id.Should().Be("ticket-category");
+        loaded.Selected.Count.Should().BeInRange(40, 60);
+        loaded.Selected.Select(row => row.Id).Should().OnlyHaveUniqueItems();
+        loaded.Splits.Source.Should().Be(SplitSource.Metadata);
+        foreach (IReadOnlyList<DatasetRow> split in new[] { loaded.Splits.Tune, loaded.Splits.Test })
+        {
+            split.Select(row => row.Label.Answer).Should().Contain(["true", "false"]);
+        }
+
+        loaded.Selected.Should().Contain(row => row.Label.Kind == RowLabelKind.Ambiguous);
+        loaded.Selected.Should().OnlyContain(row =>
+            row.Input.Parts.Select(part => part.Name).SequenceEqual(new[] { "category", "description" }));
+        loaded.Policy.Bindings.Select(binding => binding.ProviderId).Should().Equal("local", "jev");
+    }
+
     // A structural guard: the README quotes this recording, and a reader replays it without a key. A dataset whose
     // bytes changed, line endings included, a rule that changed or a run cut short would stop it fitting with no
     // other symptom. No --force, which would skip the very digest check this is here for.
