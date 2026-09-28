@@ -91,7 +91,7 @@ public sealed class MyProvider(string id, Func<HttpClient> clientSource, MyOptio
 
 The rules below are what the evaluator relies on, and the shape above already keeps the first two.
 [Where each rule is kept](#where-each-rule-is-kept) names the code and the tests that hold each rule
-in the example and in the library.
+in the example.
 
 ### A failure is a result, never an exception
 
@@ -155,9 +155,11 @@ Every number a result carries is evidence of a declared kind
 - `Logit` for an unbounded log-odds value, and `Margin` for the gap between the top two options;
 - `Unknown` for a number whose meaning the provider does not define.
 
-Never report a score as a probability because a probability threshold reads better. A provider with no
-numbers returns an empty evidence list, never a placeholder entry
-([ADR 0011](adr/0011-absence-of-evidence-is-an-empty-list.md)).
+Never report a score as a probability because a probability threshold reads better. Every value is a
+finite number: NaN passes no threshold, so a rule would read it as allowed, and an answer that
+carries one, or a number too large for a double, is `Malformed`. Report one entry per kind, since a
+threshold reads only the first. A provider with no numbers returns an empty evidence list, never a
+placeholder entry ([ADR 0011](adr/0011-absence-of-evidence-is-an-empty-list.md)).
 
 A Boolean answer's evidence is keyed `true` and `false`. `Probability` evidence may carry one side,
 and the evaluator completes it as 1 − p. Any other kind has no complement, so it carries both keys, or
@@ -182,11 +184,12 @@ text-only provider reads the same text.
 
 ### No content in messages or logs, the body in `Raw`
 
-A failure's message says what happened in terms that quote nothing: the status, an error code or type
-the server returned when it is one the API documents or at least an identifier, the body's length,
-`no response within N ms`, a transport failure's `HttpRequestError`. Never the question, the context,
-or any free text the server wrote, since an error text can quote the input. The same holds for
-exception messages and for anything the provider logs, and the simplest provider logs nothing.
+A failure's message says what happened in terms that quote nothing: the status, the body's length,
+`no response within N ms`, a transport failure's `HttpRequestError`, and an error code or type from
+the server only when it is an identifier, better still one the API documents. Never the question,
+the context, or any free text the server wrote, since an error text can quote the input. The same
+holds for exception messages and for anything the provider logs, and the simplest provider logs
+nothing.
 
 A successful result's strings follow the same rule: evidence is keyed only by the request's answers,
 and a model, a request id or a scale from the server is kept only when it is an identifier, 1 to 200
@@ -297,25 +300,21 @@ package, so copy the cases your provider needs, as the example does.
 
 ## Where each rule is kept
 
-In the example, the code is
+The example keeps every rule above in
 [`TeiClassifierProvider`](../examples/CustomProvider/CustomProvider/TeiClassifierProvider.cs) and
-[`Program.cs`](../examples/CustomProvider/CustomProvider/Program.cs), and the tests are
-`TeiClassifierProviderTests`. In the library, the clients share
-[`ProviderHttpCall`](../src/Shared/ProviderHttpCall.cs) and
-[`ProviderHttp`](../src/Shared/ProviderHttp.cs), the Http client adds
-[`HttpProvider`](../src/SemanticPolicy.Providers.Http/HttpProvider.cs) and
-[`HttpProviderResponse`](../src/SemanticPolicy.Providers.Http/HttpProviderResponse.cs), and the tests
-are in the contract suite and in
-[`tests/SemanticPolicy.Core.Tests`](../tests/SemanticPolicy.Core.Tests/).
+[`Program.cs`](../examples/CustomProvider/CustomProvider/Program.cs), and tests them in
+`TeiClassifierProviderTests`. The library's own clients keep the same rules in
+[`src/Shared`](../src/Shared/) and
+[`src/SemanticPolicy.Providers.Http`](../src/SemanticPolicy.Providers.Http/).
 
-| Rule | In the example | In the library |
-|---|---|---|
-| A failure is a result | The `catch` blocks and `KindOf`. Tests: `Status_Maps_To_A_Failure_Kind`, `Connection_Failure_Reads_As_Unavailable`, `Handler_Exception_Reads_As_Unknown_Naming_Only_Its_Type`, `Body_Over_The_Limit_Is_Not_Read`, `Answer_Outside_The_Expected_Shape_Reads_As_Malformed`. | `ProviderHttpCall`, `KindOf` in `ProviderHttp`, `FailureKindOf` in `HttpProviderResponse`. Tests: `Provider_Reports_Every_Failure_Kind_As_A_Failure_Result_Without_Throwing`, which also checks that a failed call is not retried; `HttpTransportTests`, run on each client; `Failure_Body_Kind_Wins_Over_The_Status`; Core's `Provider_Exception_Propagates_Unchanged`. |
-| A timer of your own | `DecideAsync`, and the `ConfigureHttpClient` line in `Program.cs`. Tests: `Silent_Server_Ends_In_A_Timeout_Failure`, `Caller_Cancellation_Throws_OperationCanceledException`. | `ProviderHttpCall`, and `AddClient` in `ProviderHttp`. Tests: `Registered_Provider_Reports_The_Declared_Capabilities_Under_The_Registration_Name`, which checks that the named client's timeout is infinite; Core's `Budget_Expiry_Becomes_Failure_Timeout_Under_The_Failure_Behaviour`. |
-| The honest evidence kind | `Read`, which reports TEI's two labels as `Score` evidence with both keys on the `softmax` scale. Test: `Classifier_Answer_Becomes_A_Boolean_With_Score_Evidence`. | The Boolean check in Core's `PolicyEvaluation`; `Relay` in `HttpProvider`, which passes on only the declared kinds. Tests: Core's `Success_That_Breaks_The_Contract_Is_Malformed_For_That_Attempt`; `Server_Answer_Is_Relayed_Under_The_Client_Id`; `Undeclared_Evidence_Is_Dropped_Without_Being_Checked`. |
-| Declared capabilities | `Capabilities`: Boolean, `Score`, `RawOutput`, no structured context. | The check in Core's `PolicyEvaluator`; `HttpProviderOptions`, which refuse a registration that leaves a capability undeclared. Tests: Core's `Registered_Policies_Are_Validated_When_The_Evaluator_Is_Constructed` and `Ad_Hoc_Policy_Is_Validated_Before_Its_First_Provider_Call`; `Registration_With_An_Undeclared_Or_Invalid_Option_Throws_At_The_Call`. |
-| No content in messages or logs | `DescribeError`, which names only TEI's own error types. Tests: `Failure_Message_Names_The_Error_Type_But_Never_The_Server_Text`, `Failure_Message_Leaves_Out_An_Error_Type_TEI_Does_Not_Use`. | `Identifier` in `ProviderHttp`; `Describe` and `EvidenceDeviation` in `HttpProviderResponse`. Tests: `Failure_Message_And_ToString_Never_Contain_The_Marker`, `Server_Text_Never_Reaches_The_Outcome_Message`, `Server_String_That_Is_Not_An_Identifier_Is_Not_Relayed`, `Answer_On_200_Outside_The_Contract_Reads_As_Malformed`. |
-| Refuse an input the model would cut | `truncate: false` in `DecideAsync`. Tests: `Request_Carries_The_Canonical_Text_Of_The_Context_And_Not_The_Question`, which checks `truncate: false`; the 422 case of `Status_Maps_To_A_Failure_Kind`. | `MaxContextLength` on both clients. Test: `Context_Length_Against_MaxContextLength_Decides_Whether_The_Server_Is_Called`. |
-| Every result names a model | `Metadata`, from `TeiClassifierOptions.Model`. Tests: `Status_Maps_To_A_Failure_Kind`, `Connection_Failure_Reads_As_Unavailable`, `Answer_Outside_The_Expected_Shape_Reads_As_Malformed` and `Silent_Server_Ends_In_A_Timeout_Failure`, each of which checks the configured model on a failure. | `Relay` and `Failed` in `HttpProvider`, from `HttpProviderOptions.Model`, which is required. Test: `Result_Without_A_Server_Model_Reports_The_Configured_Model`. |
-| One name, no redirects | The registration in `Program.cs`. Test: `Every_Call_Asks_The_Source_For_A_Client`. | `AddClient` in `ProviderHttp`. Tests: `Registered_Client_Follows_No_Redirect`, run on each client; `Registered_Provider_Reports_The_Declared_Capabilities_Under_The_Registration_Name`; `Registration_With_An_Undeclared_Or_Invalid_Option_Throws_At_The_Call`. |
-| A fixed-task classifier | Only the context goes out. Test: `Request_Carries_The_Canonical_Text_Of_The_Context_And_Not_The_Question`, which checks that the question never reaches the server. | Not applicable: both clients send the question. |
+| Rule | Code and tests in the example |
+|---|---|
+| A failure is a result | The `catch` blocks and `KindOf`. Tests: `Status_Maps_To_A_Failure_Kind`, `Connection_Failure_Reads_As_Unavailable`, `Handler_Exception_Reads_As_Unknown_Naming_Only_Its_Type`, `Body_Over_The_Limit_Is_Not_Read`, `Answer_Outside_The_Expected_Shape_Reads_As_Malformed`. |
+| A timer of your own | `DecideAsync`, and the `ConfigureHttpClient` line in `Program.cs`. Tests: `Silent_Server_Ends_In_A_Timeout_Failure`, `Caller_Cancellation_Throws_OperationCanceledException`. |
+| The honest evidence kind | `Read`, which reports TEI's two labels as `Score` evidence with both keys on the `softmax` scale. Test: `Classifier_Answer_Becomes_A_Boolean_With_Score_Evidence`. |
+| Declared capabilities | `Capabilities`: Boolean, `Score`, `RawOutput`, no structured context. |
+| No content in messages or logs | `DescribeError`, which names only TEI's own error types. Tests: `Failure_Message_Names_The_Error_Type_But_Never_The_Server_Text`, `Failure_Message_Leaves_Out_An_Error_Type_TEI_Does_Not_Use`. |
+| Refuse an input the model would cut | `truncate: false` in `DecideAsync`. Tests: `Request_Carries_The_Canonical_Text_Of_The_Context_And_Not_The_Question`, which checks `truncate: false`; the 422 case of `Status_Maps_To_A_Failure_Kind`. |
+| Every result names a model | `Metadata`, from `TeiClassifierOptions.Model`. Tests: `Status_Maps_To_A_Failure_Kind`, `Connection_Failure_Reads_As_Unavailable`, `Answer_Outside_The_Expected_Shape_Reads_As_Malformed` and `Silent_Server_Ends_In_A_Timeout_Failure`, each of which checks the configured model on a failure. |
+| One name, no redirects | The registration in `Program.cs`. Test: `Every_Call_Asks_The_Source_For_A_Client`. |
+| A fixed-task classifier | Only the context goes out. Test: `Request_Carries_The_Canonical_Text_Of_The_Context_And_Not_The_Question`, which checks that the question never reaches the server. |

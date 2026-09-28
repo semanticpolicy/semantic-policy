@@ -101,15 +101,12 @@ decides.
 |---|---|
 | `200`, two labels, one of them `INJECTION` | Boolean, `true` when `INJECTION` scores at least as high as the other label; `Score` evidence with both labels' scores as `true` and `false` and the scale `softmax`; the parsed body in `Raw` |
 | `200` with anything else | `Malformed` |
-| `401`, `403` | `Unauthorized` |
-| `400`, `404`, `413`, `422` | `RejectedInput` |
-| `408`, `429`, any `5xx` | `Unavailable` |
-| `424`, TEI's backend error, and any other status, a redirect included | `Unknown` |
-| a body over 1 MiB, never read whole | `Malformed` on a `200`, the status's kind otherwise |
-| no connection | `Unavailable` |
-| any other exception from the client or a handler the host added | `Unknown`, naming only the type |
-| nothing within the provider's timer | `Timeout` |
-| the caller's token cancelled | an `OperationCanceledException` |
+| `422`, TEI's answer to an input over the model's limit with `truncate: false` | `RejectedInput` |
+| `424`, TEI's backend error | `Unknown` |
+
+Every other status, a body over 1 MiB, a refused connection, an exception from a handler, the
+provider's timer and the caller's token follow the rules in
+[Custom providers](../../docs/custom-providers.md#a-failure-is-a-result-never-an-exception).
 
 Every result names the model the registration configured, because TEI's answer names none. A
 failure's message carries the status, TEI's `error_type` when it is one of TEI's own, and the body's

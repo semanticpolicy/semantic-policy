@@ -162,12 +162,13 @@ the result are the shapes above, unchanged; the binding adds the transport and n
 
 ### Request
 
-`POST {base}/v0/decide`, where the client's `Path` option can move the path, with the request as the
-body, `Content-Type: application/json`, and `Authorization: Bearer <key>` only when a key is
-configured. With `structuredContext: false` the client puts `Core`'s canonical text of the context in
-`context`, as a JSON string; with `true`, the context as the application passed it. A server that
-reads text therefore never flattens anything itself. The request carries no model: the registration
-names what the server runs, and a result reports that name whenever the server's answer names none.
+`POST {base}/v0/decide`, where the client's `Path` option can move the path and `{base}` may carry a
+path but no query or fragment, with the request as the body, `Content-Type: application/json`, and
+`Authorization: Bearer <key>` only when a key is configured. With `structuredContext: false` the
+client puts `Core`'s canonical text of the context in `context`, as a JSON string; with `true`, the
+context as the application passed it. A server that reads text therefore never flattens anything
+itself. The request carries no model: the registration names what the server runs, and a result
+reports that name whenever the server's answer names none.
 
 ### Response
 
@@ -194,17 +195,19 @@ redirect, so a 3xx reads `unknown` rather than sending the request on.
 
 A body is a v0 result when the JSON object itself carries `"protocol": "semanticpolicy/v0"`, a
 `type`, an `outcome` object with a `status` and a `provider` object; when every entry of an
-`evidence` array is an object with `kind` and `values`; and when the whole deserializes into the
-result's types, which a string no enum names, such as an unknown failure `kind`, does not. Each member
-is checked on the JSON rather than on a default the client would fill in, so an evidence entry
-without a `kind` never becomes a probability the server did not claim. Missing or empty `evidence` is
-no evidence.
+`evidence` array is an object with `kind` and `values`; and when the whole reads as the result's
+types. A member name matches only as written here, so `Evidence` is an unknown member and not the
+evidence; a number is a JSON number, never a string; and an enum value is one the protocol names, so
+an unknown failure `kind` makes the body something other than a v0 result. Each member is checked on
+the JSON rather than on a default the client would fill in, so an evidence entry without a `kind`
+never becomes a probability the server did not claim. Missing or empty `evidence` is no evidence.
 
 - On a `200`, anything but a v0 `success` or `abstain` of the request's `type` is `malformed`: a
   failure, a body that is not JSON, JSON that is not a v0 result, a result of another type, a
   `success` whose `value` is missing or is not one of the request's `options` or `levels`. So is
   evidence of a declared kind keyed by anything but the request's answers (`true` and `false`, an
-  option, a level), and a `probability` outside [0, 1].
+  option, a level), a value that is not a finite number, a `probability` outside [0, 1], and a
+  second entry of a declared kind, since a threshold reads only the first.
 - On any other 2xx the call is `malformed`, whatever the body says.
 - On a status outside 2xx the body is a failure body only when it is a v0 result whose outcome is
   `failure` with a `kind` the outcome's list names. HTML, `{"error": …}`, an object without
@@ -281,9 +284,10 @@ ThreadingHTTPServer(("127.0.0.1", 8765), Decide).serve_forever()
 
 It reports `score` evidence with both ends, not `probability`, because a classifier's number orders
 its answers without being calibrated ([ADR 0003](adr/0003-evidence-semantics.md)), and it cuts the
-number at 0.5 for the value. Register it with `Types` Boolean, `Evidence` Score and
-`StructuredContext` false. It listens on loopback and checks no key; before it serves anything beyond
-loopback, put it behind TLS and check the `Authorization` header.
+number at 0.5 for the value. Until `classify` is filled in, every call answers 503, which the client
+reads as `unavailable`. Register it with `Types` Boolean, `Evidence` Score and `StructuredContext`
+false. It listens on loopback and checks no key; before it serves anything beyond loopback, put it
+behind TLS and check the `Authorization` header.
 
 ## Not in v0
 
