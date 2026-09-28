@@ -51,9 +51,11 @@ A recording holds row ids and answers, never an input or a label. The tool depen
 
 ## The provider
 
-The tool registers two providers, and a binding's `providerId` refers to one of them by name.
-`run` builds only the providers its policy binds, so a policy that leaves `jev` out needs no key and
-one that leaves `local` out needs no server.
+A binding's `providerId` names a provider, and `run` builds only the providers its policy binds, so
+a policy that leaves one out needs neither its key nor its server. `report`, `sweep` and `compare`
+read a recording and call nothing, so they need no key and no server.
+
+Without `--providers`, the tool registers two:
 
 - **`local`** is a Von server at the address in `SEMANTICPOLICY_EVALS_LOCAL_URL`, or at
   `http://127.0.0.1:8000` when the variable is unset. Von (`von-sdk` on PyPI) serves a decision
@@ -69,8 +71,74 @@ one that leaves `local` out needs no server.
   - **`run` sends every dataset input it evaluates to Jev through OpenRouter, a third party.** Run it
     only on data you may send there. Each row costs one call per rule and binding, billed to the
     key's account.
-- `report`, `sweep` and `compare` read a recording and call nothing, so they need no key and no
-  server.
+
+**A providers file** names the providers instead: `run --providers <file>`. The file is the whole
+set. `local` and `jev` are not added beside its entries, so the file alone shows where a dataset's
+content goes. This one registers the same two providers the tool registers without it, with Jev's
+route through OpenRouter spelled out:
+
+```json
+{
+  "providers": {
+    "local": {
+      "kind": "systemone",
+      "options": {
+        "baseUrl": "http://127.0.0.1:8000",
+        "model": "von-1.2.2"
+      }
+    },
+    "jev": {
+      "kind": "typesafe-jev",
+      "options": {
+        "route": {
+          "baseUrl": "https://openrouter.ai/api",
+          "path": "/v1/systemone",
+          "model": "typesafe/jev-1.13",
+          "apiKeyVariable": "OPENROUTER_API_KEY"
+        }
+      }
+    }
+  }
+}
+```
+
+Each name under `providers` is a registration name: what a binding's `providerId` refers to, and the
+provider's name in the recording. `kind` picks one of two adapters, and `options` is that adapter's
+own options class, its properties named in camelCase; letter case does not matter:
+
+| `kind` | What it calls | `options` |
+|---|---|---|
+| `systemone` | A System One server, such as Von or Laya, on your machine or your network | `baseUrl` and `model`, both required; `path` (`/v1/systemone` by default), `apiKeyVariable`, `allowInsecureHttp` for plain `http` to a host that is not loopback, `evidence` (`score` by default, or `probability` when you know the server is calibrated) and `maxContextLength` |
+| `typesafe-jev` | TypeSafe's Jev model, on TypeSafe's own endpoint or through a gateway such as OpenRouter | `route`, required, with its four properties: `baseUrl`, `path`, `model` and `apiKeyVariable`; TypeSafe's own is `https://api.typesafe.ai`, `/v1/systemone`, `jev-1.13.0` and `TYPESAFE_API_KEY`. `model` beside `route` asks for another model than the route's, and `apiKeyVariable` beside it reads another variable |
+
+A key is named, never written: `apiKeyVariable` names the environment variable that holds it. A
+`systemone` key is optional, and an unset variable sends no `Authorization` header. A `typesafe-jev`
+entry must name a variable, in its `route` or beside it, and `run` stops with exit code 1 when a
+policy binds the entry and the variable is unset.
+
+`run` stops with exit code 1 before it builds any provider when the file:
+
+- sets `apiKey`, `timeout` or `id`, in any letter case, in `options` or in a `route`. A key written
+  in a file travels with it into repositories and CI logs; `run --timeout` is the only limit on a
+  call, and the tool sets each adapter's own timer past it; the registration name is the provider's
+  id.
+- has a property its options class or its route does not have, so a mistyped name cannot fall back
+  to its default unseen; gives an entry anything but `kind` and `options`, or the top level anything
+  but `providers`; or lacks one of them.
+- names a kind other than `systemone` and `typesafe-jev`, or a provider twice.
+- has a `typesafe-jev` entry with a `route` that names no key variable, bound or not, or puts in
+  any `apiKeyVariable` something that is not a variable's name: ASCII letters, digits and
+  underscores, not starting with a digit. A key pasted there is refused before any message could
+  name it.
+- is not valid JSON, or cannot be read.
+
+The message names the file, the provider and the property, and never quotes a value from the file:
+a value could be a key pasted in by mistake, and the message lands in terminals and CI logs.
+
+Everything else in `options` is the adapter's to check, and it checks every entry, bound or not. A
+relative `baseUrl`, plain `http` to a host that is not loopback without `allowInsecureHttp`, or a
+`typesafe-jev` entry with no `route` stops `run` with exit code 1 and the adapter's own message,
+naming the provider.
 
 ## Quick start
 
@@ -331,11 +399,17 @@ same report as [`report`](#report).
 | `--timeout <seconds>` | How long one call may take before it is recorded as a `timeout`; 30 by default. |
 | `--retries <n>` | How many times a call answered `unavailable` is made again; 2 by default, 0 for none. |
 | `--resume <recording>` | Finish that recording instead of starting a new one; see below. |
+| `--providers <file>` | The providers `run` may call, from a [providers file](#the-provider), in place of `local` and `jev`. |
+
+A binding's `providerId` is a registration name: `local` or `jev`, or with `--providers` a name in
+the file (see [The provider](#the-provider)). A policy that binds a name nothing registers stops
+`run` before the first call with exit code 1, and the message lists the names that are registered.
 
 `--resume` finishes a recording a run left short: stopped with Ctrl+C, or holding answers that were
 still `unavailable` when the retries ran out. It calls every binding for each selected row the
 recording lacks, calls again only the attempts recorded as `unavailable`, and keeps every other
-answer as it was recorded. Give it the policy and the data the recording was made with:
+answer as it was recorded. Give it the policy and the data the recording was made with, and the same
+`--providers` file when it was made through one:
 
 - `--where` and `--timeout` can be left out, and the recording's own are then used. When given, they
   must be the recording's; the filters may come in any order.
@@ -350,11 +424,6 @@ The finished recording is written next to the old one, as `<recording>.tmp`, and
 only when it holds every row the old one did. A resume that is itself stopped still keeps each row
 it finished, and the rest as they were, so running it again carries on from there. With nothing to
 call, it says so, leaves the file untouched and prints the report.
-
-Providers are registered in code, as in an application, and a binding's `providerId` is a
-registration name. The tool registers `local` and `jev` (see [The provider](#the-provider)). A
-policy that binds a name the tool does not register stops `run` before the first call with exit
-code 1, and the message lists the names that are registered.
 
 ### `report`
 
@@ -594,10 +663,10 @@ failure rates, latency and usage.
 - **An interrupted run** keeps its finished rows, and the other commands read the shorter recording
   and say how many rows it covers. A last line torn by the interruption is skipped, and the report
   names it. To finish the recording, run it again with `--resume`.
-- **Resuming with other providers.** A resume must register the same providers as the first run.
-  The header names each registration and the first model it reported, but a resume cannot check
-  where a name points now: pointed at another server or model, it mixes two providers' answers in
-  one recording under one name.
+- **Resuming with other providers.** A resume must register the same providers as the first run,
+  so a run made with `--providers` is resumed with the same file. The header names each registration
+  and the first model it reported, but a resume cannot check where a name points now: pointed at
+  another server or model, it mixes two providers' answers in one recording under one name.
 
 ## The recording
 

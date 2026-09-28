@@ -323,6 +323,28 @@ public sealed partial class RunVerbTests
         File.Exists(fixture.RecordingPath + ".tmp").Should().BeFalse();
     }
 
+    // A providers file takes the place of the tool's own providers on a resume as on a new run, so a recording made
+    // through the file is finished through it; one the tool refuses stops the resume before any call.
+    [Fact]
+    public async Task Resume_Reads_The_Providers_File_As_A_Run_Does()
+    {
+        using Fixture fixture = await Fixture.RecordedAsync(rows: 4, cutAfter: 2, unavailable: null);
+        using TempFile providers = TempFile.Write("{}", ".json");
+        byte[] bytes = File.ReadAllBytes(fixture.RecordingPath);
+        ScriptedProvider scripted = Answering();
+
+        (int exit, string output, string error) = await InvokeAsync(
+            [.. fixture.ResumeArgs(), "--providers", providers.Path],
+            builder => builder.AddProvider(scripted, "local").AddProvider(scripted, "jev"));
+
+        exit.Should().Be(ExitCodes.UsageOrData);
+        error.Should().Contain($"Providers file '{providers.Path}'");
+        output.Should().BeEmpty();
+        scripted.Calls.Should().Be(0);
+        File.ReadAllBytes(fixture.RecordingPath).Should().Equal(bytes);
+        File.Exists(fixture.RecordingPath + ".tmp").Should().BeFalse();
+    }
+
     [Fact]
     public async Task Resume_Takes_Omitted_Timeout_And_Filters_From_The_Header()
     {
