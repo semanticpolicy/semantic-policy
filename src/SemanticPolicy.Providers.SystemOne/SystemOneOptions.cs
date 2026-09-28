@@ -20,8 +20,8 @@ public sealed class SystemOneOptions
     public const string DefaultId = "systemone";
 
     /// <summary>
-    /// The server's address, such as <c>http://127.0.0.1:8000</c>. Required and absolute. Plain
-    /// <c>http</c> is accepted on a loopback host, and elsewhere only with
+    /// The server's address, such as <c>http://127.0.0.1:8000</c>. Required and absolute, without a
+    /// query or a fragment. Plain <c>http</c> is accepted on a loopback host, and elsewhere only with
     /// <see cref="AllowInsecureHttp"/>.
     /// </summary>
     public Uri? BaseUrl { get; set; }
@@ -91,8 +91,8 @@ public sealed class SystemOneOptions
     /// </summary>
     /// <exception cref="ArgumentException">
     /// <see cref="BaseUrl"/> is absent or relative, its scheme is neither <c>http</c> nor <c>https</c>,
-    /// or it is <c>http</c> to a host other than loopback while <see cref="AllowInsecureHttp"/> is false;
-    /// <see cref="Path"/> does not start with <c>/</c>; <see cref="Model"/> is empty;
+    /// it is <c>http</c> to a host other than loopback while <see cref="AllowInsecureHttp"/> is false,
+    /// or it carries a query or a fragment; <see cref="Path"/> does not start with <c>/</c>; <see cref="Model"/> is empty;
     /// <see cref="Evidence"/> is neither <see cref="EvidenceKind.Score"/> nor
     /// <see cref="EvidenceKind.Probability"/>; <see cref="MaxContextLength"/> is not greater than
     /// zero; <see cref="Timeout"/> is not greater than zero, or longer than a timer can wait (about 49
@@ -117,6 +117,12 @@ public sealed class SystemOneOptions
             throw new ArgumentException(
                 "The BaseUrl must use https unless its host is loopback or AllowInsecureHttp is set.",
                 nameof(BaseUrl));
+        }
+
+        // The path is appended to the base as text, so a query or a fragment would swallow it.
+        if (BaseUrl.Query.Length > 0 || BaseUrl.Fragment.Length > 0)
+        {
+            throw new ArgumentException("The BaseUrl carries a query or a fragment.", nameof(BaseUrl));
         }
 
         if (string.IsNullOrEmpty(Path) || Path[0] != '/')

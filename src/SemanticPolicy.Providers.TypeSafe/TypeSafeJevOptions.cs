@@ -60,8 +60,9 @@ public sealed class TypeSafeJevOptions
     /// <exception cref="ArgumentException">
     /// <see cref="Route"/> is absent; <see cref="Timeout"/> is not greater than zero, or longer than
     /// a timer can wait (about 49 days); the model, <see cref="Model"/> or else the route's, is
-    /// empty; the route's base URL is not absolute, or is not <c>https</c> on a host other than
-    /// loopback; the route's path does not start with <c>/</c>; or <see cref="Id"/> is empty.
+    /// empty; the route's base URL is not absolute, is not <c>https</c> on a host other than loopback,
+    /// or carries a query or a fragment; the route's path does not start with <c>/</c>; or
+    /// <see cref="Id"/> is empty.
     /// </exception>
     public void EnsureValid()
     {
@@ -95,6 +96,12 @@ public sealed class TypeSafeJevOptions
         if (Route.BaseUrl.Scheme != Uri.UriSchemeHttps && !Route.BaseUrl.IsLoopback)
         {
             throw new ArgumentException("The route's BaseUrl must use https unless its host is loopback.", nameof(Route));
+        }
+
+        // The path is appended to the base as text, so a query or a fragment would swallow it.
+        if (Route.BaseUrl.Query.Length > 0 || Route.BaseUrl.Fragment.Length > 0)
+        {
+            throw new ArgumentException("The route's BaseUrl carries a query or a fragment.", nameof(Route));
         }
 
         if (string.IsNullOrEmpty(Route.Path) || Route.Path[0] != '/')

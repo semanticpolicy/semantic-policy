@@ -20,6 +20,8 @@ public sealed class HttpRegistrationTests
     [InlineData("BaseUrl relative", "BaseUrl")]
     [InlineData("ftp://127.0.0.1", "BaseUrl")]
     [InlineData("http://10.0.0.5 without the flag", "BaseUrl")]
+    [InlineData("BaseUrl with a query", "BaseUrl")]
+    [InlineData("BaseUrl with an empty fragment", "BaseUrl")]
     [InlineData("Path v0/decide", "Path")]
     [InlineData("MaxContextLength 0", "MaxContextLength")]
     [InlineData("Timeout zero", "Timeout")]
@@ -58,6 +60,12 @@ public sealed class HttpRegistrationTests
                     break;
                 case "http://10.0.0.5 without the flag":
                     options.BaseUrl = new Uri("http://10.0.0.5");
+                    break;
+                case "BaseUrl with a query":
+                    options.BaseUrl = new Uri("https://gateway.example/api?code=abc");
+                    break;
+                case "BaseUrl with an empty fragment":
+                    options.BaseUrl = new Uri("https://gateway.example/api#");
                     break;
                 case "Path v0/decide":
                     options.Path = "v0/decide";
