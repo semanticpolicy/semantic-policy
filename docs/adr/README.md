@@ -35,6 +35,8 @@ belongs here.
   evaluates a policy and the application's handler acts on the verdict.
 - [0013](0013-evaluation-records-answers-and-replays-them-through-core.md) — The evaluation tool
   records provider answers once and replays them through Core.
+  [0018](0018-evaluation-tool-reads-providers-from-a-file.md) narrows it: `run` can name its
+  providers in a file whose entries are the adapters' own options.
 - [0014](0014-evaluation-tool-records-live-once-and-ci-replays.md) — The evaluation tool calls a
   provider once, commits what it recorded, and CI only replays it.
 - [0015](0015-self-hosted-models-through-one-system-one-client.md) — Self-hosted decision models
@@ -45,6 +47,8 @@ belongs here.
   `semantic-policy` dotnet tool with its samples, and CI installs the package it packs.
 - [0017](0017-protocol-v0-servers-over-one-http-binding.md) — Any protocol v0 server is reached
   over one HTTP binding, read strictly, and every HTTP provider shares one internal transport.
+- [0018](0018-evaluation-tool-reads-providers-from-a-file.md) — The evaluation tool reads its
+  providers from a file of the adapters' own options, and kinds stay compiled into the tool.
 
 ## Format
 
