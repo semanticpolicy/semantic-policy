@@ -16,6 +16,8 @@ public sealed class SystemOneRegistrationTests
     [InlineData("BaseUrl relative", "BaseUrl")]
     [InlineData("ftp://127.0.0.1", "BaseUrl")]
     [InlineData("http://von.internal without the flag", "BaseUrl")]
+    [InlineData("BaseUrl with a query", "BaseUrl")]
+    [InlineData("BaseUrl with a fragment", "BaseUrl")]
     [InlineData("Path without /", "Path")]
     [InlineData("Model blank", "Model")]
     [InlineData("Timeout zero", "Timeout")]
@@ -45,6 +47,12 @@ public sealed class SystemOneRegistrationTests
                     break;
                 case "http://von.internal without the flag":
                     options.BaseUrl = new Uri("http://von.internal");
+                    break;
+                case "BaseUrl with a query":
+                    options.BaseUrl = new Uri("http://127.0.0.1:8000/?token=abc");
+                    break;
+                case "BaseUrl with a fragment":
+                    options.BaseUrl = new Uri("http://127.0.0.1:8000/#v1");
                     break;
                 case "Path without /":
                     options.Path = "v1/systemone";

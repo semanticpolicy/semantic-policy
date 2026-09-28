@@ -7,8 +7,8 @@ namespace SemanticPolicy.Providers.TypeSafe;
 /// that speaks the same wire. Nothing in the adapter switches on which route it was given.
 /// </summary>
 /// <param name="BaseUrl">
-/// An absolute URL. It is joined to <paramref name="Path"/> as text, with one trailing <c>/</c> removed,
-/// so a base that carries a path of its own keeps it.
+/// An absolute URL without a query or a fragment. It is joined to <paramref name="Path"/> as text, with
+/// one trailing <c>/</c> removed, so a base that carries a path of its own keeps it.
 /// </param>
 /// <param name="Path">The endpoint path, starting with <c>/</c>.</param>
 /// <param name="Model">

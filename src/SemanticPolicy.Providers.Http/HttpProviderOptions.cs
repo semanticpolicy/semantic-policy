@@ -21,9 +21,10 @@ public sealed class HttpProviderOptions
     public const string DefaultId = "http";
 
     /// <summary>
-    /// The server's address, such as <c>http://127.0.0.1:8765</c>. Required and absolute; a path in it,
-    /// such as a gateway's <c>/api</c>, is kept in front of <see cref="Path"/>. Plain <c>http</c> is
-    /// accepted on a loopback host, and elsewhere only with <see cref="AllowInsecureHttp"/>.
+    /// The server's address, such as <c>http://127.0.0.1:8765</c>. Required and absolute, without a
+    /// query or a fragment; a path in it, such as a gateway's <c>/api</c>, is kept in front of
+    /// <see cref="Path"/>. Plain <c>http</c> is accepted on a loopback host, and elsewhere only with
+    /// <see cref="AllowInsecureHttp"/>.
     /// </summary>
     public Uri? BaseUrl { get; set; }
 
@@ -108,8 +109,9 @@ public sealed class HttpProviderOptions
     /// <exception cref="ArgumentException">
     /// <see cref="Types"/>, <see cref="Evidence"/> or <see cref="StructuredContext"/> is not declared,
     /// or <see cref="Types"/> is empty; <see cref="BaseUrl"/> is absent or relative, its scheme is
-    /// neither <c>http</c> nor <c>https</c>, or it is <c>http</c> to a host other than loopback while
-    /// <see cref="AllowInsecureHttp"/> is false; <see cref="Path"/> does not start with <c>/</c>;
+    /// neither <c>http</c> nor <c>https</c>, it is <c>http</c> to a host other than loopback while
+    /// <see cref="AllowInsecureHttp"/> is false, or it carries a query or a fragment;
+    /// <see cref="Path"/> does not start with <c>/</c>;
     /// <see cref="Model"/> is empty; <see cref="MaxContextLength"/> is not greater than zero;
     /// <see cref="Timeout"/> is not greater than zero, or longer than a timer can wait (about 49 days);
     /// or <see cref="Id"/> is empty.
@@ -156,6 +158,12 @@ public sealed class HttpProviderOptions
             throw new ArgumentException(
                 "The BaseUrl must use https unless its host is loopback or AllowInsecureHttp is set.",
                 nameof(BaseUrl));
+        }
+
+        // The path is appended to the base as text, so a query or a fragment would swallow it.
+        if (BaseUrl.Query.Length > 0 || BaseUrl.Fragment.Length > 0)
+        {
+            throw new ArgumentException("The BaseUrl carries a query or a fragment.", nameof(BaseUrl));
         }
 
         if (string.IsNullOrEmpty(Path) || Path[0] != '/')

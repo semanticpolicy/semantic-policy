@@ -15,6 +15,8 @@ public sealed class TypeSafeJevOptionsTests
     [InlineData("model empty over a preset", "Model")]
     [InlineData("relative base url", "BaseUrl")]
     [InlineData("http to a remote host", "BaseUrl")]
+    [InlineData("base url with a query", "BaseUrl")]
+    [InlineData("base url with a fragment", "BaseUrl")]
     [InlineData("path without a leading slash", "Path")]
     [InlineData("blank id", "Id")]
     public void EnsureValid_Rejects_An_Invalid_Option(string defect, string property)
@@ -42,6 +44,12 @@ public sealed class TypeSafeJevOptionsTests
                 break;
             case "http to a remote host":
                 options.Route = TypeSafeJevRoute.TypeSafe with { BaseUrl = new Uri("http://api.example") };
+                break;
+            case "base url with a query":
+                options.Route = TypeSafeJevRoute.TypeSafe with { BaseUrl = new Uri("https://api.example/?key=abc") };
+                break;
+            case "base url with a fragment":
+                options.Route = TypeSafeJevRoute.TypeSafe with { BaseUrl = new Uri("https://api.example/#v1") };
                 break;
             case "path without a leading slash":
                 options.Route = TypeSafeJevRoute.TypeSafe with { Path = "v1/systemone" };
