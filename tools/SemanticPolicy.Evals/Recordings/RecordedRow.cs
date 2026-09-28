@@ -10,7 +10,15 @@ namespace SemanticPolicy.Evals.Recordings;
 /// </summary>
 /// <param name="Id">The dataset row's id.</param>
 /// <param name="Attempts">Every result of the row: rule id, then provider name.</param>
-public sealed record RecordedRow(string Id, IReadOnlyDictionary<string, IReadOnlyDictionary<string, ProviderResult>> Attempts)
+/// <param name="Retries">
+/// How many times an attempt was called again after an unavailable answer, by rule id and provider name, for
+/// the attempts that were; <see langword="null"/> when none of the row's was. The attempt itself is the last
+/// call's result.
+/// </param>
+public sealed record RecordedRow(
+    string Id,
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, ProviderResult>> Attempts,
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, int>>? Retries = null)
 {
     /// <summary>The dataset row's id.</summary>
     public string Id { get; init; } = Id ?? throw new ArgumentNullException(nameof(Id));
@@ -18,4 +26,10 @@ public sealed record RecordedRow(string Id, IReadOnlyDictionary<string, IReadOnl
     /// <summary>The row's results, by rule id and provider name.</summary>
     public IReadOnlyDictionary<string, IReadOnlyDictionary<string, ProviderResult>> Attempts { get; init; } =
         Attempts ?? throw new ArgumentNullException(nameof(Attempts));
+
+    /// <summary>
+    /// The retry counts of the row's retried attempts. Beside the attempts rather than inside them, so an
+    /// attempt stays exactly what the library serializes.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyDictionary<string, int>>? Retries { get; init; } = Retries;
 }

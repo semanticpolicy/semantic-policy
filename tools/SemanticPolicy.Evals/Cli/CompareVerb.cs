@@ -114,13 +114,15 @@ public static class CompareVerb
         OutcomeCounts outcomes = GateSweep.OutcomesAt(set, sweptAt, 0, replayed.Test, gate);
 
         HashSet<string> testIds = new(replayed.Test.Select(row => row.Id), StringComparer.Ordinal);
-        IEnumerable<(string Provider, ProviderResult Result)> attempts = set.Rows
+        IEnumerable<(string Provider, ProviderResult Result, int Retries)> attempts = set.Rows
             .Where(row => testIds.Contains(row.Row.Id))
-            .Select(row => row.AttemptsByProvider.TryGetValue(binding.ProviderId, out ProviderResult? result) ? result : null)
-            .OfType<ProviderResult>()
-            .Select(result => (binding.ProviderId, result));
+            .Where(row => row.AttemptsByProvider.GetValueOrDefault(binding.ProviderId) is not null)
+            .Select(row => (
+                binding.ProviderId,
+                row.AttemptsByProvider[binding.ProviderId],
+                row.RetriesByProvider.GetValueOrDefault(binding.ProviderId)));
         ProviderStats stats = ProviderStats.Compute(attempts).FirstOrDefault()
-            ?? new ProviderStats(binding.ProviderId, null, 0, null, null, new Dictionary<string, double>(StringComparer.Ordinal));
+            ?? new ProviderStats(binding.ProviderId, null, 0, 0, null, null, new Dictionary<string, double>(StringComparer.Ordinal));
         return new CompareEntry(sweep, discrimination, outcomes, stats);
     }
 }

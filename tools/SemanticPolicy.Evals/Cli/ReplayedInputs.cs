@@ -17,7 +17,8 @@ internal sealed record ReplayedInputs(
     int RecordedRows,
     IReadOnlyList<DatasetRow> Tune,
     IReadOnlyList<DatasetRow> Test,
-    SplitWording Wording)
+    SplitWording Wording,
+    int? TornLine)
 {
     public static ReplayedInputs Load(ParseResult parse)
     {
@@ -43,7 +44,7 @@ internal sealed record ReplayedInputs(
                 + "nothing to sweep. Record those rows first, or select rows the recording has.");
         }
 
-        return new ReplayedInputs(inputs, set, recordedRows, tune, test, wording);
+        return new ReplayedInputs(inputs, set, recordedRows, tune, test, wording, recording.TornLine);
     }
 
     public RowSelection Rows() =>
@@ -54,7 +55,8 @@ internal sealed record ReplayedInputs(
             [.. Inputs.Filters.Select(filter => $"metadata.{filter.Key}={filter.Value}")],
             Names.Camel(Inputs.Splits.Source),
             Tune.Count,
-            Test.Count);
+            Test.Count,
+            TornLine);
 
     // The binding --provider names; with no --provider, the only one. A policy with several bindings has no
     // binding a sweep could take by default, since the order of a chain says nothing about which to tune.

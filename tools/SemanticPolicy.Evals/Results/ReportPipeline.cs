@@ -70,7 +70,8 @@ public static class ReportPipeline
             discrimination,
             Calibration.Compute(outcomes, rule),
             ProviderStats.Compute(set.Rows.SelectMany(row =>
-                row.AttemptsByProvider.Select(attempt => (attempt.Key, attempt.Value)))),
+                row.AttemptsByProvider.Select(attempt =>
+                    (attempt.Key, attempt.Value, row.RetriesByProvider.GetValueOrDefault(attempt.Key))))),
             Notes(inputs, recording, force),
             swept);
 
@@ -112,7 +113,8 @@ public static class ReportPipeline
             [.. inputs.Filters.Select(filter => $"metadata.{filter.Key}={filter.Value}")],
             Names.Camel(splits.Source),
             tune,
-            test);
+            test,
+            recording.TornLine);
     }
 
     private static List<string> Notes(LoadedInputs inputs, Recording recording, bool force)

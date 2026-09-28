@@ -38,7 +38,7 @@ public sealed class EvalsResultTests
                 Classes: null,
                 [new RungDiscrimination(Verdict.Deny, new Discrimination(0.8125, 0.75, 6))],
                 new Calibration(true, ["probability"], 6, 0.2, 0.15, [new ReliabilityBin(0.9, 1.0, 2, 0.95, 1.0)]),
-                [new ProviderStats("local", "model-local", 8, 12, 60, new Dictionary<string, double>(StringComparer.Ordinal) { ["cost"] = 0.5 })],
+                [new ProviderStats("local", "model-local", 8, 0, 12, 60, new Dictionary<string, double>(StringComparer.Ordinal) { ["cost"] = 0.5 })],
                 ["one provider answered every row"]));
 
         ResultWriter.Write(file.Path, result);

@@ -15,7 +15,19 @@ namespace SemanticPolicy.Evals.Recordings;
 /// <param name="ToolVersion">The version of the tool that wrote the file.</param>
 /// <param name="RecordedAt">When the run started.</param>
 /// <param name="Parallel">How many attempts the run dispatched at once.</param>
-/// <param name="Timeout">The per-attempt timeout the run applied.</param>
+/// <param name="Timeout">The per-call timeout the run applied.</param>
+/// <param name="Retries">
+/// How many times the run called an unavailable answer again; <see langword="null"/> in a recording written
+/// before the tool retried.
+/// </param>
+/// <param name="Where">
+/// The run's <c>--where</c> filters as <c>metadata.&lt;key&gt;=&lt;value&gt;</c>, empty when it had none;
+/// <see langword="null"/> in a recording written before the tool recorded them.
+/// </param>
+/// <param name="Resumptions">
+/// Every <c>--resume</c> that rewrote the recording, oldest first; <see langword="null"/> when none did. The
+/// other values stay the first run's.
+/// </param>
 public sealed record RecordingHeader(
     string Format,
     Policy Policy,
@@ -24,7 +36,10 @@ public sealed record RecordingHeader(
     string ToolVersion,
     DateTimeOffset RecordedAt,
     int Parallel,
-    TimeSpan Timeout)
+    TimeSpan Timeout,
+    int? Retries = null,
+    IReadOnlyList<string>? Where = null,
+    IReadOnlyList<RecordedResumption>? Resumptions = null)
 {
     /// <summary>The format of a recording this tool writes and reads.</summary>
     public const string FormatV0 = "semanticpolicy/evals-recording/v0";
@@ -70,3 +85,10 @@ public sealed record RecordedDataset(string Path, string Sha256, string? Split);
 /// <param name="Name">The registration name, which is also a binding's provider id.</param>
 /// <param name="Model">The model the provider reported, when it reported one.</param>
 public sealed record RecordedProvider(string Name, string? Model);
+
+/// <summary>One <c>--resume</c> of a recording: when it ran, and the settings a resume may change.</summary>
+/// <param name="ResumedAt">When the resume started.</param>
+/// <param name="Parallel">How many attempts the resume dispatched at once.</param>
+/// <param name="Retries">How many times the resume called an unavailable answer again.</param>
+/// <param name="ToolVersion">The version of the tool that resumed.</param>
+public sealed record RecordedResumption(DateTimeOffset ResumedAt, int Parallel, int Retries, string ToolVersion);
