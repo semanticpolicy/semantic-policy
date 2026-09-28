@@ -10,6 +10,7 @@ public static class EvalsCli
     /// <param name="io">Where output goes; the console when omitted.</param>
     /// <param name="configureProviders">
     /// Registers the providers <c>run</c> may call, as an application would on its own builder; none when omitted.
+    /// <c>run --providers</c> replaces it with the file's entries.
     /// </param>
     public static Command Build(CliIo? io = null, Action<ISemanticPolicyBuilder>? configureProviders = null)
     {

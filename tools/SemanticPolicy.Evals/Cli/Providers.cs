@@ -8,7 +8,7 @@ namespace SemanticPolicy.Evals.Cli;
 /// <summary>
 /// The providers <c>run</c> may call, registered the way an application registers them. Whatever the hook adds
 /// through the builder's <c>AddProvider</c> is the whole set; <see cref="Register"/> is the hook the tool itself
-/// passes.
+/// passes, and <see cref="ProvidersFile.Read"/> the one <c>run --providers</c> builds from a file in its place.
 /// </summary>
 public static class Providers
 {
@@ -21,7 +21,7 @@ public static class Providers
     // and stamps the limit in the recording's header. An adapter's own timer, ten seconds by default, would cut
     // calls sooner under a longer --timeout while the header still named the longer one, so each adapter's timer
     // is set past any limit a run would use.
-    private static readonly TimeSpan _pastAnyRunTimeout = TimeSpan.FromDays(1);
+    internal static readonly TimeSpan PastAnyRunTimeout = TimeSpan.FromDays(1);
 
     /// <summary>
     /// Registers the providers the tool runs with. <c>local</c> is a Von server at the address in
@@ -44,7 +44,7 @@ public static class Providers
             {
                 options.BaseUrl = local;
                 options.Model = "von-1.2.2";
-                options.Timeout = _pastAnyRunTimeout;
+                options.Timeout = PastAnyRunTimeout;
             });
         }
         catch (ArgumentException failure) when (failure.ParamName == nameof(SystemOneOptions.BaseUrl))
@@ -56,7 +56,7 @@ public static class Providers
         builder.AddTypeSafeJev("jev", options =>
         {
             options.Route = TypeSafeJevRoute.OpenRouter;
-            options.Timeout = _pastAnyRunTimeout;
+            options.Timeout = PastAnyRunTimeout;
         });
     }
 
