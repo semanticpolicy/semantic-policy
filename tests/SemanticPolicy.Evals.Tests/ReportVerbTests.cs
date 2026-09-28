@@ -205,6 +205,60 @@ public sealed class ReportVerbTests
         forcedOutput.Should().Contain("rung warn:");
     }
 
+    [Fact]
+    public async Task Providers_Table_Counts_Retried_Attempts()
+    {
+        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local", "jev"], [Samples.Flagged()]);
+        FixtureRow answered = FixtureRow.Of(
+            "true", null, ("local", Samples.BooleanAnswer(0.95)), ("jev", Samples.BooleanAnswer(0.95, "jev")));
+        using CliFixture fixture = await CliFixture.CreateAsync(policy, [answered, answered, answered]);
+
+        // Two of local's three attempts were retried, one of them twice: the column counts attempts, not calls.
+        Recording written = RecordingReader.Read(fixture.RecordingPath);
+        await Samples.RecordAsync(
+            fixture.RecordingPath,
+            written.Header,
+            written.Rows[0] with { Retries = Retried("local", 2) },
+            written.Rows[1],
+            written.Rows[2] with { Retries = Retried("local", 1) });
+        string smoke = Path.Combine(ExampleDatasetsTests.RepositoryRoot(), "tools", "SemanticPolicy.Evals", "datasets", "smoke");
+
+        CliRun retried = await fixture.RunAsync("report");
+        CliRun committed = await CliFixture.InvokeAsync(
+        [
+            "report",
+            "--policy", Path.Combine(smoke, "prompt-injection.policy.json"),
+            "--dataset", Path.Combine(smoke, "prompt-injection.smoke.jsonl"),
+            "--recording", Path.Combine(smoke, "prompt-injection.recording.jsonl"),
+        ]);
+
+        retried.ExitCode.Should().Be(ExitCodes.Success, retried.Error);
+        RetriedColumn(retried.Output).Should().Equal("local 2", "jev 0");
+        fixture.ReadOut().GetProperty("report").GetProperty("providers").EnumerateArray()
+            .Select(provider => provider.GetProperty("retried").GetInt32()).Should().Equal(2, 0);
+        committed.ExitCode.Should().Be(ExitCodes.Success, committed.Error);
+        RetriedColumn(committed.Output).Should().Equal("local 0", "jev 0");
+    }
+
+    private static Dictionary<string, IReadOnlyDictionary<string, int>> Retried(string provider, int count) =>
+        new(StringComparer.Ordinal) { [Samples.Injection] = new Dictionary<string, int>(StringComparer.Ordinal) { [provider] = count } };
+
+    // Each provider of the providers table with its retried cell, once the header has put that column after attempts.
+    private static string[] RetriedColumn(string output)
+    {
+        string[] lines = output.Split('\n');
+        int at = Array.FindIndex(lines, line => line.StartsWith("providers:", StringComparison.Ordinal));
+        at.Should().BeGreaterThanOrEqualTo(0, "the report has a providers section");
+        string[] headers = Tokens(lines[at + 1]);
+        int column = Array.IndexOf(headers, "retried");
+        headers[column - 1].Should().Be("attempts");
+        return
+        [
+            .. lines.Skip(at + 3).TakeWhile(line => !line.StartsWith("Usage", StringComparison.Ordinal))
+                .Select(Tokens).Select(cells => $"{cells[0]} {cells[column]}"),
+        ];
+    }
+
     private static async Task<(int Exit, string Output, string Error)> InvokeAsync(string[] args)
     {
         StringWriter output = new();

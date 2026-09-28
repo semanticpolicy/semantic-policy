@@ -76,7 +76,7 @@ public sealed class RecordingTests
     }
 
     [Fact]
-    public async Task Reader_Rejects_An_Unknown_Format_Version_And_A_Torn_Line_Naming_The_Line()
+    public async Task Reader_Rejects_An_Unknown_Format_Version_Naming_The_Line_And_An_Empty_File()
     {
         using TempFile file = TempFile.Write("");
         Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
@@ -87,18 +87,55 @@ public sealed class RecordingTests
             Samples.Recorded("b", (Samples.Injection, "local", Samples.BooleanAnswer(0.1))));
         string[] lines = await File.ReadAllLinesAsync(file.Path, TestContext.Current.CancellationToken);
         const string unknownFormat = "semanticpolicy/evals-recording/v1";
-        using TempFile torn = TempFile.Write(lines[0] + "\n" + lines[1] + "\n" + lines[2][..(lines[2].Length / 2)]);
         using TempFile unknown = TempFile.Write(lines[0].Replace(RecordingHeader.FormatV0, unknownFormat) + "\n" + lines[1] + "\n");
         using TempFile empty = TempFile.Write("");
 
-        Action readTorn = () => RecordingReader.Read(torn.Path);
         Action readUnknown = () => RecordingReader.Read(unknown.Path);
         Action readEmpty = () => RecordingReader.Read(empty.Path);
 
-        readTorn.Should().Throw<EvalsException>().Which.Message.Should().Contain("line 3").And.Contain(torn.Path);
         readUnknown.Should().Throw<EvalsException>().Which.Message.Should()
             .Contain("line 1").And.Contain(unknownFormat).And.Contain(RecordingHeader.FormatV0);
         readEmpty.Should().Throw<EvalsException>().Which.Message.Should().Contain(empty.Path);
+    }
+
+    [Fact]
+    public async Task Torn_Last_Line_Is_Skipped_With_A_Note()
+    {
+        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+        using CliFixture fixture = await CliFixture.CreateAsync(
+            policy,
+            [
+                FixtureRow.Of("true", null, ("local", Samples.BooleanAnswer(0.95))),
+                FixtureRow.Of("false", null, ("local", Samples.BooleanAnswer(0.1))),
+                FixtureRow.Of("true", null, ("local", Samples.BooleanAnswer(0.7))),
+                FixtureRow.Of("false", null, ("local", Samples.BooleanAnswer(0.3))),
+            ]);
+        string[] lines = await File.ReadAllLinesAsync(fixture.RecordingPath, TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(
+            fixture.RecordingPath,
+            Joined(lines[..4]) + lines[4][..(lines[4].Length / 2)],
+            TestContext.Current.CancellationToken);
+
+        foreach (string verb in new[] { "report", "sweep", "compare" })
+        {
+            CliRun run = await fixture.RunAsync(verb);
+
+            run.ExitCode.Should().Be(ExitCodes.Success, $"{verb} reads the rows before the torn line: {run.Error}");
+            run.Output.Should().Contain("line 5 of the recording skipped", verb);
+            fixture.ReadOut().GetProperty("rows").GetProperty("tornLine").GetInt32().Should().Be(5, verb);
+            fixture.ReadOut().GetProperty("rows").GetProperty("recordedRows").GetInt32().Should().Be(3, verb);
+        }
+
+        // Anywhere but at the end, a line that does not parse is damage rather than an interruption.
+        using TempFile middle = TempFile.Write(Joined([lines[0], lines[1], lines[2][..(lines[2].Length / 2)], lines[3], lines[4]]));
+        using TempFile header = TempFile.Write(Joined([lines[0][..(lines[0].Length / 2)], .. lines[1..]]));
+        using TempFile notARow = TempFile.Write(Joined([.. lines, """{"note":"not a row"}"""]));
+
+        foreach ((TempFile file, string line) in new[] { (middle, "line 3"), (header, "line 1"), (notARow, "line 6") })
+        {
+            Action read = () => RecordingReader.Read(file.Path);
+            read.Should().Throw<EvalsException>().Which.Message.Should().Contain(line).And.Contain(file.Path);
+        }
     }
 
     [Fact]
@@ -135,4 +172,6 @@ public sealed class RecordingTests
         after[after.IndexOf('\n', StringComparison.Ordinal)..].Should().Be(before[before.IndexOf('\n', StringComparison.Ordinal)..]);
         RecordingReader.Read(file.Path).Header.Providers.Should().Equal(new RecordedProvider("local", "model-local"));
     }
+
+    private static string Joined(IEnumerable<string> lines) => string.Concat(lines.Select(line => line + "\n"));
 }

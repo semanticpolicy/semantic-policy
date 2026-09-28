@@ -1,6 +1,8 @@
+using System.Collections.Concurrent;
 using System.CommandLine;
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using SemanticPolicy.Evals.Cli;
 using SemanticPolicy.Evals.Recordings;
@@ -183,6 +185,218 @@ public sealed partial class RunVerbTests
     }
 
     [Fact]
+    public async Task Header_And_Row_Record_The_Retries()
+    {
+        using Fixture fixture = Fixture.Create(Guard(), split: true);
+        int refusals = 0;
+
+        // Row r2's first call to local is refused; every other call answers at once.
+        ScriptedProvider local = new ScriptedProvider().Returns(request =>
+            PTrue(request) == 0.7 && Interlocked.Increment(ref refusals) == 1
+                ? Samples.Failed(FailureKind.Unavailable)
+                : Samples.BooleanAnswer(PTrue(request)));
+        ScriptedProvider jev = Answering();
+
+        (int exit, _, string error) = await InvokeAsync(
+            [.. fixture.RunArgs(), "--retries", "1"],
+            builder => builder.AddProvider(local, "local").AddProvider(jev, "jev"));
+
+        exit.Should().Be(ExitCodes.Success, error);
+        Recording recording = RecordingReader.Read(fixture.RecordingPath);
+        recording.Header.Retries.Should().Be(1);
+        recording.Header.Where.Should().NotBeNull().And.BeEmpty();
+        RecordedRow retried = recording.Rows.Should().ContainSingle(row => row.Retries != null).Subject;
+        retried.Id.Should().Be("r2");
+        retried.Retries![Samples.Injection].Should().Equal(new Dictionary<string, int> { ["local"] = 1 });
+        retried.Attempts[Samples.Injection]["local"].Outcome.Status.Should().Be(OutcomeStatus.Success);
+        File.ReadAllLines(fixture.RecordingPath).Skip(1).Count(line => line.Contains("\"retries\"", StringComparison.Ordinal))
+            .Should().Be(1);
+
+        (int filtered, _, string filteredError) = await InvokeAsync(
+            [.. fixture.RunArgs(), "--where", "metadata.split=test"],
+            builder => builder.AddProvider(local, "local").AddProvider(jev, "jev"));
+
+        filtered.Should().Be(ExitCodes.Success, filteredError);
+        RecordingHeader header = RecordingReader.Read(fixture.RecordingPath).Header;
+        header.Retries.Should().Be(2);
+        header.Where.Should().Equal("metadata.split=test");
+    }
+
+    [Fact]
+    public async Task Run_Refuses_Retries_Below_Zero_Before_Any_Call()
+    {
+        using Fixture fixture = Fixture.Create(Guard());
+        ScriptedProvider scripted = Answering();
+
+        (int exit, _, string error) = await InvokeAsync(
+            [.. fixture.RunArgs(), "--retries", "-1"],
+            builder => builder.AddProvider(scripted, "local").AddProvider(scripted, "jev"));
+
+        exit.Should().Be(ExitCodes.UsageOrData);
+        error.Should().Contain("--retries");
+        scripted.Calls.Should().Be(0);
+        File.Exists(fixture.RecordingPath).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Resume_Calls_Only_What_Is_Missing_Or_Unavailable()
+    {
+        using Fixture fixture = await Fixture.RecordedAsync(rows: 4, cutAfter: 2, unavailable: 0.95);
+        string[] before = File.ReadAllLines(fixture.RecordingPath);
+        ConcurrentQueue<string> seen = new();
+
+        (int exit, string output, string error) = await InvokeAsync(
+            fixture.ResumeArgs(),
+            builder => builder.AddProvider(Seeing(seen, "local"), "local").AddProvider(Seeing(seen, "jev"), "jev"));
+
+        exit.Should().Be(ExitCodes.Success, error);
+
+        // Rows r3 and r4 were never recorded, and r1 holds local's unavailable answer; everything else is kept.
+        seen.Should().BeEquivalentTo("local 0.95", "local 0.3", "local 0.1", "jev 0.3", "jev 0.1");
+        Recording recording = RecordingReader.Read(fixture.RecordingPath);
+        recording.Rows.Select(row => row.Id).Should().Equal("r1", "r2", "r3", "r4");
+        recording.Rows[0].Attempts[Samples.Injection]["local"].Outcome.Status.Should().Be(OutcomeStatus.Success);
+        File.ReadAllLines(fixture.RecordingPath)[2].Should().Be(before[2]);
+        recording.Header.Resumptions.Should().ContainSingle().Which.Should().Match<RecordedResumption>(resumption =>
+            resumption.Parallel == 4 && resumption.Retries == 2 && resumption.ToolVersion == RecordingHeader.CurrentToolVersion);
+        recording.Header.Retries.Should().Be(0, "the header keeps the first run's values");
+        recording.Header.Providers.Should().OnlyContain(provider => provider.Model != null);
+        File.Exists(fixture.RecordingPath + ".tmp").Should().BeFalse();
+        output.Should().Contain("4 of 4 recorded rows");
+    }
+
+    public static TheoryData<string> Unfinishable =>
+        ["another policy", "a changed dataset", "another timeout", "another filter", "a record path", "a header without where"];
+
+    [Theory]
+    [MemberData(nameof(Unfinishable))]
+    public async Task Resume_Refuses_A_Recording_It_Cannot_Finish(string mismatch)
+    {
+        using Fixture fixture = await Fixture.RecordedAsync(rows: 4, cutAfter: 2, unavailable: null);
+        using TempFile otherPolicy = TempFile.Write(
+            JsonSerializer.Serialize(Guard() with { Mode = PolicyMode.Shadow }, SemanticPolicyJson.Options), ".json");
+        string[] args = fixture.ResumeArgs();
+        string expected;
+        switch (mismatch)
+        {
+            case "another policy":
+                args = ["run", "--policy", otherPolicy.Path, "--dataset", fixture.DatasetPath, "--resume", fixture.RecordingPath];
+                expected = "policy";
+                break;
+            case "a changed dataset":
+                File.AppendAllText(fixture.DatasetPath, "\n");
+                expected = "digest";
+                break;
+            case "another timeout":
+                args = [.. args, "--timeout", "10"];
+                expected = "--timeout 10";
+                break;
+            case "another filter":
+                args = [.. args, "--where", "metadata.split=test"];
+                expected = "--where";
+                break;
+            case "a record path":
+                args = [.. args, "--record", fixture.RecordingPath + ".other"];
+                expected = "--record";
+                break;
+            default:
+                string[] lines = File.ReadAllLines(fixture.RecordingPath);
+                JsonObject header = JsonNode.Parse(lines[0])!.AsObject();
+                header.Remove("where");
+                File.WriteAllLines(fixture.RecordingPath, [header.ToJsonString(), .. lines[1..]]);
+                expected = "where";
+                break;
+        }
+
+        byte[] bytes = File.ReadAllBytes(fixture.RecordingPath);
+        ScriptedProvider scripted = Answering();
+
+        (int exit, string output, string error) = await InvokeAsync(
+            args,
+            builder => builder.AddProvider(scripted, "local").AddProvider(scripted, "jev"));
+
+        exit.Should().Be(ExitCodes.UsageOrData);
+        error.Should().Contain(expected).And.NotContain(_marker).And.NotContain("question-b");
+        output.Should().BeEmpty();
+        scripted.Calls.Should().Be(0);
+        File.ReadAllBytes(fixture.RecordingPath).Should().Equal(bytes);
+        File.Exists(fixture.RecordingPath + ".tmp").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Resume_Takes_Omitted_Timeout_And_Filters_From_The_Header()
+    {
+        // The first run answers nothing for local, so the resume has every test row of it to call again.
+        using Fixture fixture = Fixture.Create(Guard(), split: true);
+        (int first, _, string firstError) = await InvokeAsync(
+            [.. fixture.RunArgs(), "--where", "metadata.split=test", "--timeout", "5", "--retries", "0"],
+            builder => builder
+                .AddProvider(new ScriptedProvider().Returns(_ => Samples.Failed(FailureKind.Unavailable)), "local")
+                .AddProvider(Answering(), "jev"));
+        first.Should().Be(ExitCodes.Success, firstError);
+        ConcurrentQueue<string> seen = new();
+
+        (int exit, _, string error) = await InvokeAsync(
+            fixture.ResumeArgs(),
+            builder => builder.AddProvider(Seeing(seen, "local"), "local").AddProvider(Seeing(seen, "jev"), "jev"));
+
+        exit.Should().Be(ExitCodes.Success, error);
+        seen.Should().BeEquivalentTo("local 0.7", "local 0.1", "local 0.92");
+        RecordingHeader header = RecordingReader.Read(fixture.RecordingPath).Header;
+        header.Timeout.Should().Be(TimeSpan.FromSeconds(5));
+        header.Where.Should().Equal("metadata.split=test");
+    }
+
+    [Fact]
+    public async Task Resume_Of_A_Complete_Recording_Calls_Nothing()
+    {
+        using Fixture fixture = await Fixture.RecordedAsync(rows: 4, cutAfter: null, unavailable: null);
+        byte[] bytes = File.ReadAllBytes(fixture.RecordingPath);
+        ScriptedProvider scripted = Answering();
+
+        (int exit, string output, string error) = await InvokeAsync(
+            fixture.ResumeArgs(),
+            builder => builder.AddProvider(scripted, "local").AddProvider(scripted, "jev"));
+
+        exit.Should().Be(ExitCodes.Success, error);
+        error.Should().Contain("nothing needed calling");
+        output.Should().Contain("rung deny:");
+        scripted.Calls.Should().Be(0);
+        File.ReadAllBytes(fixture.RecordingPath).Should().Equal(bytes);
+    }
+
+    [Fact]
+    public async Task Resume_Cut_Short_Keeps_Every_Row_It_Had()
+    {
+        using Fixture fixture = await Fixture.RecordedAsync(rows: 4, cutAfter: 2, unavailable: 0.95);
+        string[] before = File.ReadAllLines(fixture.RecordingPath);
+        using CancellationTokenSource interrupt = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+
+        // The first call the resume makes is r1's for local, which now answers; the run is cut short right after it.
+        ScriptedProvider local = new ScriptedProvider().Returns(request =>
+        {
+            interrupt.Cancel();
+            return Samples.BooleanAnswer(PTrue(request));
+        });
+
+        // The command line library turns the cancellation into its exit code; the test invokes without its handler.
+        Func<Task> resume = () => InvokeAsync(
+            [.. fixture.ResumeArgs(), "--parallel", "1"],
+            builder => builder.AddProvider(local, "local").AddProvider(Answering(), "jev"),
+            interrupt.Token);
+
+        await resume.Should().ThrowAsync<OperationCanceledException>();
+        local.Calls.Should().Be(1);
+        Recording recording = RecordingReader.Read(fixture.RecordingPath);
+        recording.Rows.Select(row => row.Id).Should().Equal("r1", "r2");
+        recording.Rows[0].Attempts[Samples.Injection]["local"].Outcome.Status.Should().Be(OutcomeStatus.Success);
+        File.ReadAllLines(fixture.RecordingPath)[2].Should().Be(before[2]);
+        recording.Header.Resumptions.Should().ContainSingle();
+        File.Exists(fixture.RecordingPath + ".tmp").Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Run_Says_The_Policy_Budget_Is_Ignored_When_The_Policy_Has_One()
     {
         using Fixture fixture = Fixture.Create(Guard(budget: TimeSpan.FromSeconds(5)));
@@ -288,6 +502,14 @@ public sealed partial class RunVerbTests
     private static ScriptedProvider Answering() =>
         new ScriptedProvider().Returns(request => Samples.BooleanAnswer(PTrue(request)));
 
+    // Answers like Answering, and notes each call as the provider's name and the row's probability.
+    private static ScriptedProvider Seeing(ConcurrentQueue<string> seen, string provider) =>
+        new ScriptedProvider().Returns(request =>
+        {
+            seen.Enqueue(FormattableString.Invariant($"{provider} {PTrue(request)}"));
+            return Samples.BooleanAnswer(PTrue(request));
+        });
+
     // What an adapter throws when its configuration is incomplete, such as a key missing from the environment.
     private static PolicyConfigurationException Unbuildable() =>
         new("provider 'broken': the environment variable BROKEN_KEY is not set.", policyId: null, providerId: "broken");
@@ -298,24 +520,37 @@ public sealed partial class RunVerbTests
     [GeneratedRegex(@"p=(?<p>[0-9.]+)")]
     private static partial Regex Probability();
 
-    private static string Dataset(params int[] rows) =>
-        string.Concat(rows.Select(row => JsonSerializer.Serialize(new Dictionary<string, object>
+    private static string Dataset(params int[] rows) => Dataset(split: false, rows);
+
+    // With a split, odd rows are tune rows and even rows test rows.
+    private static string Dataset(bool split, int[] rows) =>
+        string.Concat(rows.Select(row =>
         {
-            ["id"] = $"r{row}",
-            ["input"] = FormattableString.Invariant($"{_marker} p={_rows[row - 1].PTrue}"),
-            ["label"] = bool.Parse(_rows[row - 1].Label),
-        }) + "\n"));
+            Dictionary<string, object> line = new()
+            {
+                ["id"] = $"r{row}",
+                ["input"] = FormattableString.Invariant($"{_marker} p={_rows[row - 1].PTrue}"),
+                ["label"] = bool.Parse(_rows[row - 1].Label),
+            };
+            if (split)
+            {
+                line["metadata"] = new Dictionary<string, string> { ["split"] = row % 2 == 1 ? "tune" : "test" };
+            }
+
+            return JsonSerializer.Serialize(line) + "\n";
+        }));
 
     private static async Task<(int Exit, string Output, string Error)> InvokeAsync(
         string[] args,
-        Action<ISemanticPolicyBuilder>? providers)
+        Action<ISemanticPolicyBuilder>? providers,
+        CancellationToken? cancellationToken = null)
     {
         StringWriter output = new();
         StringWriter error = new();
         Command root = EvalsCli.Build(new CliIo(output, error), providers);
         int exit = await root.Parse(args).InvokeAsync(
             new InvocationConfiguration { Output = output, Error = error, EnableDefaultExceptionHandler = false },
-            TestContext.Current.CancellationToken);
+            cancellationToken ?? TestContext.Current.CancellationToken);
         return (exit, output.ToString(), error.ToString());
     }
 
@@ -358,20 +593,44 @@ public sealed partial class RunVerbTests
 
         public string RecordingPath { get; }
 
-        public static Fixture Create(Policy policy, int rows = 6) =>
+        public static Fixture Create(Policy policy, int rows = 6, bool split = false) =>
             new(
                 TempFile.Write(JsonSerializer.Serialize(policy, SemanticPolicyJson.Options), ".json"),
-                TempFile.Write(Dataset([.. Enumerable.Range(1, rows)])));
+                TempFile.Write(Dataset(split, [.. Enumerable.Range(1, rows)])));
 
         public string[] InputArgs() => ["--policy", _policy.Path, "--dataset", _dataset.Path];
 
+        // A recording of the guard over the first rows, made without retries so the attempt local answers
+        // unavailable for the row of that probability stays unavailable, then cut after the first rows as an
+        // interrupted run leaves it.
+        public static async Task<Fixture> RecordedAsync(int rows, int? cutAfter, double? unavailable)
+        {
+            Fixture fixture = Create(Guard(), rows);
+            ScriptedProvider local = new ScriptedProvider().Returns(request =>
+                PTrue(request) == unavailable ? Samples.Failed(FailureKind.Unavailable) : Samples.BooleanAnswer(PTrue(request)));
+            (int exit, _, string error) = await InvokeAsync(
+                [.. fixture.RunArgs(), "--retries", "0"],
+                builder => builder.AddProvider(local, "local").AddProvider(Answering(), "jev"));
+            exit.Should().Be(ExitCodes.Success, error);
+            if (cutAfter is { } kept)
+            {
+                string[] lines = File.ReadAllLines(fixture.RecordingPath);
+                File.WriteAllText(fixture.RecordingPath, string.Concat(lines[..(kept + 1)].Select(line => line + "\n")));
+            }
+
+            return fixture;
+        }
+
         public string[] RunArgs() => ["run", .. InputArgs(), "--record", RecordingPath];
+
+        public string[] ResumeArgs() => ["run", .. InputArgs(), "--resume", RecordingPath];
 
         public void Dispose()
         {
             _policy.Dispose();
             _dataset.Dispose();
             File.Delete(RecordingPath);
+            File.Delete(RecordingPath + ".tmp");
         }
     }
 }

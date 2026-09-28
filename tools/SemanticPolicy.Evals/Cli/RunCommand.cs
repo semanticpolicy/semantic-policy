@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Globalization;
+using System.Text.Json;
 using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Evals.Results;
@@ -32,6 +33,22 @@ internal static class RunCommand
         DefaultValueFactory = _ => 30,
     };
 
+    private static readonly Option<int> _retries = new("--retries")
+    {
+        Description = "How many times a call answered unavailable is made again, with a growing wait between.",
+        HelpName = "n",
+        DefaultValueFactory = _ => 2,
+    };
+
+    private static readonly Option<string?> _resume = new("--resume")
+    {
+        Description = "Finish this recording: call the rows it lacks and the attempts it holds as unavailable, then rewrite it.",
+        HelpName = "recording",
+    };
+
+    // The wait before a first retry at most, doubled for each retry after it.
+    private static readonly TimeSpan _retryBase = TimeSpan.FromSeconds(1);
+
     public static Command Create(CliIo io, Action<ISemanticPolicyBuilder>? configureProviders)
     {
         Command command = new("run", "Call the policy's providers on every row, record the answers, and report on them.");
@@ -44,6 +61,8 @@ internal static class RunCommand
         command.Options.Add(_record);
         command.Options.Add(_parallel);
         command.Options.Add(_timeout);
+        command.Options.Add(_retries);
+        command.Options.Add(_resume);
         command.SetAction((parseResult, cancellationToken) =>
             EvalsCli.GuardAsync(io, () => RunAsync(parseResult, io, configureProviders, cancellationToken)));
         return command;
@@ -68,6 +87,18 @@ internal static class RunCommand
             throw new EvalsException("--timeout must be at least 1 second.");
         }
 
+        int retries = parseResult.GetValue(_retries);
+        if (retries < 0)
+        {
+            throw new EvalsException("--retries must be at least 0.");
+        }
+
+        if (parseResult.GetValue(_resume) is { } resumePath)
+        {
+            return await ResumeAsync(parseResult, io, configureProviders, selection, resumePath, parallel, retries, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         LoadedInputs inputs = Inputs.Load(selection);
         IReadOnlyDictionary<string, IDecisionProvider> providers = Providers.Resolve(configureProviders, inputs.Policy);
         if (inputs.Policy.Budget is not null)
@@ -87,9 +118,11 @@ internal static class RunCommand
             RecordingHeader.CurrentToolVersion,
             DateTimeOffset.UtcNow,
             parallel,
-            timeout);
+            timeout,
+            retries,
+            [.. selection.Filters.Select(Token)]);
 
-        EvalRunner runner = new(providers, parallel, timeout);
+        EvalRunner runner = new(providers, parallel, timeout, retries, _retryBase);
         await using (RecordingWriter writer = await RecordingWriter.CreateAsync(recordPath, header, cancellationToken)
             .ConfigureAwait(false))
         {
@@ -113,6 +146,210 @@ internal static class RunCommand
         ReportCommand.Publish(result, parseResult.GetValue(SharedOptions.Out), io);
         return ExitCodes.Success;
     }
+
+    // Finishes a recording under the conditions it was started with, so that it ends up holding the rows the first
+    // run selected, asked the same way. Whatever could differ is checked before any call, and the file is left as
+    // it was when anything does.
+    private static async Task<int> ResumeAsync(
+        ParseResult parseResult,
+        CliIo io,
+        Action<ISemanticPolicyBuilder>? configureProviders,
+        InputSelection selection,
+        string path,
+        int parallel,
+        int retries,
+        CancellationToken cancellationToken)
+    {
+        if (parseResult.GetValue(_record) is not null)
+        {
+            throw new EvalsException("--record does not go with --resume: a resume rewrites the recording it finishes.");
+        }
+
+        Recording recording = RecordingReader.Read(path);
+        RecordingHeader header = recording.Header;
+        if (header.Where is not { } recordedWhere || header.Retries is null)
+        {
+            throw new EvalsException(
+                $"Recording '{path}' does not say which --where and --retries it was made with, so --resume cannot tell "
+                + $"which rows it selected; it was written by tool version {header.ToolVersion}.");
+        }
+
+        TimeSpan timeout = header.Timeout;
+        if (parseResult.GetResult(_timeout) is { Implicit: false })
+        {
+            int seconds = parseResult.GetValue(_timeout);
+            if (TimeSpan.FromSeconds(seconds) != timeout)
+            {
+                throw new EvalsException(string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"--timeout {seconds} differs from the {timeout.TotalSeconds} s recording '{path}' was made with; omit it to take the recording's."));
+            }
+        }
+
+        if (parseResult.GetResult(SharedOptions.Where) is null)
+        {
+            selection = selection with { Filters = [.. recordedWhere.Select(MetadataFilter.Parse)] };
+        }
+        else
+        {
+            string[] given = [.. selection.Filters.Select(Token)];
+            if (!new HashSet<string>(given, StringComparer.Ordinal).SetEquals(recordedWhere))
+            {
+                throw new EvalsException(
+                    $"--where {string.Join(", ", given)} differs from the filters recording '{path}' was made with "
+                    + $"({(recordedWhere.Count == 0 ? "none" : string.Join(", ", recordedWhere))}); omit it to take the recording's.");
+            }
+        }
+
+        LoadedInputs inputs = Inputs.Load(selection);
+        CheckSameInputs(path, recording, inputs);
+        Dictionary<string, RecordedRow> recorded = new(StringComparer.Ordinal);
+        foreach (RecordedRow row in recording.Rows)
+        {
+            recorded.TryAdd(row.Id, row);
+        }
+
+        if (EvalRunner.AttemptsToFinish(inputs.Policy, inputs.Selected, recorded) == 0)
+        {
+            io.Error.WriteLine(
+                $"nothing needed calling: recording '{path}' holds every selected row and no unavailable attempt; it is left as it was");
+            ReportCommand.Publish(
+                ReportPipeline.Build("run", inputs, recording, force: false),
+                parseResult.GetValue(SharedOptions.Out),
+                io);
+            return ExitCodes.Success;
+        }
+
+        IReadOnlyDictionary<string, IDecisionProvider> providers = Providers.Resolve(configureProviders, inputs.Policy);
+        if (inputs.Policy.Budget is not null)
+        {
+            io.Error.WriteLine("policy budget ignored: run is eager");
+        }
+
+        RecordingHeader resumed = header with
+        {
+            Resumptions =
+            [
+                .. header.Resumptions ?? [],
+                new RecordedResumption(DateTimeOffset.UtcNow, parallel, retries, RecordingHeader.CurrentToolVersion),
+            ],
+        };
+        EvalRunner runner = new(providers, parallel, timeout, retries, _retryBase);
+        string rewrite = path + ".tmp";
+        try
+        {
+            await using RecordingWriter writer = await RecordingWriter.CreateAsync(rewrite, resumed, cancellationToken)
+                .ConfigureAwait(false);
+            await runner.ResumeAsync(
+                inputs.Policy,
+                inputs.Selected,
+                recorded,
+                writer,
+                new RowProgress(io.Error, inputs.Selected.Count),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Cut short or failed, the resume has still written every row it had; the rewrite keeps the rows it
+            // finished if it is whole.
+            KeepIfWhole(rewrite, path, recorded.Keys);
+            throw;
+        }
+
+        if (!KeepIfWhole(rewrite, path, recorded.Keys))
+        {
+            throw new EvalsException(
+                $"Recording '{path}': the rewrite does not hold every row the recording did, so the recording was left as it was.");
+        }
+
+        await RecordingWriter.ReplaceHeaderAsync(path, WithModels(resumed, RecordingReader.Read(path)), cancellationToken)
+            .ConfigureAwait(false);
+        EvalsResult result = ReportPipeline.Build("run", inputs, RecordingReader.Read(path), force: false);
+        ReportCommand.Publish(result, parseResult.GetValue(SharedOptions.Out), io);
+        return ExitCodes.Success;
+    }
+
+    // The policy and the data a resume was given against the ones the recording names. The messages name what
+    // differs — a policy id, a file and its digest — and never a row or a rule's text.
+    private static void CheckSameInputs(string path, Recording recording, LoadedInputs inputs)
+    {
+        RecordingHeader header = recording.Header;
+
+        // Compared as the library writes a policy, so a file that differs only in layout is the same policy.
+        if (!string.Equals(
+                JsonSerializer.Serialize(inputs.Policy, SemanticPolicyJson.Options),
+                JsonSerializer.Serialize(header.Policy, SemanticPolicyJson.Options),
+                StringComparison.Ordinal))
+        {
+            throw new EvalsException(
+                $"Policy '{inputs.Policy.Id}' is not the policy recording '{path}' was made with; a resume asks what the first run asked.");
+        }
+
+        if (header.Datasets.Count != inputs.Datasets.Count)
+        {
+            throw new EvalsException(
+                $"Recording '{path}' was made on {Files(header.Datasets.Count)}, and {Files(inputs.Datasets.Count)} given.");
+        }
+
+        for (int index = 0; index < header.Datasets.Count; index++)
+        {
+            Dataset dataset = inputs.Datasets[index];
+            string digest = header.Datasets[index].Sha256;
+            if (!string.Equals(dataset.Sha256, digest, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new EvalsException(
+                    $"Dataset '{dataset.Path}' has digest {dataset.Sha256}, not the {digest} recording '{path}' was made on; "
+                    + "a resume calls the rows the first run read.");
+            }
+        }
+
+        HashSet<string> selected = new(inputs.Selected.Select(row => row.Id), StringComparer.Ordinal);
+        int outside = recording.Rows.Count(row => !selected.Contains(row.Id));
+        if (outside > 0)
+        {
+            throw new EvalsException(string.Create(
+                CultureInfo.InvariantCulture,
+                $"Recording '{path}' holds {outside} rows the dataset and filters do not select, which a resume would drop."));
+        }
+    }
+
+    // The rewrite takes the recording's place only when it holds every row the recording held, so nothing that goes
+    // wrong while it is written can cost a row already paid for; otherwise it is deleted and the recording stays.
+    private static bool KeepIfWhole(string rewrite, string path, IEnumerable<string> held)
+    {
+        bool whole;
+        try
+        {
+            HashSet<string> written = new(RecordingReader.Read(rewrite).Rows.Select(row => row.Id), StringComparer.Ordinal);
+            whole = held.All(written.Contains);
+        }
+        catch (EvalsException)
+        {
+            whole = false;
+        }
+
+        try
+        {
+            if (whole)
+            {
+                File.Move(rewrite, path, overwrite: true);
+            }
+            else
+            {
+                File.Delete(rewrite);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw new EvalsException($"Recording '{path}' cannot be replaced by its rewrite '{rewrite}': {e.Message}");
+        }
+
+        return whole;
+    }
+
+    private static string Token(MetadataFilter filter) => $"metadata.{filter.Key}={filter.Value}";
+
+    private static string Files(int count) => count == 1 ? "one dataset file" : $"{count.ToString(CultureInfo.InvariantCulture)} dataset files";
 
     // Each provider's model is the first one its answers reported, as the report's provider table takes it.
     private static RecordingHeader WithModels(RecordingHeader header, Recording recording) =>

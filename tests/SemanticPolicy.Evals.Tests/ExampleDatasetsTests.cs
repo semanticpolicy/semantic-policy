@@ -123,7 +123,8 @@ public sealed class ExampleDatasetsTests
     // that the library still accepts on replay: a row the local server or Jev failed on, or a success read as
     // malformed, would quietly leave that provider's side of the README's comparison short. Each binding is
     // replayed alone, because under the whole chain a malformed answer moves on to the next binding and no count
-    // shows it.
+    // shows it. The header must list no resumption: a committed recording is made in one run and never rewritten,
+    // and a resumed one would replay like any other, so nothing else would notice it.
     private static async Task ReplayCommittedRecordingAsync(string set, int rowCount)
     {
         string smoke = Path.Combine(RepositoryRoot(), "tools", "SemanticPolicy.Evals", "datasets", "smoke");
@@ -143,6 +144,7 @@ public sealed class ExampleDatasetsTests
         recording.Header.Providers.Select(provider => provider.Name)
             .Should().Equal(loaded.Policy.Bindings.Select(binding => binding.ProviderId));
         recording.Header.Providers.Should().OnlyContain(provider => !string.IsNullOrEmpty(provider.Model));
+        recording.Header.Resumptions.Should().BeNullOrEmpty();
 
         ReplaySet replay = ReplaySet.Load(recording, loaded, force: false);
         foreach (ProviderBinding binding in loaded.Policy.Bindings)
