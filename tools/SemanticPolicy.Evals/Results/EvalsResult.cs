@@ -52,6 +52,10 @@ public sealed record EvalsResult(
 /// <param name="SplitSource">How tune and test were told apart.</param>
 /// <param name="TuneRows">The rows a threshold may be chosen on.</param>
 /// <param name="TestRows">The rows it is then measured on.</param>
+/// <param name="TornLine">
+/// The recording's last line, when it was skipped as not valid JSON, the way a run cut short while writing a
+/// row leaves it; its row counts as not recorded. Absent when every line was read.
+/// </param>
 public sealed record RowSelection(
     int DatasetRows,
     int RecordedRows,
@@ -59,7 +63,8 @@ public sealed record RowSelection(
     IReadOnlyList<string> Filters,
     string SplitSource,
     int TuneRows,
-    int TestRows);
+    int TestRows,
+    int? TornLine = null);
 
 /// <summary>
 /// Everything measured about one rule on one selection. A section that does not apply to the rule's

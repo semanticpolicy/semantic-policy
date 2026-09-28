@@ -11,7 +11,8 @@ namespace SemanticPolicy.Evals.Metrics;
 /// </summary>
 /// <param name="Provider">The registration name the attempts were keyed by.</param>
 /// <param name="Model">What the provider reported it ran, the first time it reported anything.</param>
-/// <param name="Attempts">How many calls were made, successes and failures alike.</param>
+/// <param name="Attempts">How many attempts were recorded, successes and failures alike.</param>
+/// <param name="Retried">How many of those attempts were called again after an unavailable answer, once or more.</param>
 /// <param name="LatencyP50Ms">The median call duration by nearest rank.</param>
 /// <param name="LatencyP95Ms">The 95th percentile call duration by nearest rank.</param>
 /// <param name="Usage">Every top-level numeric usage field, summed under its own name.</param>
@@ -19,6 +20,7 @@ public sealed record ProviderStats(
     string Provider,
     string? Model,
     int Attempts,
+    int Retried,
     double? LatencyP50Ms,
     double? LatencyP95Ms,
     IReadOnlyDictionary<string, double> Usage)
@@ -27,13 +29,15 @@ public sealed record ProviderStats(
     /// One entry per provider, in the order the providers were first seen. Latency is measured over every
     /// attempt, including the failed ones: a provider that times out spent that time.
     /// </summary>
-    /// <param name="attempts">Every attempt of the run, each with the name its provider is registered under.</param>
-    public static IReadOnlyList<ProviderStats> Compute(IEnumerable<(string Provider, ProviderResult Result)> attempts)
+    /// <param name="attempts">
+    /// Every attempt of the run, each with the name its provider is registered under and the retries it took.
+    /// </param>
+    public static IReadOnlyList<ProviderStats> Compute(IEnumerable<(string Provider, ProviderResult Result, int Retries)> attempts)
     {
         ArgumentNullException.ThrowIfNull(attempts);
         List<string> order = [];
         Dictionary<string, Tally> tallies = new(StringComparer.Ordinal);
-        foreach ((string provider, ProviderResult result) in attempts)
+        foreach ((string provider, ProviderResult result, int retries) in attempts)
         {
             if (!tallies.TryGetValue(provider, out Tally? tally))
             {
@@ -42,7 +46,7 @@ public sealed record ProviderStats(
                 order.Add(provider);
             }
 
-            tally.Add(result);
+            tally.Add(result, retries);
         }
 
         List<ProviderStats> stats = new(order.Count);
@@ -59,10 +63,16 @@ public sealed record ProviderStats(
         private readonly List<double> _latencies = [];
         private readonly Dictionary<string, double> _usage = new(StringComparer.Ordinal);
         private string? _model;
+        private int _retried;
 
-        internal void Add(ProviderResult result)
+        internal void Add(ProviderResult result, int retries)
         {
             _latencies.Add(result.Provider.LatencyMs);
+            if (retries > 0)
+            {
+                _retried++;
+            }
+
             _model ??= result.Provider.Model;
             if (result.Provider.Usage is not { ValueKind: JsonValueKind.Object } usage)
             {
@@ -97,6 +107,7 @@ public sealed record ProviderStats(
                 provider,
                 _model,
                 _latencies.Count,
+                _retried,
                 Percentile(_latencies, 0.50),
                 Percentile(_latencies, 0.95),
                 usage);

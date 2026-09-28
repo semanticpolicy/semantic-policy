@@ -191,6 +191,10 @@ public static class SweepRenderer
         string filters = rows.Filters.Count == 0 ? string.Empty : $" ({string.Join(", ", rows.Filters)})";
         writer.WriteLine(
             $"rows: {rows.DatasetRows} in the dataset, {rows.RecordedRows} recorded, {rows.AfterFilter} after the filters{filters}");
+        if (rows.TornLine is { } line)
+        {
+            writer.WriteLine(ReportRenderer.TornLineNote(line));
+        }
     }
 
     private static string NoGateCurve(EvalsResult result, SweepSection section) =>
