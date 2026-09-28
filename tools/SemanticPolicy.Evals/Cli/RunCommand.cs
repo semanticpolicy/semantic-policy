@@ -32,6 +32,12 @@ internal static class RunCommand
         DefaultValueFactory = _ => 30,
     };
 
+    private static readonly Option<string?> _providers = new("--providers")
+    {
+        Description = "A providers file; its entries are then the only providers run may call.",
+        HelpName = "file",
+    };
+
     public static Command Create(CliIo io, Action<ISemanticPolicyBuilder>? configureProviders)
     {
         Command command = new("run", "Call the policy's providers on every row, record the answers, and report on them.");
@@ -44,6 +50,7 @@ internal static class RunCommand
         command.Options.Add(_record);
         command.Options.Add(_parallel);
         command.Options.Add(_timeout);
+        command.Options.Add(_providers);
         command.SetAction((parseResult, cancellationToken) =>
             EvalsCli.GuardAsync(io, () => RunAsync(parseResult, io, configureProviders, cancellationToken)));
         return command;
@@ -69,7 +76,13 @@ internal static class RunCommand
         }
 
         LoadedInputs inputs = Inputs.Load(selection);
-        IReadOnlyDictionary<string, IDecisionProvider> providers = Providers.Resolve(configureProviders, inputs.Policy);
+
+        // The file replaces the providers the tool was built with rather than adding to them, so the file alone
+        // shows where a dataset's content goes.
+        string? providersFile = parseResult.GetValue(_providers);
+        IReadOnlyDictionary<string, IDecisionProvider> providers = Providers.Resolve(
+            providersFile is null ? configureProviders : ProvidersFile.Read(providersFile),
+            inputs.Policy);
         if (inputs.Policy.Budget is not null)
         {
             io.Error.WriteLine("policy budget ignored: run is eager");
