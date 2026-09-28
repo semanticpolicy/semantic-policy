@@ -443,8 +443,8 @@ public sealed class EvalRunner
     }
 
     // The end of a resume that did not get through: each row not yet written goes in as finished when every call
-    // it needed came back, else as recorded, else not at all. Nothing is called, so it is done as soon as the
-    // disk is, well within the time a command line gives a program after Ctrl+C.
+    // it needed came back, else as recorded, else not at all. Nothing is called, but every row left is written, so
+    // it takes longer the larger the recording is; the tool's Program.cs gives it the time after Ctrl+C.
     private static async Task WriteRestAsync(
         IEnumerable<PlannedRow> rest,
         IReadOnlyList<Task<FinishedRow>> dispatched,
