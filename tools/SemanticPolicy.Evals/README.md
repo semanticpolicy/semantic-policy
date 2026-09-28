@@ -381,8 +381,14 @@ same report as [`report`](#report).
   gate and still find each answer it needs.
 - Every rule is recorded; `--rule` picks the one reported. Only the rows that pass `--where` are
   sent, `ambiguous` and `abstain` rows included.
-- A failed call is recorded as its kind of failure, such as `timeout` or `unavailable`, and is not
-  retried.
+- A call answered `unavailable`, which is what a rate limit or an overloaded server gives, is made
+  again, up to `--retries` times. The wait before retry k is drawn evenly between half and the whole
+  of 1 s · 2^(k−1), and is never more than 30 s. While it waits, the call keeps its place among the
+  `--parallel` calls, so a provider shedding load is not sent another row meanwhile. Each call gets
+  its own `--timeout`.
+- Every other failure is recorded as its kind, such as `timeout`, and is not retried: a slow call
+  was not refused. The recorded answer is the last call's, and the recording notes how many calls
+  came after the first.
 - A policy `budget` is not applied; each call gets `--timeout` instead, and the report's notes say
   so.
 
@@ -391,11 +397,33 @@ same report as [`report`](#report).
 | `--record <file>` | Where to write the recording; by default `./<dataset>.<policy-id>.recording.jsonl`, named after the tune file when there are two. |
 | `--parallel <n>` | How many calls may run at once; 4 by default. |
 | `--timeout <seconds>` | How long one call may take before it is recorded as a `timeout`; 30 by default. |
+| `--retries <n>` | How many times a call answered `unavailable` is made again; 2 by default, 0 for none. |
+| `--resume <recording>` | Finish that recording instead of starting a new one; see below. |
 | `--providers <file>` | The providers `run` may call, from a [providers file](#the-provider), in place of `local` and `jev`. |
 
 A binding's `providerId` is a registration name: `local` or `jev`, or with `--providers` a name in
 the file (see [The provider](#the-provider)). A policy that binds a name nothing registers stops
 `run` before the first call with exit code 1, and the message lists the names that are registered.
+
+`--resume` finishes a recording a run left short: stopped with Ctrl+C, or holding answers that were
+still `unavailable` when the retries ran out. It calls every binding for each selected row the
+recording lacks, calls again only the attempts recorded as `unavailable`, and keeps every other
+answer as it was recorded. Give it the policy and the data the recording was made with, and the same
+`--providers` file when it was made through one:
+
+- `--where` and `--timeout` can be left out, and the recording's own are then used. When given, they
+  must be the recording's; the filters may come in any order.
+- `--parallel` and `--retries` may differ from the first run's. The recording lists each resume
+  with the values it used, and keeps the first run's.
+- It stops with exit code 1 before any call, and leaves the file as it was, when the policy is not
+  the one recorded, a dataset's digest differs, `--timeout` or `--where` differs, `--record` is
+  given too, or the recording comes from a version of the tool that did not record its filters and
+  retries.
+
+The finished recording is written next to the old one, as `<recording>.tmp`, and takes its place
+only when it holds every row the old one did. A resume that is itself stopped still keeps each row
+it finished, and the rest as they were, so running it again carries on from there. With nothing to
+call, it says so, leaves the file untouched and prints the report.
 
 ### `report`
 
@@ -588,7 +616,8 @@ Eighty synthetic rows show the two bindings side by side, not which provider rou
 `n/a` means there was nothing to divide by, such as recall with no flagged rows; it is never 0.
 
 - **rows**: rows in the recording, rows that passed the filter, and how many are tune, test or
-  neither.
+  neither. A last line torn by an interrupted run is named there, and counts as not recorded; the
+  JSON result's `rows.tornLine` holds its number.
 - **outcomes**: each row lands in one bucket. *Classified*: a clear label and a verdict; only these
   rows enter the tables below. *Failed*: no provider answered, counted by failure kind.
   *Abstained*: no provider was sure enough. *Ambiguous*: labelled `ambiguous` or `abstain`, shown
@@ -607,9 +636,9 @@ Eighty synthetic rows show the two bindings side by side, not which provider rou
 - **calibration** (probability evidence): whether a provider's 0.8 is right eight times in ten: ECE
   (lower is better), the Brier score and ten bins, which `report --diagram <file>` also draws.
   Otherwise it reads *"calibration: not applicable:"* and the reason. Nothing is recalibrated.
-- **providers**: per provider, the model, the number of calls, p50 and p95 latency, and each usage
-  field summed as the provider reports it, to 15 significant digits, so `cost` is in the provider's
-  own unit.
+- **providers**: per provider, the model, the number of attempts, how many of them were retried at
+  least once, p50 and p95 latency, and each usage field summed as the provider reports it, to 15
+  significant digits, so `cost` is in the provider's own unit.
 - **notes**: that a verdict is an estimate, the policy's mode, that a `budget` was not applied, and
   whether `--force` was used.
 
@@ -649,7 +678,12 @@ failure rates, latency and usage.
   points skips at most about 2.5% of either label's values. Each candidate replays every row, so the
   time still grows with the row count.
 - **An interrupted run** keeps its finished rows, and the other commands read the shorter recording
-  and say how many rows it covers. Delete a last line torn by the interruption first.
+  and say how many rows it covers. A last line torn by the interruption is skipped, and the report
+  names it. To finish the recording, run it again with `--resume`.
+- **Resuming with other providers.** A resume must register the same providers as the first run,
+  so a run made with `--providers` is resumed with the same file. The header names each registration
+  and the first model it reported, but a resume cannot check where a name points now: pointed at
+  another server or model, it mixes two providers' answers in one recording under one name.
 
 ## The recording
 
@@ -673,6 +707,13 @@ The header is written before the first call, so each provider's `model`, the fir
 reported, is filled in when the run finishes. An interrupted run's header has none; its answers still
 carry it. The `model` is what the server answered, not what was asked for: the Von 1.2.2 server
 behind `local` names its model `von-1.2.0`, whatever the request says.
+
+A header written by this version also carries `retries`, the run's `--retries`, and `where`, its
+`--where` filters as `metadata.<key>=<value>`, an empty list when it had none. `--resume` needs both,
+and refuses a recording without them. Each resume adds an entry to `resumptions`, with its
+`resumedAt`, `parallel`, `retries` and `toolVersion`; every other value stays the first run's. The
+shipped recordings were each made in a single run, before these fields existed, and carry none of
+them.
 
 A row is the dataset row's `id` and every answer it got, keyed by rule id and provider name, as the
 library serializes it. The shipped recording's first row, without its request id:
@@ -705,6 +746,11 @@ library serializes it. The shipped recording's first row, without its request id
 
 The library completes one-sided probability evidence like `jev`'s, but score evidence for a Boolean
 rule must carry both `true` and `false`, as `local`'s does, or the answer reads as malformed.
+
+A row with a retried attempt also carries a `retries` map beside `attempts`, keyed the same way by
+rule id and provider name, that counts the calls made after the first, as in
+`"retries": { "prompt-injection": { "jev": 1 } }`. The attempt is the last call's answer. A row
+where no attempt was retried has no map.
 
 **A recording carries no input, no label and no raw provider output**, so it can sit in a repository
 next to its dataset without copying the dataset's content.

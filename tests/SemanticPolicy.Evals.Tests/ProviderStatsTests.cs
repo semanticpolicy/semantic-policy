@@ -21,7 +21,7 @@ public sealed class ProviderStatsTests
     {
         // Ten local latencies, which sort to 3, 5, 8, 9, 12, 17, 21, 30, 45, 60: nearest rank takes the
         // 5th for p50 and the 10th for p95. The timed-out call is an attempt like any other.
-        (string Provider, ProviderResult Result)[] attempts =
+        (string Provider, ProviderResult Result, int Retries)[] attempts =
         [
             Attempt("local", 12), Attempt("local", 5), Attempt("local", 30), Attempt("local", 8),
             Attempt("local", 21), Attempt("local", 3), Attempt("local", 17), Attempt("local", 45),
@@ -45,7 +45,7 @@ public sealed class ProviderStatsTests
     [Fact]
     public void Provider_Stats_Sum_Every_Top_Level_Numeric_Usage_Field_Under_Its_Own_Name_And_Ignore_The_Rest()
     {
-        (string Provider, ProviderResult Result)[] attempts =
+        (string Provider, ProviderResult Result, int Retries)[] attempts =
         [
             Attempt("hosted", 100, _usageOfTheFirstCall),
             Attempt("hosted", 150, _usageOfTheSecondCall),
@@ -67,7 +67,7 @@ public sealed class ProviderStatsTests
     public void Provider_Stats_Sum_Usage_Without_The_Noise_Binary_Addition_Leaves_In_The_Last_Digits()
     {
         // 0.1 + 0.2 is 0.30000000000000004 in binary floating point, and a report would print every digit of it.
-        (string Provider, ProviderResult Result)[] attempts =
+        (string Provider, ProviderResult Result, int Retries)[] attempts =
         [
             Attempt("hosted", 100, """{"cost": 0.1}"""),
             Attempt("hosted", 100, """{"cost": 0.2}"""),
@@ -78,7 +78,7 @@ public sealed class ProviderStatsTests
         stats.Usage["cost"].Should().Be(0.3);
     }
 
-    private static (string Provider, ProviderResult Result) Attempt(string provider, double latencyMs, string? usage = null)
+    private static (string Provider, ProviderResult Result, int Retries) Attempt(string provider, double latencyMs, string? usage = null)
     {
         ProviderMetadata metadata = new(provider, "model-" + provider, latencyMs, Usage: Parse(usage));
         return (provider, new ProviderResult(
@@ -86,15 +86,15 @@ public sealed class ProviderStatsTests
             ProviderOutcome.Success,
             new BooleanValue(true),
             [],
-            metadata));
+            metadata), 0);
     }
 
-    private static (string Provider, ProviderResult Result) Failure(string provider, double latencyMs) =>
+    private static (string Provider, ProviderResult Result, int Retries) Failure(string provider, double latencyMs) =>
         (provider, ProviderResult.Failed(
             DecisionType.Boolean,
             FailureKind.Timeout,
             "no answer",
-            new ProviderMetadata(provider, "model-" + provider, latencyMs)));
+            new ProviderMetadata(provider, "model-" + provider, latencyMs)), 0);
 
     private static JsonElement? Parse(string? usage) =>
         usage is null ? null : JsonDocument.Parse(usage).RootElement.Clone();

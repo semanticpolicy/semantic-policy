@@ -77,7 +77,16 @@ public static class ReportRenderer
         output.WriteLine($"{Count(rows.AfterFilter)} of {Count(rows.RecordedRows)} passed the filter ({filters})");
         output.WriteLine(
             $"{split}: {Count(rows.TuneRows)} tune, {Count(rows.TestRows)} test, {Count(unassigned)} unassigned");
+        if (rows.TornLine is { } line)
+        {
+            output.WriteLine(TornLineNote(line));
+        }
     }
+
+    // Shared with sweep and compare, which print their rows section in a form of their own.
+    internal static string TornLineNote(int line) =>
+        $"line {Count(line)} of the recording skipped: not valid JSON, as a run cut short leaves its last line; "
+        + "its row counts as not recorded";
 
     private static void Outcomes(OutcomeCounts outcomes, TextWriter output)
     {
@@ -226,7 +235,7 @@ public static class ReportRenderer
     private static void Providers(IReadOnlyList<ProviderStats> providers, TextWriter output)
     {
         string[] fields = [.. providers.SelectMany(provider => provider.Usage.Keys).Distinct().Order(StringComparer.Ordinal)];
-        TextTable table = new(["provider", "model", "attempts", "p50 ms", "p95 ms", .. fields]);
+        TextTable table = new(["provider", "model", "attempts", "retried", "p50 ms", "p95 ms", .. fields]);
         foreach (ProviderStats provider in providers)
         {
             table.AddRow(
@@ -234,6 +243,7 @@ public static class ReportRenderer
                 provider.Provider,
                 provider.Model ?? "n/a",
                 Count(provider.Attempts),
+                Count(provider.Retried),
                 Latency(provider.LatencyP50Ms),
                 Latency(provider.LatencyP95Ms),
                 .. fields.Select(field => provider.Usage.TryGetValue(field, out double sum) ? Usage(sum) : "n/a"),

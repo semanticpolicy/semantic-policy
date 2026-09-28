@@ -12,7 +12,13 @@ namespace SemanticPolicy.Evals.Replay;
 /// The recorded results for the selected rule, by provider registration name; empty when the recording holds
 /// the row but nothing for this rule.
 /// </param>
-public sealed record ReplayRow(DatasetRow Row, IReadOnlyDictionary<string, ProviderResult> AttemptsByProvider);
+/// <param name="RetriesByProvider">
+/// How many retries each of those attempts took, for the ones that took any; empty when none did.
+/// </param>
+public sealed record ReplayRow(
+    DatasetRow Row,
+    IReadOnlyDictionary<string, ProviderResult> AttemptsByProvider,
+    IReadOnlyDictionary<string, int> RetriesByProvider);
 
 /// <summary>
 /// A recording joined to the rows a verb selected, ready to be replayed at any policy that asks the
@@ -89,7 +95,7 @@ public sealed class ReplaySet
 
             if (byId.TryGetValue(row.Id, out RecordedRow? recorded))
             {
-                rows.Add(new ReplayRow(row, AttemptsFor(recorded, inputs.Rule.Id)));
+                rows.Add(new ReplayRow(row, AttemptsFor(recorded, inputs.Rule.Id), RetriesFor(recorded, inputs.Rule.Id)));
             }
         }
 
@@ -136,6 +142,13 @@ public sealed class ReplaySet
         && byProvider is not null
             ? byProvider
             : ReadOnlyDictionary<string, ProviderResult>.Empty;
+
+    private static IReadOnlyDictionary<string, int> RetriesFor(RecordedRow row, string ruleId) =>
+        row.Retries is not null
+        && row.Retries.TryGetValue(ruleId, out IReadOnlyDictionary<string, int>? byProvider)
+        && byProvider is not null
+            ? byProvider
+            : ReadOnlyDictionary<string, int>.Empty;
 
     private static string Paths(IEnumerable<string> paths) => string.Join(" and ", paths.Select(path => $"'{path}'"));
 

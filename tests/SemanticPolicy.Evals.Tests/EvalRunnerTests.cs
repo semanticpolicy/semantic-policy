@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Text.Json;
 using SemanticPolicy.Evals.Datasets;
@@ -133,6 +134,133 @@ public sealed class EvalRunnerTests
         summary.Attempts.Should().Be(4);
     }
 
+    [Theory]
+    [InlineData(new[] { "unavailable", "success" }, 2, OutcomeStatus.Success, 1)]
+    [InlineData(new[] { "unavailable", "unavailable", "unavailable" }, 2, OutcomeStatus.Failure, 2)]
+    [InlineData(new[] { "unavailable" }, 0, OutcomeStatus.Failure, 0)]
+    public async Task Unavailable_Answer_Is_Retried_Until_It_Succeeds_Or_The_Retries_Run_Out(
+        string[] answers,
+        int retries,
+        OutcomeStatus recorded,
+        int count)
+    {
+        ScriptedProvider provider = new ScriptedProvider().Returns(InTurn([.. answers.Select(Answer)]));
+        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+
+        (_, Recording recording, _) =
+            await RunAsync(policy, [Row("r01", "context")], Registered(("local", provider)), retries: retries);
+
+        RecordedRow row = recording.Rows.Single();
+        provider.Calls.Should().Be(count + 1);
+        row.Attempts[Samples.Injection]["local"].Outcome.Status.Should().Be(recorded);
+        if (count == 0)
+        {
+            row.Retries.Should().BeNull();
+        }
+        else
+        {
+            row.Retries.Should().NotBeNull();
+            row.Retries![Samples.Injection]["local"].Should().Be(count);
+        }
+    }
+
+    [Theory]
+    [InlineData("timeout")]
+    [InlineData("rejectedInput")]
+    [InlineData("unauthorized")]
+    [InlineData("unknown")]
+    [InlineData("thrown")]
+    [InlineData("abstention")]
+    public async Task Only_Unavailable_Is_Retried(string answer)
+    {
+        // The timeout is the runner's own, so a timer that expired is what is not called again.
+        ScriptedProvider provider = answer switch
+        {
+            "timeout" => new ScriptedProvider().Delays(TimeSpan.FromSeconds(30)).Returns(_ => Samples.BooleanAnswer(0.8)),
+            "thrown" => new ScriptedProvider().Throws(new InvalidOperationException()),
+            "abstention" => new ScriptedProvider().Returns(_ => new ProviderResult(
+                DecisionType.Boolean, ProviderOutcome.Abstain(message: null), Value: null, Evidence: [], Samples.Metadata("local"))),
+            _ => new ScriptedProvider().Returns(_ => Samples.Failed(Enum.Parse<FailureKind>(answer, ignoreCase: true))),
+        };
+        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+
+        (_, Recording recording, _) = await RunAsync(
+            policy,
+            [Row("r01", "context")],
+            Registered(("local", provider)),
+            timeout: TimeSpan.FromMilliseconds(100),
+            retries: 2);
+
+        provider.Calls.Should().Be(1);
+        recording.Rows.Single().Retries.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(1, 0.0, 500)]
+    [InlineData(1, 1.0, 1_000)]
+    [InlineData(2, 0.0, 1_000)]
+    [InlineData(2, 1.0, 2_000)]
+    [InlineData(6, 0.0, 15_000)]
+    [InlineData(6, 1.0, 30_000)]
+    public void Backoff_Wait_Lies_Within_Half_And_Whole_Of_The_Capped_Doubling(int retry, double draw, int milliseconds)
+    {
+        EvalRunner.RetryDelay(retry, TimeSpan.FromSeconds(1), draw).Should().Be(TimeSpan.FromMilliseconds(milliseconds));
+    }
+
+    [Fact]
+    public async Task Waiting_Retry_Holds_Its_Slot()
+    {
+        ConcurrentQueue<string> seen = new();
+        int unavailable = 0;
+        ScriptedProvider provider = new ScriptedProvider().Returns(request =>
+        {
+            string text = ScriptedProvider.TextOf(request);
+            seen.Enqueue(text);
+            return text == "a" && Interlocked.Increment(ref unavailable) == 1
+                ? Samples.Failed(FailureKind.Unavailable)
+                : Samples.BooleanAnswer(0.8);
+        });
+        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+
+        await RunAsync(policy, [Row("r1", "a"), Row("r2", "b")], Registered(("local", provider)), parallel: 1, retries: 2);
+
+        seen.Should().Equal("a", "a", "b");
+    }
+
+    [Fact]
+    public async Task Each_Call_Gets_Its_Own_Timeout()
+    {
+        // Each call takes most of the timeout and the two together take more than it: a timer shared by the calls
+        // would expire during the second one.
+        ScriptedProvider provider = new ScriptedProvider()
+            .Delays(TimeSpan.FromMilliseconds(600))
+            .Returns(InTurn(Samples.Failed(FailureKind.Unavailable), Samples.BooleanAnswer(0.8)));
+        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+
+        (_, Recording recording, _) = await RunAsync(
+            policy,
+            [Row("r01", "context")],
+            Registered(("local", provider)),
+            timeout: TimeSpan.FromSeconds(1),
+            retries: 1);
+
+        provider.Calls.Should().Be(2);
+        recording.Rows.Single().Attempts[Samples.Injection]["local"].Outcome.Status.Should().Be(OutcomeStatus.Success);
+    }
+
+    private static ProviderResult Answer(string answer) => answer switch
+    {
+        "unavailable" => Samples.Failed(FailureKind.Unavailable),
+        _ => Samples.BooleanAnswer(0.8),
+    };
+
+    // One answer per call, in turn; the last one again once the list runs out.
+    private static Func<DecisionRequest, ProviderResult> InTurn(params ProviderResult[] answers)
+    {
+        int calls = 0;
+        return _ => answers[Math.Min(Interlocked.Increment(ref calls), answers.Length) - 1];
+    }
+
     private static DatasetRow Row(string id, string text, string label = "true") =>
         new(id, 1, SemanticContext.FromText(text), Samples.Label(label), ReadOnlyDictionary<string, JsonElement>.Empty);
 
@@ -144,11 +272,14 @@ public sealed class EvalRunnerTests
         IReadOnlyList<DatasetRow> rows,
         IReadOnlyDictionary<string, IDecisionProvider> providers,
         int parallel = 4,
-        TimeSpan? timeout = null)
+        TimeSpan? timeout = null,
+        int retries = 0)
     {
         CancellationToken cancellation = TestContext.Current.CancellationToken;
         using TempFile file = TempFile.Write("");
-        EvalRunner runner = new(providers, parallel, timeout ?? TimeSpan.FromSeconds(30));
+
+        // A few milliseconds between retries rather than the tool's second, so a retry costs a test no time.
+        EvalRunner runner = new(providers, parallel, timeout ?? TimeSpan.FromSeconds(30), retries, TimeSpan.FromMilliseconds(4));
         RunSummary summary;
         await using (RecordingWriter writer = await RecordingWriter.CreateAsync(file.Path, Samples.Header(policy), cancellation))
         {
