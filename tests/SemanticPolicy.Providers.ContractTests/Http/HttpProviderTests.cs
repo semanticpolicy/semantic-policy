@@ -203,6 +203,28 @@ public sealed class HttpProviderTests
         result.ToString().Should().NotContain(ProviderHarness.Marker);
     }
 
+    // Member names are read as the protocol spells them. A reader that ignored case would take
+    // "Evidence" for evidence, past the check that every entry names its kind, and an entry without one
+    // would reach a probability threshold as the enum's first value.
+    [Fact]
+    public async Task Member_Named_In_Another_Case_Is_Not_Read()
+    {
+        HttpHarness harness = new(options => options.Evidence = [EvidenceKind.Score, EvidenceKind.Probability]);
+        harness.Handler.Respond(
+            HttpStatusCode.OK,
+            HttpHarness.Answer(evidence: null).Replace(
+                "\"provider\":",
+                "\"Evidence\":[{\"values\":{\"true\":0.99,\"false\":0.01}}],\"provider\":",
+                StringComparison.Ordinal));
+
+        ProviderResult result = await harness.Provider.DecideAsync(
+            harness.CreateRequest(DecisionType.Boolean, ProviderHarness.Marker),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Should().Be(ProviderOutcome.Success);
+        result.Evidence.Should().BeEmpty();
+    }
+
     public static TheoryData<string> ServerStringsThatAreNotIdentifiers =>
     [
         "a model with a space", "a request id with a line break", "a scale over 200 characters", "an empty model",
@@ -285,11 +307,14 @@ public sealed class HttpProviderTests
         "no outcome", "no provider", "no type", "no outcome.status", "an evidence entry without kind",
         "an entry without values", "a null entry", "a result of another type", "evidence keyed outside the answers",
         "an abstain with evidence keyed outside the answers", "a probability above 1", "a negative probability",
+        "a number as a string", "NaN as a string", "a number beyond a double", "two entries of one declared kind",
     ];
 
     // Every case but HTML is JSON, and the registration declares Probability: an entry without a kind
     // must not reach a probability threshold as the enum's first value, and neither may a number
-    // outside [0, 1] or under a key the request did not offer.
+    // outside [0, 1] or under a key the request did not offer. A value is a finite JSON number, since
+    // NaN passes no threshold and so reads as allowed, and a kind comes once, since a threshold reads
+    // only the first entry of its kind.
     [Theory]
     [MemberData(nameof(OutsideTheContract))]
     public async Task Answer_On_200_Outside_The_Contract_Reads_As_Malformed(string shape)
@@ -318,6 +343,13 @@ public sealed class HttpProviderTests
                 evidence: _keyedOutside),
             "a probability above 1" => HttpHarness.Answer(evidence: """[{"kind":"probability","values":{"true":1.2}}]"""),
             "a negative probability" => HttpHarness.Answer(evidence: """[{"kind":"probability","values":{"true":-0.1}}]"""),
+            "a number as a string" => HttpHarness.Answer(evidence: """[{"kind":"score","values":{"true":"0.91","false":0.09}}]"""),
+            "NaN as a string" => HttpHarness.Answer(evidence: """[{"kind":"score","values":{"true":"NaN","false":"NaN"}}]"""),
+            "a number beyond a double" => HttpHarness.Answer(evidence: """[{"kind":"score","values":{"true":1e400,"false":0.09}}]"""),
+            "two entries of one declared kind" => HttpHarness.Answer(evidence: """
+                [{"kind":"score","values":{"true":0.09,"false":0.91}},
+                 {"kind":"score","values":{"true":0.91,"false":0.09}}]
+                """),
             _ => throw new ArgumentOutOfRangeException(nameof(shape)),
         };
         harness.Handler.Respond(HttpStatusCode.OK, body, shape == "HTML" ? "text/html" : "application/json");

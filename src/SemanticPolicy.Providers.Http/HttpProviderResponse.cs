@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy.Providers.Http;
@@ -13,6 +14,15 @@ namespace SemanticPolicy.Providers.Http;
 /// </summary>
 internal static class HttpProviderResponse
 {
+    // The protocol's settings, read as the protocol spells them: member names in camel case only and
+    // numbers only as JSON numbers. The web defaults behind SemanticPolicyJson.Options would take
+    // "Evidence" for evidence, past the checks below, and the string "NaN" for a number.
+    private static readonly JsonSerializerOptions _wire = new(SemanticPolicyJson.Options)
+    {
+        PropertyNameCaseInsensitive = false,
+        NumberHandling = JsonNumberHandling.Strict,
+    };
+
     /// <summary>
     /// The kind a v0 failure body names, or <see langword="null"/> when the body is not one, in which
     /// case the status decides. Only a whole v0 result counts, so a proxy's or a framework's own error
@@ -30,7 +40,9 @@ internal static class HttpProviderResponse
     /// The body as a v0 result, or <see langword="null"/> when it is not one. Every member the protocol
     /// requires is checked on the JSON before the record is trusted: the record fills its protocol from
     /// an initializer and an absent enum member with the enum's first value, so an evidence entry
-    /// without a kind would otherwise arrive as a probability the server never claimed. Never throws.
+    /// without a kind would otherwise arrive as a probability the server never claimed. Member names
+    /// match only in their protocol case, and a number written as a string is not a number. Never
+    /// throws.
     /// </summary>
     public static ProviderResult? ReadResult(JsonElement body)
     {
@@ -41,7 +53,7 @@ internal static class HttpProviderResponse
 
         try
         {
-            ProviderResult? result = body.Deserialize<ProviderResult>(SemanticPolicyJson.Options);
+            ProviderResult? result = body.Deserialize<ProviderResult>(_wire);
 
             // Absent evidence is no evidence, as an empty array is.
             return result is null ? null : result with { Evidence = result.Evidence ?? [] };
@@ -58,18 +70,31 @@ internal static class HttpProviderResponse
     /// What is wrong with the evidence a result would relay, or <see langword="null"/> when nothing
     /// is. Every key must be one of the request's answers: <c>true</c> or <c>false</c>, an option or a
     /// level. A key is text the server wrote, so one outside the request would reach the result's JSON
-    /// and its ToString, and a threshold would find nothing under the key it reads. A probability must
-    /// be in [0, 1], as protocol v0 defines it.
+    /// and its ToString, and a threshold would find nothing under the key it reads. Every value must be
+    /// finite: a number too large for a double reads as infinity, and NaN passes no threshold, so it
+    /// would read as allowed. A probability must be in [0, 1], as protocol v0 defines it. A kind comes
+    /// once, because a threshold reads only the first entry of its kind.
     /// </summary>
     public static string? EvidenceDeviation(DecisionRequest request, IEnumerable<Evidence> evidence)
     {
+        HashSet<EvidenceKind> kinds = [];
         foreach (Evidence entry in evidence)
         {
+            if (!kinds.Add(entry.Kind))
+            {
+                return "two evidence entries of one kind";
+            }
+
             foreach ((string key, double value) in entry.Values)
             {
                 if (!IsAnswer(request, key))
                 {
                     return "evidence keyed outside the request's answers";
+                }
+
+                if (!double.IsFinite(value))
+                {
+                    return "a value that is not a finite number";
                 }
 
                 if (entry.Kind == EvidenceKind.Probability && value is < 0 or > 1)
