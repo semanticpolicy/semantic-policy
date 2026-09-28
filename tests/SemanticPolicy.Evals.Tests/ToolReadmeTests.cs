@@ -1,6 +1,8 @@
 using System.CommandLine;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.DependencyInjection;
 using SemanticPolicy.Evals.Cli;
+using SemanticPolicy.Providers;
 
 namespace SemanticPolicy.Evals.Tests;
 
@@ -61,6 +63,21 @@ public sealed partial class ToolReadmeTests
             target => target.StartsWith("https://", StringComparison.Ordinal) || target.StartsWith('#'));
     }
 
+    // The sample is the file a user copies first, so it is loaded as written: every entry registered under its name,
+    // with no key in the environment and no server running, since registering builds nothing.
+    [Fact]
+    public async Task Readme_Sample_Providers_File_Loads()
+    {
+        Match sample = JsonBlock().Match(Section(await ReadmeAsync(), "## The provider"));
+        sample.Success.Should().BeTrue("'## The provider' carries a sample providers file");
+        using TempFile file = TempFile.Write(sample.Groups["json"].Value, ".json");
+        NameRecordingBuilder builder = new();
+
+        ProvidersFile.Read(file.Path)(builder);
+
+        builder.Names.Should().Equal("local", "jev");
+    }
+
     private static Task<string> ReadmeAsync() =>
         File.ReadAllTextAsync(
             Path.Combine(ExampleDatasetsTests.RepositoryRoot(), "tools", "SemanticPolicy.Evals", "README.md"),
@@ -110,4 +127,39 @@ public sealed partial class ToolReadmeTests
     // A `dotnet tool` command, in a code block or in inline code: to the end of the line or the closing backtick.
     [GeneratedRegex(@"dotnet tool [^`\n]*")]
     private static partial Regex DotnetToolCommand();
+
+    // A fenced JSON block: from its opening line to the closing fence.
+    [GeneratedRegex(@"^```json\n(?<json>.*?)^```", RegexOptions.Multiline | RegexOptions.Singleline)]
+    private static partial Regex JsonBlock();
+
+    // Keeps the name of every provider registered on it, and forwards each call so Core checks it as it would for an
+    // application.
+    private sealed class NameRecordingBuilder : ISemanticPolicyBuilder
+    {
+        private readonly ISemanticPolicyBuilder _inner = new ServiceCollection().AddSemanticPolicy();
+
+        public List<string> Names { get; } = [];
+
+        public IServiceCollection Services => _inner.Services;
+
+        public ISemanticPolicyBuilder AddProvider(string name, Func<IServiceProvider, IDecisionProvider> factory)
+        {
+            _inner.AddProvider(name, factory);
+            Names.Add(name);
+            return this;
+        }
+
+        public ISemanticPolicyBuilder AddProvider(IDecisionProvider provider, string? name = null)
+        {
+            _inner.AddProvider(provider, name);
+            Names.Add(name ?? provider.Id);
+            return this;
+        }
+
+        public ISemanticPolicyBuilder AddPolicy(Policy policy)
+        {
+            _inner.AddPolicy(policy);
+            return this;
+        }
+    }
 }
