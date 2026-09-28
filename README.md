@@ -137,7 +137,9 @@ or a resilience handler of your own belongs. Leave that client's own `Timeout` i
 `o.Timeout` instead: the provider keeps its own timer, and a shorter client timeout surfaces as a
 cancellation the evaluator reads as a bug. The registration also strips that client's loggers, so no
 log line can print the `Authorization` header; `AddDefaultLogger()` puts the factory's logging back
-under your own redaction.
+under your own redaction. It turns redirects off too, so a 3xx is a failure rather than your content
+sent on to wherever it points. A primary handler you set on that name after the registration, for a
+proxy say, replaces the one it configured, so set `AllowAutoRedirect = false` on yours.
 
 The provider reports what the model estimated and decides nothing; the policy decides what a
 probability means. Ask it about a piece of text through the evaluator the registration adds:
@@ -172,11 +174,11 @@ services.AddSemanticPolicy()
 ```
 
 The registration name does the same three jobs as for TypeSafe, and the named `HttpClient` gets the
-same treatment: its loggers stripped, its own timeout infinite, `o.Timeout` in charge.
+same treatment: loggers stripped, redirects off, its own timeout infinite, `o.Timeout` in charge.
 
 | Option | |
 |---|---|
-| `o.BaseUrl` | Required. `https`, or plain `http` to a loopback host (`localhost`, `127.0.0.1`, `[::1]`). `http` to any other host needs `o.AllowInsecureHttp`. |
+| `o.BaseUrl` | Required. `https`, or plain `http` to a loopback host (`localhost`, `127.0.0.1`, `[::1]`). `http` to any other host needs `o.AllowInsecureHttp`. A query or a fragment is refused, because the path is appended after it. |
 | `o.Model` | Required, with no default. Some servers pick a checkpoint by this name and others ignore it, so only you know what yours expects. A verdict reports the model the server names in its answer, or this one when it names none. |
 | `o.Evidence` | `EvidenceKind.Score` by default; `EvidenceKind.Probability` only as a claim you make, below. No other kind. |
 | `o.ApiKey` | Optional. Sent as a Bearer token when set. Leave it unset and the key is read from the environment variable `o.ApiKeyVariable` names, once, when the evaluator is first resolved; with neither, or with that variable unset, no `Authorization` header is sent. |
@@ -242,7 +244,7 @@ same three jobs as for TypeSafe, and the named `HttpClient` gets the same treatm
 | `o.ApiKey` | Optional, as for System One: a Bearer token when set, else the variable `o.ApiKeyVariable` names, else no `Authorization` header. |
 | `o.AllowInsecureHttp` | `false` by default. |
 | `o.MaxContextLength` | Off by default. A context whose canonical text is longer is not sent, and the provider reports a rejected input, as for System One. |
-| `o.Path` | `/v0/decide` by default. |
+| `o.Path` | `/v0/decide` by default. If your server answers on another path, every call gets a 404, which reads as a rejected input. |
 | `o.Timeout` | Ten seconds by default. |
 
 The server's answer is an estimate, not a ruling: the provider relays its value and the evidence of

@@ -21,8 +21,10 @@ speaks protocol v0, a guide to writing a provider of your own, and the evaluatio
   the evidence kinds it sends and whether it reads a structured context, and the provider reports
   nothing beyond that declaration. Like the System One provider, it refuses plain `http` to anything
   but a loopback host unless you allow it, and can refuse a context longer than a limit you set.
-  Nothing the server writes reaches a failure's message, and evidence keyed outside the request's
-  answers, or a probability outside [0, 1], reads as malformed. `docs/protocol-v0.md` gains the
+  Nothing the server writes reaches a failure's message. The answer is read strictly, member names
+  in the protocol's case and numbers as JSON numbers, and evidence keyed outside the request's
+  answers, a value that is not finite, a probability outside [0, 1] or a second entry of a declared
+  kind reads as malformed. `docs/protocol-v0.md` gains the
   [HTTP binding](docs/protocol-v0.md#http-binding): what such a server answers, how the provider
   reads it, and a minimal server to start from.
 - **`SemanticPolicy.Providers.TypeSafe`.** Built on the System One provider, which it now brings
@@ -31,8 +33,9 @@ speaks protocol v0, a guide to writing a provider of your own, and the evaluatio
   rate limiter, is an `Unknown` failure for the policy's `OnFailure`, no longer an exception out of
   `EvaluateAsync`. A body over 1 MiB is not read, and the client a registration sets up follows no
   redirect. A model, a request id or an error code the server writes is reported only when it is an
-  identifier, printable ASCII without a space. For `SemanticPolicy.Providers.TypeSafe` each of these
-  is a change from 0.1.0-alpha.1.
+  identifier, printable ASCII without a space. A base URL with a query or a fragment is refused at
+  registration, since the path would land inside it. For `SemanticPolicy.Providers.TypeSafe` each of
+  these is a change from 0.1.0-alpha.1.
 - **`SemanticPolicy.Evals`.** New. The evaluation CLI, until now run from a clone, as a dotnet tool
   whose command is `semantic-policy`. Its new `samples` command writes out the datasets and
   recordings the package carries, and `report`, `sweep` and `compare` replay those without a key.
