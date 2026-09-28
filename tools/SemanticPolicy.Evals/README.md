@@ -963,9 +963,19 @@ Everything there is synthetic and written for this repository: no row comes from
 or holds a real name, address, key, email address or URL.
 
 - **`datasets/examples/`**: ten rows per rule type, each beside its policy: `prompt-injection`
-  (Boolean), `agent-router` (Choice, with two-part inputs) and `harm-severity` (Score). They show the
-  format and are far too small to measure anything. Each policy binds `local` first and `jev`
-  second, and every number in them is set by hand, for illustration.
+  (Boolean), `agent-router` (Choice, with two-part inputs) and `harm-severity` (Score). These three
+  show the format and are far too small to measure anything. Beside them, `support-ticket.jsonl`
+  holds fifty support tickets for `support-ticket.policy.json`, the `ticket-category` rule of the
+  `examples/SupportTicketForm` program: a Boolean question whether a ticket's description fits the
+  category the customer chose, whose `false` answer escalates. Each input has two parts, `category`
+  and `description`, in the order that program sends them. 22 rows are labelled `true`, 22 `false`
+  and 6 `ambiguous` because they fit two categories; 30 are tune and 20 test rows. Each row's
+  `metadata` has `source`, `set`, `split` and `pattern`: `keyword` descriptions use the words of a
+  category's description, `paraphrase` ones describe the same kind of request without them, and
+  `two-categories` marks the ambiguous ones. The set has no recording, so measuring it starts with a
+  `run` of your own. It is small and synthetic: a set to learn `compare` on, not a benchmark. Each
+  policy binds `local` first and `jev` second, and every number in them is set by hand, for
+  illustration.
 - **`datasets/smoke/`**: `prompt-injection.smoke.jsonl`, a hundred rows for a Boolean
   prompt-injection rule, beside `prompt-injection.policy.json` and
   `prompt-injection.recording.jsonl`, one `run` of that policy over the set through both bindings,

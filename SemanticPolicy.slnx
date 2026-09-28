@@ -4,6 +4,7 @@
     <Project Path="examples/CustomProvider/CustomProvider/CustomProvider.csproj" />
     <Project Path="examples/CustomProvider/CustomProvider.Tests/CustomProvider.Tests.csproj" />
     <Project Path="examples/PromptInjectionGuard/PromptInjectionGuard.csproj" />
+    <Project Path="examples/SupportTicketForm/SupportTicketForm.csproj" />
     <Project Path="examples/ToolIntentGuard/ToolIntentGuard.csproj" />
     <Project Path="examples/ToolResultGuard/ToolResultGuard.csproj" />
   </Folder>

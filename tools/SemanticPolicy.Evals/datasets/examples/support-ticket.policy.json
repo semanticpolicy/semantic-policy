@@ -1,0 +1,39 @@
+{
+  "id": "ticket-category",
+  "mode": "enforce",
+  "rules": [
+    {
+      "id": "ticket-category",
+      "question": "Does the description fit the category the customer chose? billing: Invoices, charges, refunds, payment methods and tax. technical: Builds, errors, integrations and anything that doesn't work as it should. account: Signing in, passwords, two-factor authentication, members and permissions. sales: Plans, prices, discounts and trials for teams choosing or changing a plan.",
+      "flaggedAnswer": false,
+      "ladder": [ "escalate" ],
+      "type": "boolean"
+    }
+  ],
+  "bindings": [
+    {
+      "providerId": "local",
+      "operatingPoints": [
+        {
+          "ruleId": "ticket-category",
+          "thresholds": [
+            { "verdict": "escalate", "kind": "score", "atOrAbove": 0.5 }
+          ],
+          "gate": { "kind": "score", "below": 0.05 }
+        }
+      ]
+    },
+    {
+      "providerId": "jev",
+      "operatingPoints": [
+        {
+          "ruleId": "ticket-category",
+          "thresholds": [
+            { "verdict": "escalate", "kind": "probability", "atOrAbove": 0.7 }
+          ]
+        }
+      ]
+    }
+  ],
+  "onFailure": { "action": "fallback", "then": "escalate" }
+}
