@@ -41,7 +41,8 @@ speaks protocol v0, a guide to writing a provider of your own, and the evaluatio
   recordings the package carries, and `report`, `sweep` and `compare` replay those without a key.
   `run` gains a `local` binding for a Von server beside `jev`, and the recordings of the smoke and
   router sets are answered by both. It builds a provider only when a policy binds it, and a curve
-  replays at most 101 candidates.
+  replays at most 101 candidates. `report --diagram <file>` draws the calibration section as an SVG
+  reliability diagram.
 
 [Local setup](README.md#local-setup) starts Von, and [docs/local-models.md](docs/local-models.md)
 has what a probe measured on it and on two other local servers.

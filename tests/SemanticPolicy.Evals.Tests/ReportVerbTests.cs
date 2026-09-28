@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.Text.Json;
+using System.Xml.Linq;
 using SemanticPolicy.Evals.Cli;
 using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Evals.Recordings;
@@ -9,6 +10,8 @@ namespace SemanticPolicy.Evals.Tests;
 
 public sealed class ReportVerbTests
 {
+    private static readonly XNamespace _svg = "http://www.w3.org/2000/svg";
+
     [Fact]
     public async Task Report_Prints_One_Table_Per_Ladder_Rung_With_The_Six_Rates_And_The_Outcome_Counts()
     {
@@ -62,34 +65,50 @@ public sealed class ReportVerbTests
     [Fact]
     public async Task Report_Prints_Not_Applicable_Naming_The_Kind_When_Evidence_Is_Not_Probability()
     {
-        BooleanRule rule = Samples.Flagged();
-        Policy policy = new(
-            "guard",
-            PolicyMode.Enforce,
-            [rule],
-            [
-                new ProviderBinding("local", [
-                    new RuleOperatingPoint(rule.Id, [
-                        new Threshold(Verdict.Warn, EvidenceKind.Score, 0.5),
-                        new Threshold(Verdict.Deny, EvidenceKind.Score, 0.8)]),
-                ]),
-            ],
-            FailureBehavior.Escalate);
-        (string Id, string Label, double Score)[] rows = [("s1", "true", 0.9), ("s2", "false", 0.2), ("s3", "true", 0.6)];
-        using TempFile policyFile = WritePolicy(policy);
-        using TempFile dataset = TempFile.Write(Lines(rows.Select(row => Line(row.Id, row.Label))));
-        using TempFile recording = TempFile.Write("");
-        await Samples.RecordAsync(
-            recording.Path,
-            Samples.Header(policy, DatasetReader.Read(dataset.Path).Sha256),
-            [.. rows.Select(row => Samples.Recorded(row.Id, (Samples.Injection, "local", Scored(row.Score))))]);
+        using ScoreFixture fixture = await ScoreFixture.CreateAsync();
 
-        (int exit, string output, string error) = await InvokeAsync(
-            ["report", "--policy", policyFile.Path, "--dataset", dataset.Path, "--recording", recording.Path]);
+        (int exit, string output, string error) = await InvokeAsync(fixture.ReportArgs());
 
         exit.Should().Be(ExitCodes.Success, error);
         output.Should().Contain("calibration: not applicable: deciding evidence is score");
         output.Should().NotContain("ECE").And.NotContain("Brier");
+    }
+
+    [Fact]
+    public async Task Report_Writes_The_Reliability_Diagram_As_Svg_With_Diagram()
+    {
+        using BooleanFixture fixture = await BooleanFixture.CreateAsync();
+        using TempFile diagram = TempFile.Write("", ".svg");
+
+        (int exit, string output, string error) = await InvokeAsync([.. fixture.ReportArgs(), "--diagram", diagram.Path]);
+
+        exit.Should().Be(ExitCodes.Success, error);
+        error.Should().BeEmpty();
+        output.Should().Contain("calibration: ECE");
+        XElement svg = XDocument.Load(diagram.Path).Root!;
+        svg.Name.Should().Be(_svg + "svg");
+        svg.Element(_svg + "title")!.Value.Should().Be("Reliability diagram, n = 8");
+
+        // The flagged answer's probability on the eight classified rows is 0.10, 0.20, 0.30, 0.65, 0.70, 0.92,
+        // 0.95 and 0.95; the timed-out row and the ambiguous one are not measured.
+        svg.Descendants(_svg + "text")
+            .Where(text => (string?)text.Attribute("class") == "count")
+            .Select(text => text.Value)
+            .Should().Equal("0", "1", "1", "1", "0", "0", "1", "1", "0", "3");
+    }
+
+    [Fact]
+    public async Task Report_Writes_No_Diagram_And_Names_The_Kind_When_Evidence_Is_Not_Probability()
+    {
+        using ScoreFixture fixture = await ScoreFixture.CreateAsync();
+        string diagram = Path.Combine(Path.GetTempPath(), $"semanticpolicy-evals-{Guid.NewGuid():N}.svg");
+
+        (int exit, string output, string error) = await InvokeAsync([.. fixture.ReportArgs(), "--diagram", diagram]);
+
+        exit.Should().Be(ExitCodes.Success, error);
+        error.Should().Contain("diagram not written: deciding evidence is score");
+        File.Exists(diagram).Should().BeFalse();
+        output.Should().Contain("calibration: not applicable: deciding evidence is score");
     }
 
     public static TheoryData<string> Layouts => ["metadata", "files", "none"];
@@ -321,6 +340,57 @@ public sealed class ReportVerbTests
                         (Samples.Injection, "local", row.PTrue is { } p ? Samples.BooleanAnswer(p) : Samples.Failed(FailureKind.Timeout)))),
                 ]);
             return new BooleanFixture(policyFile, dataset, recording);
+        }
+
+        public string[] ReportArgs() =>
+            ["report", "--policy", _policy.Path, "--dataset", _dataset.Path, "--recording", _recording.Path];
+
+        public void Dispose()
+        {
+            _policy.Dispose();
+            _dataset.Dispose();
+            _recording.Dispose();
+        }
+    }
+
+    // Three rows of a Boolean rule whose ladder reads score evidence, which has no calibration to measure.
+    private sealed class ScoreFixture : IDisposable
+    {
+        private readonly TempFile _policy;
+        private readonly TempFile _dataset;
+        private readonly TempFile _recording;
+
+        private ScoreFixture(TempFile policy, TempFile dataset, TempFile recording)
+        {
+            _policy = policy;
+            _dataset = dataset;
+            _recording = recording;
+        }
+
+        public static async Task<ScoreFixture> CreateAsync()
+        {
+            BooleanRule rule = Samples.Flagged();
+            Policy policy = new(
+                "guard",
+                PolicyMode.Enforce,
+                [rule],
+                [
+                    new ProviderBinding("local", [
+                        new RuleOperatingPoint(rule.Id, [
+                            new Threshold(Verdict.Warn, EvidenceKind.Score, 0.5),
+                            new Threshold(Verdict.Deny, EvidenceKind.Score, 0.8)]),
+                    ]),
+                ],
+                FailureBehavior.Escalate);
+            (string Id, string Label, double Score)[] rows = [("s1", "true", 0.9), ("s2", "false", 0.2), ("s3", "true", 0.6)];
+            TempFile policyFile = WritePolicy(policy);
+            TempFile dataset = TempFile.Write(Lines(rows.Select(row => Line(row.Id, row.Label))));
+            TempFile recording = TempFile.Write("");
+            await Samples.RecordAsync(
+                recording.Path,
+                Samples.Header(policy, DatasetReader.Read(dataset.Path).Sha256),
+                [.. rows.Select(row => Samples.Recorded(row.Id, (Samples.Injection, "local", Scored(row.Score))))]);
+            return new ScoreFixture(policyFile, dataset, recording);
         }
 
         public string[] ReportArgs() =>

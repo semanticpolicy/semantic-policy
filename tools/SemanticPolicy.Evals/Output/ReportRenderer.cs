@@ -191,12 +191,7 @@ public static class ReportRenderer
         output.WriteLine();
         if (!calibration.Applicable)
         {
-            string reason = type == DecisionType.Score
-                ? "a score rule is not calibrated in this release"
-                : calibration.KindsFound.Count == 0
-                    ? "no classified row carried evidence"
-                    : $"deciding evidence is {string.Join(", ", calibration.KindsFound)}";
-            output.WriteLine($"calibration: not applicable: {reason}");
+            output.WriteLine($"calibration: not applicable: {NotApplicableReason(calibration, type)}");
             return;
         }
 
@@ -219,6 +214,14 @@ public static class ReportRenderer
                 $"Rows whose deciding evidence is {string.Join(", ", calibration.KindsFound)} are excluded.");
         }
     }
+
+    // Why a calibration that does not apply was not measured, in the words of the report's section.
+    internal static string NotApplicableReason(Calibration calibration, DecisionType type) =>
+        type == DecisionType.Score
+            ? "a score rule is not calibrated in this release"
+            : calibration.KindsFound.Count == 0
+                ? "no classified row carried evidence"
+                : $"deciding evidence is {string.Join(", ", calibration.KindsFound)}";
 
     private static void Providers(IReadOnlyList<ProviderStats> providers, TextWriter output)
     {
