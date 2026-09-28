@@ -197,6 +197,46 @@ public sealed class ProvidersFileTests
         }
     }
 
+    // A key pasted where its variable's name belongs. A bound Jev entry would otherwise reach the adapter, whose message
+    // for an unset variable names the variable; the System One entry is left unbound, so no run calls a server.
+    [Theory]
+    [InlineData("typesafe-jev", "")]
+    [InlineData("typesafe-jev", ".route")]
+    [InlineData("systemone", "")]
+    public async Task Providers_File_Refuses_A_Key_Variable_That_Is_Not_A_Name(string kind, string within)
+    {
+        string pasted = $"sk-or-v1-{_marker}";
+        string options = kind == "systemone"
+            ? $$"""{ "baseUrl": "http://127.0.0.1:8000", "model": "von-1.2.2", "apiKeyVariable": "{{pasted}}" }"""
+            : within == ""
+                ? $$"""{ "route": {{OpenRouterRoute("")}}, "apiKeyVariable": "{{pasted}}" }"""
+                : $$"""{ "route": {{OpenRouterRoute("", pasted)}} }""";
+        using Files files = Files.Create(
+            Holding($$"""{ "entry": { "kind": "{{kind}}", "options": {{options}} } }"""),
+            bound: kind == "systemone" ? "absent" : "entry");
+
+        CliRun run = await InvokeAsync(files.RunArgs());
+
+        run.ExitCode.Should().Be(ExitCodes.UsageOrData);
+        run.Error.Should().Contain(
+            $"Providers file '{files.ProvidersPath}': provider 'entry': options{within}.apiKeyVariable is not the name of an environment variable");
+        (run.Output + run.Error).Should().NotContain(_marker);
+        File.Exists(files.RecordingPath).Should().BeFalse();
+    }
+
+    // Visual Studio and Windows PowerShell 5.1 write UTF-8 with a byte-order mark; the dataset and policy readers accept it.
+    [Fact]
+    public void Providers_File_Written_With_A_Byte_Order_Mark_Is_Read()
+    {
+        using TempFile file = TempFile.Write("﻿" + Holding($$"""{ "von": {{_von}} }"""), ".json");
+
+        IReadOnlyDictionary<string, IDecisionProvider> resolved = Cli.Providers.Resolve(
+            ProvidersFile.Read(file.Path),
+            Samples.Guard(FailureBehavior.Fallback(Verdict.Escalate), ["von"], [Samples.Flagged()]));
+
+        resolved.Keys.Should().Equal("von");
+    }
+
     [Theory]
     [InlineData("report")]
     [InlineData("sweep")]

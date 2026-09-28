@@ -126,7 +126,10 @@ policy binds the entry and the variable is unset.
   to its default unseen; gives an entry anything but `kind` and `options`, or the top level anything
   but `providers`; or lacks one of them.
 - names a kind other than `systemone` and `typesafe-jev`, or a provider twice.
-- has a `typesafe-jev` entry with a `route` that names no key variable, bound or not.
+- has a `typesafe-jev` entry with a `route` that names no key variable, bound or not, or puts in
+  any `apiKeyVariable` something that is not a variable's name: ASCII letters, digits and
+  underscores, not starting with a digit. A key pasted there is refused before any message could
+  name it.
 - is not valid JSON, or cannot be read.
 
 The message names the file, the provider and the property, and never quotes a value from the file:

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -18,6 +19,7 @@ public static class ProvidersFile
     private const string _providers = "providers";
     private const string _kind = "kind";
     private const string _options = "options";
+    private const string _keyVariable = "apiKeyVariable";
 
     private static readonly Dictionary<string, Type> _kinds = new(StringComparer.Ordinal)
     {
@@ -45,9 +47,9 @@ public static class ProvidersFile
     /// <returns>A hook for <see cref="Providers.Resolve"/>, in place of <see cref="Providers.Register"/>.</returns>
     /// <exception cref="EvalsException">
     /// The file cannot be read, is not JSON, has a shape or an option the tool does not know, sets what the tool owns,
-    /// gives a name twice, or has a Jev route that names no key variable. The message names the file, the entry and the
-    /// property, never a value. The hook throws it too, with the adapter's own message, when an adapter refuses its
-    /// options.
+    /// gives a name twice, puts in a key variable something that is not a variable's name, or has a Jev route that
+    /// names no key variable. The message names the file, the entry and the property, never a value. The hook throws
+    /// it too, with the adapter's own message, when an adapter refuses its options.
     /// </exception>
     public static Action<ISemanticPolicyBuilder> Read(string path)
     {
@@ -62,10 +64,14 @@ public static class ProvidersFile
             throw new EvalsException($"Providers file '{path}' cannot be read: {e.Message}");
         }
 
+        // A byte-order mark is skipped, as the dataset and policy readers skip it; the parser refuses one in bytes.
+        ReadOnlyMemory<byte> json = content.AsSpan().StartsWith(Encoding.UTF8.Preamble)
+            ? content.AsMemory(Encoding.UTF8.Preamble.Length)
+            : content;
         JsonDocument document;
         try
         {
-            document = JsonDocument.Parse(content);
+            document = JsonDocument.Parse(json);
         }
         catch (JsonException e)
         {
@@ -247,6 +253,16 @@ public static class ProvidersFile
                 throw where.Refuse($"{at} is given twice.");
             }
 
+            // A key pasted where its variable's name belongs would reach the Jev adapter, whose message for an unset
+            // variable names the variable. Refused here in any kind, so the file holds names alone.
+            if (string.Equals(property.Name, _keyVariable, StringComparison.OrdinalIgnoreCase)
+                && property.Value.ValueKind == JsonValueKind.String
+                && !IsVariableName(property.Value.GetString()!))
+            {
+                throw where.Refuse(
+                    $"{at} is not the name of an environment variable; name the variable that holds the key, never the key.");
+            }
+
             if (property.Value.ValueKind == JsonValueKind.Object
                 && _json.GetTypeInfo(member.PropertyType) is { Kind: JsonTypeInfoKind.Object } nested)
             {
@@ -267,6 +283,13 @@ public static class ProvidersFile
             }
         }
     }
+
+    // The portable shape every shell can export. A key with a dash, a dot or a slash in it fails it; one made of
+    // letters, digits and underscores alone passes, because nothing tells it apart from a name.
+    private static bool IsVariableName(string value) =>
+        value.Length > 0
+        && (char.IsAsciiLetter(value[0]) || value[0] == '_')
+        && value.All(character => char.IsAsciiLetterOrDigit(character) || character == '_');
 
     private static string Position(JsonException e)
     {
