@@ -39,8 +39,12 @@ belongs here.
   provider once, commits what it recorded, and CI only replays it.
 - [0015](0015-self-hosted-models-through-one-system-one-client.md) — Self-hosted decision models
   are reached through one System One client, and TypeSafe's Jev is a preset on it.
+  [0017](0017-protocol-v0-servers-over-one-http-binding.md) narrows it: the status table and the
+  timed call are shared by every HTTP provider.
 - [0016](0016-evaluation-tool-ships-as-a-dotnet-tool.md) — The evaluation tool ships as the
   `semantic-policy` dotnet tool with its samples, and CI installs the package it packs.
+- [0017](0017-protocol-v0-servers-over-one-http-binding.md) — Any protocol v0 server is reached
+  over one HTTP binding, read strictly, and every HTTP provider shares one internal transport.
 
 ## Format
 
