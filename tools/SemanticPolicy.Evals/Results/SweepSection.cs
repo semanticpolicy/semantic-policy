@@ -20,12 +20,17 @@ namespace SemanticPolicy.Evals.Results;
 /// The gate's curve and recommendation, or <see langword="null"/> when the binding declares no evidence kind a
 /// margin could be read on and no gate constraint asked for one.
 /// </param>
+/// <param name="Passes">
+/// How many passes the sweep took and how they ended. The curves, recommendations and test rows above are the last
+/// pass's.
+/// </param>
 public sealed record SweepSection(
     string Provider,
     SplitWording Split,
     IReadOnlyList<SweptRung> Rungs,
     bool Conflict,
-    SweptGate? Gate)
+    SweptGate? Gate,
+    SweepPasses Passes)
 {
     /// <summary>Whether every constraint on every rung and on the gate could be met.</summary>
     public bool Feasible =>
@@ -64,6 +69,46 @@ public sealed record SweptGate(
     GatePoint? Test,
     string ChosenOn,
     string ReportedOn);
+
+/// <summary>
+/// The passes of a sweep. Each pass is swept at the picks of the one before, the first at the policy file's numbers,
+/// because a threshold's curve moves with the gate and the gate's with the lowest threshold.
+/// </summary>
+/// <param name="Count">How many passes were swept.</param>
+/// <param name="End">Why there was no next one.</param>
+/// <param name="SweptAt">
+/// With no fixed point, the binding's operating point the last pass was swept at; <see langword="null"/> otherwise.
+/// </param>
+/// <param name="Picked">
+/// With no fixed point, the operating point the last pass picked there; <see langword="null"/> otherwise.
+/// </param>
+public sealed record SweepPasses(
+    int Count,
+    PassesEnd End,
+    RuleOperatingPoint? SweptAt = null,
+    RuleOperatingPoint? Picked = null);
+
+/// <summary>Why a sweep made no further pass.</summary>
+public enum PassesEnd
+{
+    /// <summary>The last pass picked what it was swept at, so every curve is replayed at the recommendation.</summary>
+    Settled,
+
+    /// <summary>
+    /// The last pass picked thresholds that do not increase with severity. No policy holds them, so there is
+    /// nothing to sweep a next pass at, and the gate was swept at the thresholds the pass started from.
+    /// </summary>
+    Conflict,
+
+    /// <summary>
+    /// The last pass picked what the one before it was swept at: the passes alternate between two sets of picks
+    /// and never settle.
+    /// </summary>
+    Alternating,
+
+    /// <summary>The picks were still changing when <see cref="OperatingPointSweep.MaxPasses"/> passes had run.</summary>
+    OutOfPasses,
+}
 
 /// <summary>
 /// How a result names its two halves. A number chosen and measured on the same rows says less than one measured

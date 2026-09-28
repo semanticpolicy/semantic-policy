@@ -415,13 +415,25 @@ Warn 0.194 is below 0.5, so `local` warns on some rows it answered `false`. The 
 That is what the goal asks for. `--warn min-recall=0.85` gives warn 0.7809 instead, among the `true`
 answers.
 
-Each curve is replayed at the policy file's other numbers, so a recommended gate changes which rows
-the thresholds are measured on, and the other way round. After copying the numbers in, sweep again
-until it recommends what the file holds. Here that took three sweeps:
+A curve replays the whole policy, so the gate changes which rows a threshold is measured on, and the
+lowest threshold changes how accurate a gate is. `sweep` therefore works in passes. The first pass
+starts from the policy file's numbers, and each later one starts from what the pass before it
+picked. Within a pass the thresholds are swept at the gate it starts from, and the gate at the
+thresholds just picked. The sweep ends when a pass picks what it started from, and prints the
+count as `settled in 3 passes`; `settled in 1 pass` means the file already held the picks. On
+the shipped recording that takes one pass. Over placeholder numbers, warn 0.5, deny 0.9 and gate
+0.3, it takes three:
 
-1. Over placeholder numbers, it recommended deny 0.9349 and gate 0.5618.
-2. With those in the file, deny 0.843 and gate 0.5418.
-3. With those in the file, the same again.
+1. The first pass picks warn 0.194 and deny 0.9349 at gate 0.3, and gate 0.5418 at warn 0.194.
+2. The second, at gate 0.5418, picks deny 0.843.
+3. The third picks the same again.
+
+The passes can fail to settle. Successive passes can alternate between two sets of picks, or ten
+passes can run while the picks still change. Then `sweep` prints the two sets it ended between and
+says that neither is recommended. Put each in the policy file and run `report` to see what it
+does. `--out` is still written, and the exit code is 2. A conflict also ends the passes, because no
+policy file can hold thresholds that do not increase. The sweep prints `stopped after`, and the
+gate on that pass is measured at the thresholds the pass started from.
 
 The router policy's `local` gate, 0.4079, came from `--provider local --gate min-accuracy=0.9` on its
 own recording, and `jev`'s 0.2 is set by hand.
@@ -436,7 +448,9 @@ under the same goals and prints one table on the test rows. `--recording` and `-
 |---|---|
 | `--provider <name>` | Compare only these bindings. Repeatable; every binding by default. |
 
-If any binding cannot meet its goals, `compare` still prints everything and exits with code 2.
+Each binding is swept in passes until its picks settle, as in `sweep`, and its test-row numbers are
+read at the point it settles on. If any binding cannot meet its goals or does not settle, `compare`
+still prints everything and exits with code 2.
 
 Step 4 of the quick start, shortened:
 
@@ -488,9 +502,11 @@ jev            0.000    0.000   271.3   356.7         13092           1440  0.00
 
 binding 'local'
 gate: min-accuracy=0.9 → gate 0.4649 (abstention rate 0.250, accuracy 0.906), chosen on split 'tune' (48 rows), reported on split 'test' (32 rows)
+settled in 2 passes: each pass was swept at the picks of the one before, and the last one picked what it was swept at
 
 binding 'jev'
 gate: min-accuracy=0.9 → no gate (abstention rate 0.000, accuracy 1.000), chosen on split 'tune' (48 rows), reported on split 'test' (32 rows)
+settled in 2 passes: each pass was swept at the picks of the one before, and the last one picked what it was swept at
 ```
 
 `jev` meets the goal on the tune rows with no gate at all. `local` meets it only by leaving a quarter
@@ -638,7 +654,7 @@ Replaying checks that the recording still fits:
 |---|---|
 | 0 | Done. A conflict in `sweep` still exits 0, because each recommendation met its goals. |
 | 1 | A usage or data error: a bad option, an unreadable file, a bad row, label or split, a recording that does not fit, a provider that is not registered, a key that is not set, a file `samples` would overwrite. The message names the file, the line or the id, never a row's input. |
-| 2 | A goal that no threshold or gate can meet. Everything is still printed, and `--out` is written. |
+| 2 | A goal the tool was asked to meet and could not: no threshold or gate meets it, or the passes of `sweep` or `compare` do not settle. Everything is still printed, and `--out` is written. |
 
 ## The JSON result
 
@@ -664,8 +680,11 @@ From `report` on the shipped recording's test rows, shortened:
 - **`report`**: the report's sections, and `sweptProvider`, the binding the discrimination curve
   moves.
 - **`sweep`**: the swept `provider`, the split wording, each rung's curve and recommendation, any
-  `conflict`, the gate's curve and recommendation, and `feasible`. A gate point carries `passedOn`
-  only when a later binding follows the swept one.
+  `conflict`, the gate's curve and recommendation, `passes` and `feasible`. A gate point carries
+  `passedOn` only when a later binding follows the swept one. `passes` holds the `count` and the
+  `end`: `settled`, `conflict`, `alternating` or `outOfPasses`. The last two also carry `sweptAt`
+  and `picked`, the two sets of picks the sweep ended between, in the policy file's shape. The
+  curves and recommendations are always the last pass's.
 - **`compare`**: one entry per binding in `bindings`, and `feasible`.
 
 A member that does not apply is left out, and so is a rate with nothing to divide by, never 0 or

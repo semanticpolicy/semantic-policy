@@ -11,9 +11,9 @@ namespace SemanticPolicy.Evals.Cli;
 
 /// <summary>
 /// <c>compare</c>: every binding of the policy as an alternative to the others. Each is swept on a policy that holds
-/// it alone, under the same constraints, and reported on the test rows at the point it was given; any binding whose
-/// constraints cannot be met ends the run with <see cref="ExitCodes.InfeasibleConstraint"/> after everything has been
-/// printed and written.
+/// it alone, under the same constraints, and reported on the test rows at the point its sweep settled on; any binding
+/// whose constraints cannot be met, or whose picks do not settle, ends the run with
+/// <see cref="ExitCodes.InfeasibleConstraint"/> after everything has been printed and written.
 /// </summary>
 public static class CompareVerb
 {
@@ -74,7 +74,9 @@ public static class CompareVerb
         }
 
         SweepRenderer.WriteCompare(io.Output, result, section);
-        return section.Feasible ? ExitCodes.Success : ExitCodes.InfeasibleConstraint;
+        bool settled = section.Bindings.All(entry =>
+            entry.Sweep.Passes.End is not (PassesEnd.Alternating or PassesEnd.OutOfPasses));
+        return section.Feasible && settled ? ExitCodes.Success : ExitCodes.InfeasibleConstraint;
     }
 
     private static CompareEntry Measure(
@@ -87,7 +89,7 @@ public static class CompareVerb
         // only what the ones before it passed on, and its numbers would be about that remainder.
         Policy alone = replayed.Inputs.Policy with { Bindings = [binding] };
         ReplaySet set = replayed.Set;
-        SweepSection sweep = OperatingPointSweep.Run(
+        (SweepSection sweep, Policy sweptAt) = OperatingPointSweep.Settle(
             set,
             alone,
             0,
@@ -96,18 +98,20 @@ public static class CompareVerb
             rungConstraints,
             gateConstraints);
 
+        // The test rows are read at the policy the sweep's last pass was swept at, which holds the recommendation
+        // once the picks settle: at the file's numbers a curve would sit behind the file's gate, not the one chosen.
         IReadOnlyList<RungDiscrimination>? discrimination = set.Rule is BooleanRule
             ?
             [
-                .. ThresholdCurve.Compute(set, alone, 0, replayed.Test)
+                .. ThresholdCurve.Compute(set, sweptAt, 0, replayed.Test)
                     .Select(curve => new RungDiscrimination(curve.Rung, Discrimination.FromCurve(curve))),
             ]
             : null;
 
-        RuleOperatingPoint? point = binding.OperatingPoints.FirstOrDefault(candidate =>
+        RuleOperatingPoint? point = sweptAt.Bindings[0].OperatingPoints.FirstOrDefault(candidate =>
             string.Equals(candidate.RuleId, set.Rule.Id, StringComparison.Ordinal));
         double? gate = sweep.Gate?.Recommendation is { Feasible: true } recommended ? recommended.Below : point?.Gate?.Below;
-        OutcomeCounts outcomes = GateSweep.OutcomesAt(set, alone, 0, replayed.Test, gate);
+        OutcomeCounts outcomes = GateSweep.OutcomesAt(set, sweptAt, 0, replayed.Test, gate);
 
         HashSet<string> testIds = new(replayed.Test.Select(row => row.Id), StringComparer.Ordinal);
         IEnumerable<(string Provider, ProviderResult Result)> attempts = set.Rows

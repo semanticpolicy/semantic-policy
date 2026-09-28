@@ -147,6 +147,25 @@ public sealed class CompareVerbTests
             .GetArrayLength().Should().Be(TableLength(sweep.Output, "warn curve "));
     }
 
+    [Fact]
+    public async Task Compare_Feeds_Each_Bindings_Picks_Back_And_Exits_2_When_One_Has_No_Fixed_Point()
+    {
+        using CliFixture fixture = await CliFixture.CreateAsync(SweepVerbTests.Unsettled(), SweepVerbTests.Alternating());
+
+        CliRun run = await fixture.RunAsync("compare", "--warn", "min-recall=0.9", "--gate", "min-accuracy=0.9");
+
+        run.ExitCode.Should().Be(ExitCodes.InfeasibleConstraint);
+        run.Output.ReplaceLineEndings("\n").Should().Contain(
+            "\nbinding 'local'\n"
+            + "warn: min-recall=0.9 → threshold 0.25, chosen and reported on the same data (no split), 12 rows\n"
+            + "deny: not swept, keeps 0.96875 from the policy file\n"
+            + "gate: min-accuracy=0.9 → gate 0.875 ");
+        run.Output.Should().Contain("no fixed point after 3 passes: successive passes alternate between these two sets of picks");
+        JsonElement sweep = Bindings(fixture.ReadOut()).Should().ContainSingle().Subject.GetProperty("sweep");
+        sweep.GetProperty("passes").GetProperty("count").GetInt32().Should().Be(3);
+        sweep.GetProperty("passes").GetProperty("end").GetString().Should().Be("alternating");
+    }
+
     private static Policy Pair() => SweepVerbTests.Guard(EvidenceKind.Probability, "local", "hosted");
 
     private static FixtureRow[] Rows() =>

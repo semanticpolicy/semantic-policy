@@ -252,7 +252,47 @@ public static class SweepRenderer
         {
             writer.WriteLine(GateLine(gate, section.Split));
         }
+
+        WritePasses(writer, section.Passes);
     }
+
+    private static void WritePasses(TextWriter writer, SweepPasses passes)
+    {
+        string count = passes.Count == 1 ? "1 pass" : $"{Count(passes.Count)} passes";
+        switch (passes.End)
+        {
+            case PassesEnd.Settled when passes.Count == 1:
+                writer.WriteLine("settled in 1 pass: the policy file already holds these picks");
+                return;
+            case PassesEnd.Settled:
+                writer.WriteLine(
+                    $"settled in {count}: each pass was swept at the picks of the one before, and the last one picked "
+                    + "what it was swept at");
+                return;
+            case PassesEnd.Conflict:
+                writer.WriteLine(
+                    $"stopped after {count}: the thresholds picked do not increase with severity, so no policy can hold "
+                    + "them for another pass, and the gate is measured at the ones the pass started from");
+                return;
+            case PassesEnd.Alternating:
+                writer.WriteLine($"no fixed point after {count}: successive passes alternate between these two sets of picks");
+                break;
+            default:
+                writer.WriteLine(
+                    $"no fixed point after {count}: the picks were still changing, the last pass from the first set below "
+                    + "to the second");
+                break;
+        }
+
+        writer.WriteLine($"  {Picks(passes.SweptAt!)}");
+        writer.WriteLine($"  {Picks(passes.Picked!)}");
+        writer.WriteLine("  neither is recommended: put each in the policy file and run report to see what it does");
+    }
+
+    private static string Picks(RuleOperatingPoint point) =>
+        string.Join(
+            ", ",
+            [.. point.Thresholds.Select(threshold => $"{Names.Camel(threshold.Verdict)} {Number(threshold.AtOrAbove)}"), Gate(point.Gate?.Below)]);
 
     // Every rung's curve is the same table, each one replayed on a single-rung ladder, so a higher rung's threshold
     // is a point on the lower rung's curve too. Where the lower rung's goals hold at that point, the higher rung on

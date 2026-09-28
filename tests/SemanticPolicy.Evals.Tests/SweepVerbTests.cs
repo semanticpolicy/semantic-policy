@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy.Evals.Tests;
@@ -322,6 +323,137 @@ public sealed class SweepVerbTests
         TableRows(lines, "gate curve").Should().BeInRange(1, 102);
     }
 
+    [Fact]
+    public async Task Sweep_Feeds_Its_Picks_Back_Until_They_Stop_Changing_And_Says_How_Many_Passes_That_Took()
+    {
+        // The shipped smoke set, with local's numbers set to placeholders. Every curve replays the whole policy, so
+        // the first pass, at gate 0.3, picks deny 0.9349; at the gate that pass picks, the second picks deny 0.843;
+        // the third picks what it was swept at, which is the smoke policy as shipped.
+        string smoke = Path.Combine(ExampleDatasetsTests.RepositoryRoot(), "tools", "SemanticPolicy.Evals", "datasets", "smoke");
+        JsonNode policy = JsonNode.Parse(File.ReadAllText(Path.Combine(smoke, "prompt-injection.policy.json")))!;
+        JsonNode local = policy["bindings"]![0]!["operatingPoints"]![0]!;
+        local["thresholds"]![0]!["atOrAbove"] = 0.5;
+        local["thresholds"]![1]!["atOrAbove"] = 0.9;
+        local["gate"]!["below"] = 0.3;
+        using TempFile policyFile = TempFile.Write(policy.ToJsonString(), ".json");
+        using TempFile outFile = TempFile.Write(string.Empty, ".json");
+
+        CliRun run = await CliFixture.InvokeAsync(
+        [
+            "sweep",
+            "--policy", policyFile.Path,
+            "--dataset", Path.Combine(smoke, "prompt-injection.smoke.jsonl"),
+            "--recording", Path.Combine(smoke, "prompt-injection.recording.jsonl"),
+            "--out", outFile.Path,
+            "--provider", "local",
+            "--warn", "min-recall=0.9",
+            "--deny", "min-precision=0.95",
+            "--gate", "min-accuracy=0.9",
+        ]);
+
+        run.ExitCode.Should().Be(ExitCodes.Success, run.Error);
+        run.Output.Should().Contain("warn: min-recall=0.9 → threshold 0.194, ")
+            .And.Contain("deny: min-precision=0.95 → threshold 0.843, ")
+            .And.Contain("gate: min-accuracy=0.9 → gate 0.5418 ")
+            .And.Contain("\nsettled in 3 passes: ");
+        using JsonDocument written = JsonDocument.Parse(File.ReadAllText(outFile.Path));
+        JsonElement sweep = written.RootElement.GetProperty("sweep");
+        JsonElement passes = sweep.GetProperty("passes");
+        passes.GetProperty("count").GetInt32().Should().Be(3);
+        passes.GetProperty("end").GetString().Should().Be("settled");
+        passes.TryGetProperty("sweptAt", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_Sweep_At_Numbers_It_Already_Recommends_Settles_In_One_Pass()
+    {
+        using CliFixture fixture = await CliFixture.CreateAsync(Guard(), Graded());
+
+        // Warn's recall 0.8 holds up to 0.55; deny stays at the file's 0.9 and no gate is asked for.
+        CliRun first = await fixture.RunAsync("sweep", "--warn", "min-recall=0.8");
+
+        first.ExitCode.Should().Be(ExitCodes.Success);
+        first.Output.Should().Contain("\nsettled in 2 passes: ");
+        using CliFixture settled = await CliFixture.CreateAsync(Guard(warn: 0.55), Graded());
+        CliRun again = await settled.RunAsync("sweep", "--warn", "min-recall=0.8");
+        again.Output.Should().Contain("\nsettled in 1 pass: the policy file already holds these picks");
+        settled.ReadOut().GetProperty("sweep").GetProperty("passes").GetProperty("count").GetInt32().Should().Be(1);
+    }
+
+    [Fact]
+    public async Task A_Choice_Binding_Whose_Sweep_Picks_No_Gate_Keeps_The_Kind_Its_File_Gate_Declares_For_The_Next_Pass()
+    {
+        // Every answer is right, so min-accuracy=0.9 takes no gate at all. The next pass is swept at no gate, and a
+        // Choice operating point declares the kind a margin is read on only through its gate.
+        ChoiceRule rule = Samples.Route();
+        Policy policy = new(
+            "router-policy",
+            PolicyMode.Enforce,
+            [rule],
+            [new ProviderBinding("router", [new RuleOperatingPoint(rule.Id, [], new MarginGate(EvidenceKind.Probability, 0.5))])],
+            FailureBehavior.Deny);
+        string[] options = ["allow", "review", "deny", "allow", "review", "deny"];
+        using CliFixture fixture = await CliFixture.CreateAsync(
+            policy,
+            [
+                .. options.Select(option => FixtureRow.Of(
+                    option,
+                    null,
+                    ("router", Samples.Answer(
+                        new ChoiceValue(option),
+                        "router",
+                        Samples.Probability([.. options.Distinct().Select(key => (key, key == option ? 0.5 : 0.25))]))))),
+            ]);
+
+        CliRun run = await fixture.RunAsync("sweep", "--gate", "min-accuracy=0.9");
+
+        run.ExitCode.Should().Be(ExitCodes.Success, run.Error);
+        run.Output.Should().Contain("gate: min-accuracy=0.9 → no gate ").And.Contain("\nsettled in 2 passes: ");
+    }
+
+    [Fact]
+    public async Task A_Sweep_Whose_Picks_Alternate_Prints_Both_Sets_And_Exits_2_Still_Writing_Out()
+    {
+        using CliFixture fixture = await CliFixture.CreateAsync(Unsettled(), Alternating());
+
+        CliRun run = await fixture.RunAsync("sweep", "--warn", "min-recall=0.9", "--gate", "min-accuracy=0.9");
+
+        run.ExitCode.Should().Be(ExitCodes.InfeasibleConstraint);
+        run.Output.ReplaceLineEndings("\n").Should().Contain(
+            "\nno fixed point after 3 passes: successive passes alternate between these two sets of picks\n"
+            + "  warn 0.9375, deny 0.96875, no gate\n"
+            + "  warn 0.25, deny 0.96875, gate 0.875\n"
+            + "  neither is recommended: put each in the policy file and run report to see what it does");
+        JsonElement sweep = fixture.ReadOut().GetProperty("sweep");
+        JsonElement passes = sweep.GetProperty("passes");
+        passes.GetProperty("count").GetInt32().Should().Be(3);
+        passes.GetProperty("end").GetString().Should().Be("alternating");
+        passes.GetProperty("sweptAt").GetProperty("thresholds")[0].GetProperty("atOrAbove").GetDouble().Should().Be(0.9375);
+        passes.GetProperty("sweptAt").TryGetProperty("gate", out _).Should().BeFalse();
+        passes.GetProperty("picked").GetProperty("thresholds")[0].GetProperty("atOrAbove").GetDouble().Should().Be(0.25);
+        passes.GetProperty("picked").GetProperty("gate").GetProperty("below").GetDouble().Should().Be(0.875);
+    }
+
+    [Fact]
+    public async Task A_Conflict_With_A_Gate_Goal_Stops_The_Passes_And_Sweeps_The_Gate_At_The_Thresholds_It_Started_From()
+    {
+        using CliFixture fixture = await CliFixture.CreateAsync(Guard(), Graded());
+
+        // The conflict of Deny_Recommended_Below_Warn_Is_Reported_As_A_Conflict_And_Not_Repaired: a policy holding
+        // warn 0.75 and deny 0.35 does not validate, so the gate cannot be replayed at them.
+        CliRun run = await fixture.RunAsync(
+            "sweep", "--warn", "max-fpr=0", "--deny", "min-recall=1", "--gate", "max-abstain=0.5");
+
+        run.ExitCode.Should().Be(ExitCodes.Success, run.Error);
+        run.Output.Should().Contain("conflict: warn 0.75 is not below deny 0.35, ");
+        run.Output.Should().Contain(
+            "\nstopped after 1 pass: the thresholds picked do not increase with severity, so no policy can hold them for "
+            + "another pass, and the gate is measured at the ones the pass started from");
+        JsonElement passes = fixture.ReadOut().GetProperty("sweep").GetProperty("passes");
+        passes.GetProperty("count").GetInt32().Should().Be(1);
+        passes.GetProperty("end").GetString().Should().Be("conflict");
+    }
+
     // The rows of the table printed under the line that starts with the title: past the header and the rule of
     // dashes under it, up to the blank line that ends the table.
     private static int TableRows(string[] lines, string title)
@@ -333,10 +465,13 @@ public sealed class SweepVerbTests
         return (end < 0 ? lines.Length : end) - rule - 1;
     }
 
-    internal static Policy Guard(EvidenceKind kind = EvidenceKind.Probability, params string[] providers)
+    internal static Policy Guard(EvidenceKind kind = EvidenceKind.Probability, params string[] providers) =>
+        Guard(0.6, kind, providers);
+
+    internal static Policy Guard(double warn, EvidenceKind kind = EvidenceKind.Probability, params string[] providers)
     {
         BooleanRule rule = Samples.Flagged();
-        Threshold[] ladder = [new(Verdict.Warn, kind, 0.6), new(Verdict.Deny, kind, 0.9)];
+        Threshold[] ladder = [new(Verdict.Warn, kind, warn), new(Verdict.Deny, kind, 0.9)];
         return new Policy(
             "guard",
             PolicyMode.Enforce,
@@ -348,6 +483,35 @@ public sealed class SweepVerbTests
 
     internal static FixtureRow[] Graded(string? split = null, EvidenceKind kind = EvidenceKind.Probability) =>
         [.. _flagged.Select((value, index) => Row(_labels[index], value, split, kind))];
+
+    // Warn at a placeholder, deny above every row, no gate: the policy Alternating's rows are swept on.
+    internal static Policy Unsettled()
+    {
+        BooleanRule rule = Samples.Flagged();
+        Threshold[] ladder =
+            [new(Verdict.Warn, EvidenceKind.Probability, 0.5), new(Verdict.Deny, EvidenceKind.Probability, 0.96875)];
+        return new Policy(
+            "guard",
+            PolicyMode.Enforce,
+            [rule],
+            [new ProviderBinding("local", [new RuleOperatingPoint(rule.Id, ladder)])],
+            FailureBehavior.Deny);
+    }
+
+    // Twelve rows on which min-recall=0.9 on warn and min-accuracy=0.9 on the gate have no consistent pair, on
+    // dyadic probabilities so every margin is exact: four attacks at 0.9375 and five safe rows at 0.0625, margin
+    // 0.875; one attack at 0.25, margin 0.5; two safe rows at 0.875, margin 0.75.
+    //
+    //   With no gate, warn must drop to 0.25 to catch the attack at 0.25, which also flags the two safe rows at
+    //   0.875: accuracy 0.833, and 0.818 at gate 0.75, so the gate goes to 0.875 and holds back both kinds.
+    //   At gate 0.875 warn can rise to 0.9375, where the one missed attack leaves accuracy at 0.917 with no gate.
+    internal static FixtureRow[] Alternating() =>
+    [
+        .. Enumerable.Repeat(Row("true", 0.9375), 4),
+        Row("true", 0.25),
+        .. Enumerable.Repeat(Row("false", 0.0625), 5),
+        .. Enumerable.Repeat(Row("false", 0.875), 2),
+    ];
 
     // Eight rows answered alike by 'local' and 'hosted', on dyadic probabilities so every margin |2p - 1| is exact.
     private static FixtureRow[] Chained()

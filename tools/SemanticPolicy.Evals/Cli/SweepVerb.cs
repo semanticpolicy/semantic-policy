@@ -7,8 +7,9 @@ namespace SemanticPolicy.Evals.Cli;
 
 /// <summary>
 /// <c>sweep</c>: one binding's thresholds and gate, swept on a recording. Every curve is printed; a threshold or a
-/// gate is recommended only under a constraint the user gave, and a constraint nothing satisfies ends the run with
-/// <see cref="ExitCodes.InfeasibleConstraint"/> after everything else has been printed and written.
+/// gate is recommended only under a constraint the user gave, and a constraint nothing satisfies, or picks that do not
+/// settle, end the run with <see cref="ExitCodes.InfeasibleConstraint"/> after everything else has been printed and
+/// written.
 /// </summary>
 public static class SweepVerb
 {
@@ -68,6 +69,8 @@ public static class SweepVerb
         }
 
         SweepRenderer.WriteSweep(io.Output, result, section);
-        return section.Feasible ? ExitCodes.Success : ExitCodes.InfeasibleConstraint;
+        // With no fixed point neither set of picks holds at its own numbers, so there is nothing to recommend.
+        bool settled = section.Passes.End is not (PassesEnd.Alternating or PassesEnd.OutOfPasses);
+        return section.Feasible && settled ? ExitCodes.Success : ExitCodes.InfeasibleConstraint;
     }
 }
