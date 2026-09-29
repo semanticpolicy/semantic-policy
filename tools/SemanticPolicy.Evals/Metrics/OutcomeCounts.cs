@@ -31,6 +31,12 @@ public sealed record OutcomeCounts(
     double? FailureRate,
     double? AbstentionRate)
 {
+    /// <summary>The 95% Wilson interval of <see cref="FailureRate"/>; <see langword="null"/> for an empty selection.</summary>
+    public Interval? FailureRateInterval => Interval.Wilson(Failed, Rows);
+
+    /// <summary>The 95% Wilson interval of <see cref="AbstentionRate"/>; <see langword="null"/> for an empty selection.</summary>
+    public Interval? AbstentionRateInterval => Interval.Wilson(Abstained, Rows);
+
     /// <summary>Counts one selection.</summary>
     /// <param name="rows">The bucketed rows of the selection.</param>
     public static OutcomeCounts Compute(IReadOnlyList<RowOutcome> rows)

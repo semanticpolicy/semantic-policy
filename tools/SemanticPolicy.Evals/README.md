@@ -648,6 +648,29 @@ split 'test' (40 rows)"*), any conflict, and the tables at the recommended numbe
 `compare` prints, per rung, one line per binding on the test rows, then each binding's abstention and
 failure rates, latency and usage.
 
+### How far to trust a rate
+
+On forty to five hundred rows a rate is less exact than its three decimals, so every rate that is one
+count over another comes with its 95% Wilson interval, printed as `[lower, upper]`: the true rates
+these rows are consistent with. 32 right flags out of 33 reads as a precision of 0.970, yet its
+interval is `[0.847, 0.995]`: the same rows fit a provider that is right 85% of the time. Two
+providers whose intervals overlap are not told apart by these rows, and a goal the value meets but the
+lower bound misses is met on this data, not shown in general. It is the Wilson score interval without
+continuity correction, so it stays between 0 and 1 even at the edges: it ends at exactly 0 when no row
+counts and at exactly 1 when every row does. Where a rate is `n/a`, so is its interval.
+
+Accuracy, precision, recall, FPR and FNR carry one, and so do the failure and abstention rates, a
+Choice or Score rule's accuracy, and the gate's accuracy and abstention rate. F1, macro-F1, ROC-AUC,
+PR-AUC, ECE and the Brier score do not: none of them is one count over another.
+
+- `run` and `report` print a *95% Wilson intervals* table under each rung table, and the interval
+  after the failure rate, the abstention rate and the classes' accuracy.
+- `sweep` prints it after each rate a recommendation is constrained on, in a table under the rates at
+  the recommended numbers, and after the gate's abstention rate and accuracy. The curves carry none.
+- `compare` prints a table of them under each of its tables, and when everything fits in one table,
+  as for the router set, one under it.
+- Each class's precision and recall carry one in the JSON result only.
+
 ## Pitfalls
 
 - **Several bindings.** `sweep` measures the chain, not one provider. A row abstains only when no
@@ -802,9 +825,16 @@ From `report` on the shipped recording's test rows, shortened:
   curves and recommendations are always the last pass's.
 - **`compare`**: one entry per binding in `bindings`, and `feasible`.
 
+A rate's 95% Wilson interval sits beside it as `<rate>Interval`, such as
+`"precisionInterval": { "lower": 0.847, "upper": 0.995 }`: `accuracyInterval`, `precisionInterval`,
+`recallInterval`, `falsePositiveRateInterval` and `falseNegativeRateInterval` on each `matrix`,
+curve points included; `failureRateInterval` and `abstentionRateInterval` on each `outcomes`;
+`accuracyInterval` on `classes`, and `precisionInterval` and `recallInterval` on each entry of its
+`perClass`; `abstentionRateInterval` and `accuracyInterval` on each gate point.
+
 A member that does not apply is left out, and so is a rate with nothing to divide by, never 0 or
-`NaN`: read a missing rate as undefined. The file is written before the text is printed, on exit
-code 2 too.
+`NaN`: read a missing rate as undefined. Its interval is left out with it. The file is written before
+the text is printed, on exit code 2 too.
 
 ## Shipped datasets
 

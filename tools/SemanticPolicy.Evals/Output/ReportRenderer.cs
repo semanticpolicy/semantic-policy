@@ -12,6 +12,9 @@ namespace SemanticPolicy.Evals.Output;
 /// </summary>
 public static class ReportRenderer
 {
+    // The rates of a matrix that carry an interval, in the order the rate tables print them; F1 has none.
+    internal static readonly string[] IntervalHeaders = ["accuracy", "precision", "recall", "fpr", "fnr"];
+
     private static readonly CultureInfo _invariant = CultureInfo.InvariantCulture;
 
     /// <summary>Writes the report: header, rows, then every measured section and the notes.</summary>
@@ -101,8 +104,11 @@ public static class ReportRenderer
         output.WriteLine("outcomes");
         output.WriteLine($"classified {Count(outcomes.Classified)}");
         output.WriteLine(
-            $"failed {Count(outcomes.Failed)}{Parenthesized(kinds)}, failure rate {Rate(outcomes.FailureRate)}");
-        output.WriteLine($"abstained {Count(outcomes.Abstained)}, abstention rate {Rate(outcomes.AbstentionRate)}");
+            $"failed {Count(outcomes.Failed)}{Parenthesized(kinds)}, failure rate "
+            + RateAndBounds(outcomes.FailureRate, outcomes.FailureRateInterval));
+        output.WriteLine(
+            $"abstained {Count(outcomes.Abstained)}, abstention rate "
+            + RateAndBounds(outcomes.AbstentionRate, outcomes.AbstentionRateInterval));
         output.WriteLine(
             $"ambiguous {Count(outcomes.Ambiguous)}{Parenthesized([.. outcomes.AmbiguousVerdicts.Select(verdict => $"{verdict.Key} {Count(verdict.Value)}")])}");
     }
@@ -143,6 +149,12 @@ public static class ReportRenderer
         output.WriteLine();
         output.WriteLine($"rung {name}: verdict at or above {name} against the flagged label, classified rows only");
         table.Write(output);
+
+        // A table of its own rather than a second row or a bracket beside each value: either would take the rung
+        // table past 120 characters.
+        TextTable intervals = new(IntervalHeaders);
+        intervals.AddRow(IntervalCells(matrix));
+        WriteIntervals(intervals, output);
     }
 
     private static void ClassTable(MulticlassConfusion classes, OutcomeCounts outcomes, TextWriter output)
@@ -164,7 +176,8 @@ public static class ReportRenderer
 
         output.WriteLine();
         output.WriteLine(
-            $"classes: accuracy {Rate(classes.Accuracy)}, macro-F1 {Rate(classes.MacroF1)}; rows are labels, columns are answers");
+            $"classes: accuracy {RateAndBounds(classes.Accuracy, classes.AccuracyInterval)}, macro-F1 {Rate(classes.MacroF1)}; "
+            + "rows are labels, columns are answers");
         table.Write(output);
         output.WriteLine(
             $"outside the table: failed {Count(outcomes.Failed)}, abstained {Count(outcomes.Abstained)}, ambiguous {Count(outcomes.Ambiguous)}");
@@ -255,6 +268,35 @@ public static class ReportRenderer
         table.Write(output);
         output.WriteLine("Usage is summed by field name as each provider reports it, without interpretation.");
     }
+
+    // Shared with sweep and compare: a table of intervals goes under the table of the rates it belongs to.
+    internal static void WriteIntervals(TextTable intervals, TextWriter output)
+    {
+        output.WriteLine();
+        output.WriteLine("95% Wilson intervals");
+        intervals.Write(output);
+    }
+
+    // Shared with sweep and compare. Both bounds to three places, as the rate they belong to is printed, and n/a
+    // where that rate has nothing to divide by.
+    internal static string Bounds(Interval? interval) =>
+        interval is { } bounds
+            ? $"[{bounds.Lower.ToString("0.000", _invariant)}, {bounds.Upper.ToString("0.000", _invariant)}]"
+            : "n/a";
+
+    // A rate and its interval on a line rather than in a table, where an undefined rate reads n/a once, not twice.
+    internal static string RateAndBounds(double? rate, Interval? interval) =>
+        interval is null ? Rate(rate) : $"{Rate(rate)} {Bounds(interval)}";
+
+    // One cell per entry of IntervalHeaders.
+    internal static string[] IntervalCells(BinaryConfusion matrix) =>
+    [
+        Bounds(matrix.AccuracyInterval),
+        Bounds(matrix.PrecisionInterval),
+        Bounds(matrix.RecallInterval),
+        Bounds(matrix.FalsePositiveRateInterval),
+        Bounds(matrix.FalseNegativeRateInterval),
+    ];
 
     private static string Parenthesized(IReadOnlyList<string> parts) =>
         parts.Count == 0 ? string.Empty : $" ({string.Join(", ", parts)})";

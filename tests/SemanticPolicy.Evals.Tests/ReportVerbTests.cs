@@ -34,6 +34,47 @@ public sealed class ReportVerbTests
     }
 
     [Fact]
+    public async Task Report_Prints_The_Interval_Row_Under_Each_Rung_Table()
+    {
+        string smoke = Path.Combine(ExampleDatasetsTests.RepositoryRoot(), "tools", "SemanticPolicy.Evals", "datasets", "smoke");
+
+        (int injectionExit, string injectionText, string injectionError) = await InvokeAsync(
+        [
+            "report",
+            "--policy", Path.Combine(smoke, "prompt-injection.policy.json"),
+            "--dataset", Path.Combine(smoke, "prompt-injection.smoke.jsonl"),
+            "--recording", Path.Combine(smoke, "prompt-injection.recording.jsonl"),
+        ]);
+        (int routerExit, string routerText, string routerError) = await InvokeAsync(
+        [
+            "report",
+            "--policy", Path.Combine(smoke, "support-router.policy.json"),
+            "--dataset", Path.Combine(smoke, "support-router.smoke.jsonl"),
+            "--recording", Path.Combine(smoke, "support-router.recording.jsonl"),
+        ]);
+
+        injectionExit.Should().Be(ExitCodes.Success, injectionError);
+        routerExit.Should().Be(ExitCodes.Success, routerError);
+        string injection = injectionText.ReplaceLineEndings("\n");
+        string router = routerText.ReplaceLineEndings("\n");
+
+        // Deny's tp 32, fp 1, tn 47 and fn 13: accuracy 79 of 93, precision 32 of 33, recall 32 of 45, fpr 1 of 48
+        // and fnr 13 of 45.
+        string[] deny = WilsonTable(injection, "rung deny:");
+        Tokens(deny[1]).Should().Equal("accuracy", "precision", "recall", "fpr", "fnr");
+        deny[3].Should().Be("[0.763, 0.908]  [0.847, 0.995]  [0.566, 0.823]  [0.004, 0.109]  [0.177, 0.434]");
+        WilsonTable(injection, "rung warn:").Should().HaveCount(4);
+        deny.Should().OnlyContain(line => line.Length <= 120);
+        injection.Should().Contain("\nfailed 0, failure rate 0.000 [0.000, 0.037]\n")
+            .And.Contain("\nabstained 1, abstention rate 0.010 [0.002, 0.054]\n");
+
+        // 66 of the 72 classified rows routed as labelled.
+        router.Should().Contain("\nclasses: accuracy 0.917 [0.830, 0.961], macro-F1 0.919; ")
+            .And.Contain("\nfailed 0, failure rate 0.000 [0.000, 0.046]\n")
+            .And.NotContain("95% Wilson intervals");
+    }
+
+    [Fact]
     public async Task Report_Prints_The_Class_Table_And_Macro_F1_For_A_Choice_Rule()
     {
         Policy policy = Samples.Guard(FailureBehavior.Escalate, ["local"], [Samples.Route()]);
@@ -54,7 +95,7 @@ public sealed class ReportVerbTests
             ["report", "--policy", policyFile.Path, "--dataset", dataset.Path, "--recording", recording.Path]);
 
         exit.Should().Be(ExitCodes.Success, error);
-        output.Should().Contain("accuracy 0.667, macro-F1 0.656");
+        output.Should().Contain("accuracy 0.667 [0.300, 0.903], macro-F1 0.656");
         (string[] headers, _) = TableAfter(output, "classes:");
         headers.Should().Equal("label", "allow", "review", "deny", "support", "precision", "recall", "f1");
         ClassRow(output, "review").Should().Equal("review", "1", "1", "0", "2", "0.500", "0.500", "0.500");
@@ -296,6 +337,17 @@ public sealed class ReportVerbTests
         int at = Array.FindIndex(lines, line => line.StartsWith(heading, StringComparison.Ordinal));
         at.Should().BeGreaterThanOrEqualTo(0, $"the report has a '{heading}' section");
         return (Tokens(lines[at + 1]), Tokens(lines[at + 3]));
+    }
+
+    // The first interval table after a heading line, from its own heading to the blank line that ends it.
+    private static string[] WilsonTable(string output, string after)
+    {
+        string[] lines = output.Split('\n');
+        int from = Array.FindIndex(lines, line => line.StartsWith(after, StringComparison.Ordinal));
+        from.Should().BeGreaterThanOrEqualTo(0, $"the report has a '{after}' section");
+        int at = Array.FindIndex(lines, from, line => line == "95% Wilson intervals");
+        at.Should().BeGreaterThan(from, $"an interval table follows '{after}'");
+        return [.. lines.Skip(at).TakeWhile(line => line.Length > 0)];
     }
 
     private static string[] ClassRow(string output, string label)

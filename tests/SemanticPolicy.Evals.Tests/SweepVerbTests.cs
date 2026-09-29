@@ -97,27 +97,64 @@ public sealed class SweepVerbTests
     {
         // At 0.55 the tune rows score TP 4, FP 1, TN 4, FN 1; the test rows, drawn differently on purpose, score
         // TP 2 (0.6, 0.9), FP 1 (0.7), TN 1 (0.2) and FN 2 (0.5, 0.4) at the same cut.
-        FixtureRow[] test =
-        [
-            Row("true", 0.6, "test"),
-            Row("true", 0.5, "test"),
-            Row("false", 0.7, "test"),
-            Row("false", 0.2, "test"),
-            Row("true", 0.9, "test"),
-            Row("true", 0.4, "test"),
-        ];
-        using CliFixture fixture = await CliFixture.CreateAsync(Guard(), [.. Graded("tune"), .. test]);
+        using CliFixture fixture = await CliFixture.CreateAsync(Guard(), [.. Graded("tune"), .. TestSplit()]);
 
         CliRun run = await fixture.RunAsync("sweep", "--warn", "min-recall=0.8");
 
         run.ExitCode.Should().Be(ExitCodes.Success);
         run.Output.Should().Contain(
-            "warn: min-recall=0.8 → threshold 0.55, chosen on split 'tune' (10 rows), reported on split 'test' (6 rows)");
+            "warn: min-recall=0.8 → threshold 0.55 (recall 0.800 [0.376, 0.964]), chosen on split 'tune' (10 rows), "
+            + "reported on split 'test' (6 rows)");
         JsonElement warn = Rung(fixture.ReadOut().GetProperty("sweep"), "warn");
         Counts(warn.GetProperty("recommendation").GetProperty("chosen")).Should().Equal(4, 1, 4, 1);
         Counts(warn.GetProperty("test")).Should().Equal(2, 1, 1, 2);
         warn.GetProperty("chosenOn").GetString().Should().Be("split 'tune' (10 rows)");
         warn.GetProperty("reportedOn").GetString().Should().Be("split 'test' (6 rows)");
+    }
+
+    [Fact]
+    public async Task Sweep_Recommendation_And_Test_Lines_Carry_Intervals()
+    {
+        using CliFixture rungs = await CliFixture.CreateAsync(Guard(), [.. Graded("tune"), .. TestSplit()]);
+        using CliFixture gate = await CliFixture.CreateAsync(Guard(), [.. Graded("tune"), .. TestSplit()]);
+
+        // On the tune rows warn meets its goal at 0.55 with 4 of the 5 attacks, and deny misses its goals by the least
+        // at 0.35: all 5 attacks, and 5 of the 7 rows it flags.
+        CliRun swept = await rungs.RunAsync(
+            "sweep", "--warn", "min-recall=0.8", "--deny", "min-recall=1", "--deny", "min-precision=1");
+        CliRun gated = await gate.RunAsync("sweep", "--gate", "max-abstain=0.5");
+
+        swept.ExitCode.Should().Be(ExitCodes.InfeasibleConstraint, swept.Error);
+        gated.ExitCode.Should().Be(ExitCodes.Success, gated.Error);
+        string output = swept.Output.ReplaceLineEndings("\n");
+        output.Should().Contain(
+            "\nwarn: min-recall=0.8 → threshold 0.55 (recall 0.800 [0.376, 0.964]), chosen on split 'tune' (10 rows), ");
+        output.Should().Contain(
+            "\ndeny: min-recall=1, min-precision=1 → infeasible, nearest threshold 0.35 (recall 1.000 [0.566, 1.000], "
+            + "precision 0.714 [0.359, 0.918]), chosen on split 'tune' (10 rows), ");
+
+        // Warn at 0.55 on the test rows: tp 2, fp 1, tn 1, fn 2.
+        string[] lines = output.Split('\n');
+        int rates = Array.FindIndex(lines, line => line.StartsWith("rates at these thresholds", StringComparison.Ordinal));
+        int title = Array.FindIndex(lines, rates, line => line == "95% Wilson intervals");
+        title.Should().BeGreaterThan(rates);
+        string[] intervals = [.. lines.Skip(title).TakeWhile(line => line.Length > 0)];
+        intervals[1].Split(' ', StringSplitOptions.RemoveEmptyEntries).Should()
+            .Equal("rung", "accuracy", "precision", "recall", "fpr", "fnr");
+        intervals[3].Should().Be("warn  [0.188, 0.812]  [0.208, 0.939]  [0.150, 0.850]  [0.095, 0.905]  [0.150, 0.850]");
+        intervals.Should().HaveCount(4).And.OnlyContain(line => line.Length <= 120);
+        lines.SkipWhile(line => !line.StartsWith("warn curve", StringComparison.Ordinal)).TakeWhile(line => line.Length > 0)
+            .Should().NotContain(line => line.Contains('['));
+
+        const string Rate = @"\d\.\d{3} \[\d\.\d{3}, \d\.\d{3}\]";
+        gated.Output.Should().MatchRegex(
+            $@"(?m)^gate: max-abstain=0\.5 → gate [0-9.]+ \(abstention rate {Rate}, accuracy {Rate}\), chosen on split 'tune'");
+        gated.Output.Should().MatchRegex(
+            $@"(?m)^gate on split 'test' \(6 rows\): gate [0-9.]+, \d+ abstained \(abstention rate {Rate}\), \d+ decided, "
+            + $@"accuracy {Rate}\r?$");
+        gated.Output.ReplaceLineEndings("\n").Split('\n')
+            .SkipWhile(line => !line.StartsWith("gate curve", StringComparison.Ordinal)).TakeWhile(line => line.Length > 0)
+            .Should().NotContain(line => line.Contains('['));
     }
 
     [Fact]
@@ -134,7 +171,7 @@ public sealed class SweepVerbTests
         CliRun run = await fixture.RunAsync("sweep", "--warn", "min-recall=0.6");
 
         run.ExitCode.Should().Be(ExitCodes.Success);
-        run.Output.Should().Contain("warn: min-recall=0.6 → threshold 0.8807970779778823, chosen and reported on the same data");
+        run.Output.Should().Contain("warn: min-recall=0.6 → threshold 0.8807970779778823 (recall 0.600 ");
         Rung(fixture.ReadOut().GetProperty("sweep"), "warn").GetProperty("recommendation").GetProperty("threshold")
             .GetDouble().Should().Be(0.8807970779778823);
     }
@@ -148,7 +185,7 @@ public sealed class SweepVerbTests
 
         run.ExitCode.Should().Be(ExitCodes.Success);
         run.Output.Should().Contain(
-            "warn: min-recall=0.8 → threshold 0.55, chosen and reported on the same data (no split)");
+            "warn: min-recall=0.8 → threshold 0.55 (recall 0.800 [0.376, 0.964]), chosen and reported on the same data (no split)");
     }
 
     [Fact]
@@ -224,7 +261,8 @@ public sealed class SweepVerbTests
 
         run.ExitCode.Should().Be(ExitCodes.Success);
         run.Output.Should().MatchRegex(@"(?m)^gate +passed on +abstained +abstention rate +decided +accuracy *\r?$");
-        run.Output.Should().Contain("gate: max-abstain=0.05 → gate 0.875 (6 passed on to the next binding, abstention rate 0.000, ");
+        run.Output.Should().Contain(
+            "gate: max-abstain=0.05 → gate 0.875 (6 passed on to the next binding, abstention rate 0.000 [0.000, 0.324], ");
         run.Output.Should().Contain(": gate 0.875, 6 passed on to the next binding, 0 abstained ");
         JsonElement gate = fixture.ReadOut().GetProperty("sweep").GetProperty("gate");
         gate.GetProperty("curve").GetProperty("points").EnumerateArray()
@@ -352,8 +390,8 @@ public sealed class SweepVerbTests
         ]);
 
         run.ExitCode.Should().Be(ExitCodes.Success, run.Error);
-        run.Output.Should().Contain("warn: min-recall=0.9 → threshold 0.194, ")
-            .And.Contain("deny: min-precision=0.95 → threshold 0.843, ")
+        run.Output.Should().Contain("warn: min-recall=0.9 → threshold 0.194 (")
+            .And.Contain("deny: min-precision=0.95 → threshold 0.843 (")
             .And.Contain("gate: min-accuracy=0.9 → gate 0.5418 ")
             .And.Contain("\nsettled in 3 passes: ");
         using JsonDocument written = JsonDocument.Parse(File.ReadAllText(outFile.Path));
@@ -465,7 +503,7 @@ public sealed class SweepVerbTests
             "sweep", "--warn", "min-recall=0.2", "--deny", "min-recall=1", "--deny", "max-fpr=0");
 
         run.ExitCode.Should().Be(ExitCodes.InfeasibleConstraint);
-        run.Output.Should().Contain("warn: min-recall=0.2 → threshold 0.95, ");
+        run.Output.Should().Contain("warn: min-recall=0.2 → threshold 0.95 (");
         run.Output.Should().Contain(
             "\nstopped after 1 pass: the thresholds picked and the number an infeasible rung keeps do not increase with "
             + "severity, so no policy can hold them for another pass, and the gate is measured at the ones the pass "
@@ -526,6 +564,17 @@ public sealed class SweepVerbTests
 
     internal static FixtureRow[] Graded(string? split = null, EvidenceKind kind = EvidenceKind.Probability) =>
         [.. _flagged.Select((value, index) => Row(_labels[index], value, split, kind))];
+
+    // Six test rows to follow Graded("tune"), drawn unlike it on purpose.
+    private static FixtureRow[] TestSplit() =>
+    [
+        Row("true", 0.6, "test"),
+        Row("true", 0.5, "test"),
+        Row("false", 0.7, "test"),
+        Row("false", 0.2, "test"),
+        Row("true", 0.9, "test"),
+        Row("true", 0.4, "test"),
+    ];
 
     // Warn at a placeholder, deny above every row, no gate: the policy Alternating's rows are swept on.
     internal static Policy Unsettled()
