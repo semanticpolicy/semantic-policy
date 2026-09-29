@@ -20,6 +20,8 @@ public static class SweepRenderer
 
     private static readonly string[] _rateHeaders = ["threshold", "accuracy", "precision", "recall", "f1", "fpr", "fnr", "roc-auc", "pr-auc"];
 
+    private static readonly string[] _outcomeIntervalHeaders = ["abstention", "failure"];
+
     /// <summary>Writes a <c>sweep</c> result: every curve, then what was recommended and how it did on the test rows.</summary>
     /// <param name="writer">Where the text goes.</param>
     /// <param name="result">The result envelope, for the rule and the row counts.</param>
@@ -80,6 +82,13 @@ public static class SweepRenderer
             }
 
             table.Write(writer);
+            TextTable intervals = new(["rung", .. ReportRenderer.IntervalHeaders]);
+            foreach (SweptRung rung in tested)
+            {
+                intervals.AddRow([Names.Camel(rung.Rung), .. ReportRenderer.IntervalCells(rung.Test!.Matrix)]);
+            }
+
+            ReportRenderer.WriteIntervals(intervals, writer);
         }
 
         if (section.Gate?.Test is { } test)
@@ -87,7 +96,8 @@ public static class SweepRenderer
             writer.WriteLine();
             writer.WriteLine(
                 $"gate on {section.Gate.ReportedOn}: {Gate(test.Below)}, {PassedOn(test)}{Count(test.Abstained)} abstained "
-                + $"(abstention rate {Rate(test.AbstentionRate)}), {Count(test.Decided)} decided, accuracy {Rate(test.Accuracy)}");
+                + $"(abstention rate {ReportRenderer.RateAndBounds(test.AbstentionRate, test.AbstentionRateInterval)}), "
+                + $"{Count(test.Decided)} decided, accuracy {ReportRenderer.RateAndBounds(test.Accuracy, test.AccuracyInterval)}");
         }
     }
 
@@ -140,6 +150,22 @@ public static class SweepRenderer
             {
                 writer.WriteLine(line);
             }
+
+            // No wider than the value table above, which fits: per rung it has five columns where that one has nine, and
+            // two where that one has four and the usage fields.
+            TextTable intervals = new(
+            [
+                "provider",
+                .. rungs.SelectMany(rung => ReportRenderer.IntervalHeaders.Select(header => $"{Names.Camel(rung)} {header}")),
+                .. _outcomeIntervalHeaders,
+            ]);
+            foreach (CompareEntry entry in section.Bindings)
+            {
+                intervals.AddRow(
+                    [entry.Sweep.Provider, .. rungs.SelectMany(rung => RungIntervalCells(entry, rung)), .. OutcomeIntervalCells(entry)]);
+            }
+
+            ReportRenderer.WriteIntervals(intervals, writer);
         }
         else
         {
@@ -147,23 +173,29 @@ public static class SweepRenderer
             {
                 writer.WriteLine($"{Names.Camel(rung)} on {section.Split.ReportedOn}");
                 TextTable table = new(["provider", .. _rateHeaders]);
+                TextTable intervals = new(["provider", .. ReportRenderer.IntervalHeaders]);
                 foreach (CompareEntry entry in section.Bindings)
                 {
                     table.AddRow([entry.Sweep.Provider, .. RungCells(entry, rung)]);
+                    intervals.AddRow([entry.Sweep.Provider, .. RungIntervalCells(entry, rung)]);
                 }
 
                 table.Write(writer);
+                ReportRenderer.WriteIntervals(intervals, writer);
                 writer.WriteLine();
             }
 
             writer.WriteLine($"outcomes, latency and usage on {section.Split.ReportedOn}");
             TextTable summary = new(["provider", .. summaryHeaders]);
+            TextTable outcomeIntervals = new(["provider", .. _outcomeIntervalHeaders]);
             foreach (CompareEntry entry in section.Bindings)
             {
                 summary.AddRow([entry.Sweep.Provider, .. SummaryCells(entry, usage)]);
+                outcomeIntervals.AddRow([entry.Sweep.Provider, .. OutcomeIntervalCells(entry)]);
             }
 
             summary.Write(writer);
+            ReportRenderer.WriteIntervals(outcomeIntervals, writer);
         }
 
         foreach (CompareEntry entry in section.Bindings)
@@ -332,7 +364,8 @@ public static class SweepRenderer
         string constraints = string.Join(", ", recommendation.Constraints.Select(constraint => constraint.ToString()));
         if (recommendation.Feasible && recommendation.Threshold is { } chosen)
         {
-            return $"{name}: {constraints} → threshold {Number(chosen)}, {split.Sentence}";
+            string met = recommendation.Chosen is { } point ? $" ({ConstrainedRates(recommendation, point.Matrix)})" : string.Empty;
+            return $"{name}: {constraints} → threshold {Number(chosen)}{met}, {split.Sentence}";
         }
 
         if (recommendation.Nearest is not { } nearest)
@@ -341,16 +374,22 @@ public static class SweepRenderer
                 + $"every point, {split.Sentence}";
         }
 
-        string rates = string.Join(
+        return $"{name}: {constraints} → infeasible, nearest threshold {Number(nearest.Threshold)} "
+            + $"({ConstrainedRates(recommendation, nearest.Matrix)}), {split.Sentence}";
+    }
+
+    // Each rate the rung's constraints name, once, in the order first named, with its interval: whether a goal met on
+    // forty rows would still be met on the next forty is the interval's to say.
+    private static string ConstrainedRates(RungRecommendation recommendation, BinaryConfusion matrix) =>
+        string.Join(
             ", ",
             recommendation.Constraints.Select(constraint => constraint.Kind).Distinct().Select(kind => kind switch
             {
-                ConstraintKind.MinRecall => $"recall {Rate(nearest.Matrix.Recall)}",
-                ConstraintKind.MaxFpr => $"fpr {Rate(nearest.Matrix.FalsePositiveRate)}",
-                _ => $"precision {Rate(nearest.Matrix.Precision)}",
+                ConstraintKind.MinRecall => $"recall {ReportRenderer.RateAndBounds(matrix.Recall, matrix.RecallInterval)}",
+                ConstraintKind.MaxFpr =>
+                    $"fpr {ReportRenderer.RateAndBounds(matrix.FalsePositiveRate, matrix.FalsePositiveRateInterval)}",
+                _ => $"precision {ReportRenderer.RateAndBounds(matrix.Precision, matrix.PrecisionInterval)}",
             }));
-        return $"{name}: {constraints} → infeasible, nearest threshold {Number(nearest.Threshold)} ({rates}), {split.Sentence}";
-    }
 
     private static string GateLine(SweptGate gate, SplitWording split)
     {
@@ -382,6 +421,17 @@ public static class SweepRenderer
         return [threshold, .. rates, Rate(values?.RocAuc), Rate(values?.PrAuc)];
     }
 
+    private static string[] RungIntervalCells(CompareEntry entry, Verdict rung) =>
+        entry.Sweep.Rungs.FirstOrDefault(candidate => candidate.Rung == rung)?.Test is { } test
+            ? ReportRenderer.IntervalCells(test.Matrix)
+            : [.. Enumerable.Repeat("n/a", ReportRenderer.IntervalHeaders.Length)];
+
+    private static string[] OutcomeIntervalCells(CompareEntry entry) =>
+    [
+        ReportRenderer.Bounds(entry.Outcomes.AbstentionRateInterval),
+        ReportRenderer.Bounds(entry.Outcomes.FailureRateInterval),
+    ];
+
     private static string[] SummaryCells(CompareEntry entry, IEnumerable<string> usage) =>
     [
         Rate(entry.Outcomes.AbstentionRate),
@@ -408,7 +458,8 @@ public static class SweepRenderer
     ];
 
     private static string GateRates(GatePoint point) =>
-        $"({PassedOn(point)}abstention rate {Rate(point.AbstentionRate)}, accuracy {Rate(point.Accuracy)})";
+        $"({PassedOn(point)}abstention rate {ReportRenderer.RateAndBounds(point.AbstentionRate, point.AbstentionRateInterval)}, "
+        + $"accuracy {ReportRenderer.RateAndBounds(point.Accuracy, point.AccuracyInterval)})";
 
     // A gate on a binding with a later one is cheap in abstentions and paid for in the rows that binding decides
     // instead, so a line that shows the one shows the other.

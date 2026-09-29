@@ -5,6 +5,8 @@ namespace SemanticPolicy.Evals.Tests;
 
 public sealed class CompareVerbTests
 {
+    private const string _intervalsTitle = "95% Wilson intervals";
+
     private static readonly string[] _labels =
         ["false", "false", "false", "true", "false", "true", "false", "true", "true", "true"];
 
@@ -157,7 +159,8 @@ public sealed class CompareVerbTests
         run.ExitCode.Should().Be(ExitCodes.InfeasibleConstraint);
         run.Output.ReplaceLineEndings("\n").Should().Contain(
             "\nbinding 'local'\n"
-            + "warn: min-recall=0.9 → threshold 0.25, chosen and reported on the same data (no split), 12 rows\n"
+            + "warn: min-recall=0.9 → threshold 0.25 (recall 1.000 [0.566, 1.000]), chosen and reported on the same data "
+            + "(no split), 12 rows\n"
             + "deny: not swept, keeps 0.96875 from the policy file\n"
             + "gate: min-accuracy=0.9 → gate 0.875 ");
         run.Output.Should().Contain("no fixed point after 3 passes: successive passes alternate between these two sets of picks");
@@ -165,6 +168,80 @@ public sealed class CompareVerbTests
         sweep.GetProperty("passes").GetProperty("count").GetInt32().Should().Be(3);
         sweep.GetProperty("passes").GetProperty("end").GetString().Should().Be("alternating");
     }
+
+    [Fact]
+    public async Task Compare_Prints_Intervals_Under_Its_Table()
+    {
+        string smoke = Path.Combine(ExampleDatasetsTests.RepositoryRoot(), "tools", "SemanticPolicy.Evals", "datasets", "smoke");
+
+        CliRun router = await CliFixture.InvokeAsync(
+        [
+            "compare",
+            "--policy", Path.Combine(smoke, "support-router.policy.json"),
+            "--dataset", Path.Combine(smoke, "support-router.smoke.jsonl"),
+            "--recording", Path.Combine(smoke, "support-router.recording.jsonl"),
+            "--gate", "min-accuracy=0.9",
+        ]);
+        CliRun injection = await CliFixture.InvokeAsync(
+        [
+            "compare",
+            "--policy", Path.Combine(smoke, "prompt-injection.policy.json"),
+            "--dataset", Path.Combine(smoke, "prompt-injection.smoke.jsonl"),
+            "--recording", Path.Combine(smoke, "prompt-injection.recording.jsonl"),
+            "--deny", "min-precision=0.95",
+        ]);
+
+        router.ExitCode.Should().Be(ExitCodes.Success, router.Error);
+        injection.ExitCode.Should().BeOneOf([ExitCodes.Success, ExitCodes.InfeasibleConstraint], injection.Error);
+
+        // The router's value table fits in one, and so do its intervals. At its gate 'local' leaves 14 of the 32 test
+        // rows undecided, and neither binding failed on any.
+        string[] routerLines = router.Output.ReplaceLineEndings("\n").Split('\n');
+        Titles(routerLines, "each binding on").Should().Equal("each binding on", _intervalsTitle);
+        WilsonTables(routerLines).Should().ContainSingle().Which.Should().Equal(
+            _intervalsTitle,
+            "provider  abstention      failure",
+            "--------  --------------  --------------",
+            "local     [0.282, 0.607]  [0.000, 0.107]",
+            "jev       [0.000, 0.107]  [0.000, 0.107]");
+        const string Rate = @"\d\.\d{3} \[\d\.\d{3}, \d\.\d{3}\]";
+        router.Output.Should().MatchRegex(
+            $@"(?m)^gate: min-accuracy=0\.9 → gate [0-9.]+ \(abstention rate {Rate}, accuracy {Rate}\), chosen on ")
+            .And.MatchRegex($@"(?m)^gate: min-accuracy=0\.9 → no gate \(abstention rate {Rate}, accuracy {Rate}\), chosen on ");
+
+        // The smoke set's two rungs do not fit in one table, so each rung has its own and its intervals under it.
+        string[] injectionLines = injection.Output.ReplaceLineEndings("\n").Split('\n');
+        Titles(injectionLines, "warn on", "deny on", "outcomes, latency and usage on").Should().Equal(
+            "warn on", _intervalsTitle, "deny on", _intervalsTitle, "outcomes, latency and usage on", _intervalsTitle);
+        string[][] tables = WilsonTables(injectionLines);
+        foreach (string[] rung in tables[..2])
+        {
+            rung[1].Split(' ', StringSplitOptions.RemoveEmptyEntries).Should()
+                .Equal("provider", "accuracy", "precision", "recall", "fpr", "fnr");
+            rung[3..].Select(line => line.Split(' ')[0]).Should().Equal("local", "jev");
+        }
+
+        tables[2][1].Split(' ', StringSplitOptions.RemoveEmptyEntries).Should().Equal("provider", "abstention", "failure");
+        tables.SelectMany(table => table).Concat(WilsonTables(routerLines).Single())
+            .Should().OnlyContain(line => line.Length <= 120);
+    }
+
+    // The section titles among the lines, in order, each named by the prefix it starts with.
+    private static string[] Titles(string[] lines, params string[] prefixes) =>
+    [
+        .. lines.Select(line => line == _intervalsTitle
+            ? line
+            : prefixes.FirstOrDefault(prefix => line.StartsWith(prefix, StringComparison.Ordinal)))
+            .OfType<string>(),
+    ];
+
+    // Every table of intervals, each from its title to the blank line that ends it.
+    private static string[][] WilsonTables(string[] lines) =>
+    [
+        .. lines.Select((line, index) => (line, index))
+            .Where(entry => entry.line == _intervalsTitle)
+            .Select(entry => lines.Skip(entry.index).TakeWhile(line => line.Length > 0).ToArray()),
+    ];
 
     private static Policy Pair() => SweepVerbTests.Guard(EvidenceKind.Probability, "local", "hosted");
 

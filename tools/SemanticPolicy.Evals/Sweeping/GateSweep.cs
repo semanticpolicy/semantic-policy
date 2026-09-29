@@ -26,13 +26,19 @@ namespace SemanticPolicy.Evals.Sweeping;
 /// Accuracy on the decided rows: for a Boolean rule, its lowest ladder rung at the policy's thresholds; for a
 /// Choice or Score rule, the share answered as labelled. <see langword="null"/> when nothing was decided.
 /// </param>
+/// <param name="AbstentionRateInterval">
+/// The 95% Wilson interval of <paramref name="AbstentionRate"/>; <see langword="null"/> for an empty selection.
+/// </param>
+/// <param name="AccuracyInterval">The 95% Wilson interval of <paramref name="Accuracy"/>.</param>
 public sealed record GatePoint(
     double? Below,
     int? PassedOn,
     int Abstained,
     double AbstentionRate,
     int Decided,
-    double? Accuracy);
+    double? Accuracy,
+    Interval? AbstentionRateInterval = null,
+    Interval? AccuracyInterval = null);
 
 /// <summary>The abstention-against-accuracy curve of one binding's gate, from no gate up to the widest margin seen.</summary>
 /// <param name="Points">
@@ -278,13 +284,16 @@ public static class GateSweep
             ? outcomes.Count(outcome => outcome.Row.Verdict.Attempts.Any(attempt =>
                 attempt.BindingIndex == bindingIndex && attempt.Disposition == AttemptDisposition.MovedOnByGate))
             : null;
+        (double? accuracy, Interval? accuracyInterval) = Accuracy(outcomes, rule);
         return new GatePoint(
             gate?.Below,
             passedOn,
             counts.Abstained,
             counts.AbstentionRate ?? 0,
             counts.Classified,
-            Accuracy(outcomes, rule));
+            accuracy,
+            counts.AbstentionRateInterval,
+            accuracyInterval);
     }
 
     private static Policy Variant(Policy policy, int bindingIndex, string ruleId, MarginGate? gate)
@@ -316,13 +325,23 @@ public static class GateSweep
         return outcomes;
     }
 
-    private static double? Accuracy(IReadOnlyList<RowOutcome> outcomes, Rule rule) => rule switch
+    private static (double? Value, Interval? Interval) Accuracy(IReadOnlyList<RowOutcome> outcomes, Rule rule)
     {
-        BooleanRule boolean => RungMetrics.Compute(outcomes, boolean)[0].Matrix.Accuracy,
-        ChoiceRule choice => MulticlassConfusion.Compute(outcomes, choice).Accuracy,
-        ScoreRule score => MulticlassConfusion.Compute(outcomes, score).Accuracy,
-        _ => throw new ArgumentException($"Rule '{rule.Id}' is not a Boolean, Choice or Score rule.", nameof(rule)),
-    };
+        switch (rule)
+        {
+            case BooleanRule boolean:
+                BinaryConfusion matrix = RungMetrics.Compute(outcomes, boolean)[0].Matrix;
+                return (matrix.Accuracy, matrix.AccuracyInterval);
+            case ChoiceRule choice:
+                MulticlassConfusion choices = MulticlassConfusion.Compute(outcomes, choice);
+                return (choices.Accuracy, choices.AccuracyInterval);
+            case ScoreRule score:
+                MulticlassConfusion levels = MulticlassConfusion.Compute(outcomes, score);
+                return (levels.Accuracy, levels.AccuracyInterval);
+            default:
+                throw new ArgumentException($"Rule '{rule.Id}' is not a Boolean, Choice or Score rule.", nameof(rule));
+        }
+    }
 
     private static bool Satisfies(GatePoint point, GateConstraint constraint) =>
         constraint.Kind == GateConstraintKind.MaxAbstain

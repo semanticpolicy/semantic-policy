@@ -8,7 +8,16 @@ namespace SemanticPolicy.Evals.Metrics;
 /// <param name="Precision">The share of rows predicted this class that are labelled it.</param>
 /// <param name="Recall">The share of rows labelled this class that were predicted it.</param>
 /// <param name="F1">The harmonic mean of the two, 0 for a class the classifier never predicted.</param>
-public sealed record ClassMetrics(string Class, int Support, double? Precision, double? Recall, double? F1);
+/// <param name="PrecisionInterval">The 95% Wilson interval of <paramref name="Precision"/>.</param>
+/// <param name="RecallInterval">The 95% Wilson interval of <paramref name="Recall"/>.</param>
+public sealed record ClassMetrics(
+    string Class,
+    int Support,
+    double? Precision,
+    double? Recall,
+    double? F1,
+    Interval? PrecisionInterval = null,
+    Interval? RecallInterval = null);
 
 /// <summary>
 /// The full answer-against-label table of a Choice or Score rule, with the per-class rates read off it.
@@ -27,6 +36,15 @@ public sealed record MulticlassConfusion(
     IReadOnlyList<ClassMetrics> PerClass,
     double? MacroF1)
 {
+    /// <summary>
+    /// The 95% Wilson interval of <see cref="Accuracy"/>, read off <see cref="Counts"/>: the diagonal over every cell.
+    /// Macro-F1 has none, because it is not one count over another.
+    /// </summary>
+    public Interval? AccuracyInterval =>
+        Interval.Wilson(
+            Counts.Sum(row => row.Value.GetValueOrDefault(row.Key)),
+            Counts.Values.Sum(answered => answered.Values.Sum()));
+
     /// <summary>The table of a Choice rule, with the options as its classes.</summary>
     /// <param name="rows">The bucketed rows of the selection; only classified ones are counted.</param>
     /// <param name="rule">The rule whose options are the classes.</param>
@@ -104,7 +122,9 @@ public sealed record MulticlassConfusion(
                 support,
                 oneAgainstTheRest.Precision,
                 oneAgainstTheRest.Recall,
-                oneAgainstTheRest.F1));
+                oneAgainstTheRest.F1,
+                oneAgainstTheRest.PrecisionInterval,
+                oneAgainstTheRest.RecallInterval));
             correct += truePositives;
             if (support > 0)
             {
