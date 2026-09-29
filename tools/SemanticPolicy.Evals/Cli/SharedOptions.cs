@@ -109,6 +109,16 @@ public static class SharedOptions
         AllowMultipleArgumentsPerToken = true,
     };
 
+    /// <summary><c>--require &lt;requirement&gt;</c>: repeatable; what <c>report</c> and <c>run</c> must measure to exit 0.</summary>
+    public static Option<string[]> Require { get; } = new("--require")
+    {
+        Description = "A rate the report must reach, or the verb exits 2: <rung>.min-precision=<v>, <rung>.min-recall=<v> or "
+            + "<rung>.max-fpr=<v> for a Boolean rule, min-accuracy=<v> or min-macro-f1=<v> for a Choice or Score rule, "
+            + "max-abstain=<v> or max-failure-rate=<v> for any, v from 0 to 1; repeatable, and every one must pass.",
+        HelpName = "requirement",
+        AllowMultipleArgumentsPerToken = true,
+    };
+
     /// <summary>The constraint options <c>sweep</c> and <c>compare</c> share, in the order help lists them.</summary>
     public static IReadOnlyList<Option> ConstraintOptions { get; } = [Warn, Escalate, Deny, Gate];
 

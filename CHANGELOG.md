@@ -7,6 +7,21 @@ Notable changes to the packages `SemanticPolicy.Core`, `SemanticPolicy.Providers
 [Semantic Versioning](https://semver.org/); while the major version is 0, any release can change the
 API.
 
+## Unreleased
+
+The evaluation CLI names its providers in a file, retries and resumes a run, gives each rate an
+interval, and can fail a build.
+
+- **`SemanticPolicy.Evals`.** `run --providers <file>` calls the providers a file names, System One
+  servers and Jev routes, in place of `local` and `jev`; a key is named by its environment variable,
+  never written in the file. A call answered `unavailable` is made again up to `--retries` times, 2
+  by default, and `run --resume <recording>` finishes a recording a run left short; it needs a
+  recording made by this version, whose header keeps the run's retries and filters. Every rate that
+  is one count over another comes with its 95% Wilson interval, in the text and in the JSON result.
+  `report` and `run` take `--require`, such as `deny.min-precision=0.95` or `max-failure-rate=0.02`,
+  and exit with code 2 when a requirement fails, so a build that replays a committed recording can
+  gate on it.
+
 ## 0.1.0-alpha.2
 
 The System One provider, for a decision model you run yourself, a provider for any server that
