@@ -4,6 +4,8 @@ namespace SemanticPolicy.Evals.Metrics;
 /// One binary classifier's four counts and the rates read off them. A rate whose denominator is zero is
 /// <see langword="null"/> rather than zero: "no row was labelled positive" and "the classifier found none
 /// of them" are different facts, and a report that printed both as 0 would let a script confuse them.
+/// Each proportion carries its 95% Wilson interval, from the same counts and <see langword="null"/> exactly when
+/// the proportion is; F1 has none, because it is not one count over another.
 /// </summary>
 /// <param name="TruePositives">Rows predicted positive and labelled positive.</param>
 /// <param name="FalsePositives">Rows predicted positive and labelled negative.</param>
@@ -12,15 +14,22 @@ namespace SemanticPolicy.Evals.Metrics;
 public sealed record BinaryConfusion(int TruePositives, int FalsePositives, int TrueNegatives, int FalseNegatives)
 {
     /// <summary>The share of counted rows the classifier got right.</summary>
-    public double? Accuracy => Rate(
-        TruePositives + TrueNegatives,
-        TruePositives + FalsePositives + TrueNegatives + FalseNegatives);
+    public double? Accuracy => Rate(TruePositives + TrueNegatives, Counted);
+
+    /// <summary>The 95% Wilson interval of <see cref="Accuracy"/>.</summary>
+    public Interval? AccuracyInterval => Interval.Wilson(TruePositives + TrueNegatives, Counted);
 
     /// <summary>The share of predicted positives that were labelled positive.</summary>
     public double? Precision => Rate(TruePositives, TruePositives + FalsePositives);
 
+    /// <summary>The 95% Wilson interval of <see cref="Precision"/>.</summary>
+    public Interval? PrecisionInterval => Interval.Wilson(TruePositives, TruePositives + FalsePositives);
+
     /// <summary>The share of labelled positives the classifier predicted.</summary>
     public double? Recall => Rate(TruePositives, TruePositives + FalseNegatives);
+
+    /// <summary>The 95% Wilson interval of <see cref="Recall"/>.</summary>
+    public Interval? RecallInterval => Interval.Wilson(TruePositives, TruePositives + FalseNegatives);
 
     /// <summary>
     /// The harmonic mean of precision and recall, computed as 2·TP / (2·TP + FP + FN) so that it is defined
@@ -31,8 +40,16 @@ public sealed record BinaryConfusion(int TruePositives, int FalsePositives, int 
     /// <summary>The share of labelled negatives the classifier predicted positive.</summary>
     public double? FalsePositiveRate => Rate(FalsePositives, FalsePositives + TrueNegatives);
 
+    /// <summary>The 95% Wilson interval of <see cref="FalsePositiveRate"/>.</summary>
+    public Interval? FalsePositiveRateInterval => Interval.Wilson(FalsePositives, FalsePositives + TrueNegatives);
+
     /// <summary>The share of labelled positives the classifier predicted negative.</summary>
     public double? FalseNegativeRate => Rate(FalseNegatives, FalseNegatives + TruePositives);
+
+    /// <summary>The 95% Wilson interval of <see cref="FalseNegativeRate"/>.</summary>
+    public Interval? FalseNegativeRateInterval => Interval.Wilson(FalseNegatives, FalseNegatives + TruePositives);
+
+    private int Counted => TruePositives + FalsePositives + TrueNegatives + FalseNegatives;
 
     private static double? Rate(int numerator, int denominator) =>
         denominator == 0 ? null : (double)numerator / denominator;
