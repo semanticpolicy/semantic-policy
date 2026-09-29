@@ -252,7 +252,59 @@ public static class SweepRenderer
         {
             writer.WriteLine(GateLine(gate, section.Split));
         }
+
+        WritePasses(writer, section);
     }
+
+    // A rung or gate whose goals cannot be met picks nothing and keeps the number its pass was swept at, so the
+    // passes can settle on that number, or stop on it, without it being a pick.
+    private static void WritePasses(TextWriter writer, SweepSection section)
+    {
+        SweepPasses passes = section.Passes;
+        string count = passes.Count == 1 ? "1 pass" : $"{Count(passes.Count)} passes";
+        switch (passes.End)
+        {
+            case PassesEnd.Settled when passes.Count == 1:
+                writer.WriteLine(section.Feasible
+                    ? "settled in 1 pass: the policy file already holds these picks"
+                    : "settled in 1 pass with a goal unmet: what is infeasible above keeps the policy file's number, "
+                        + "and the file already holds every pick");
+                return;
+            case PassesEnd.Settled:
+                writer.WriteLine(section.Feasible
+                    ? $"settled in {count}: each pass was swept at the picks of the one before, and the last one picked "
+                        + "what it was swept at"
+                    : $"settled in {count} with a goal unmet: each pass was swept at the picks of the one before, the last "
+                        + "one picked what it was swept at, and what is infeasible above keeps the number it was swept at");
+                return;
+            case PassesEnd.Conflict:
+                // With no pair named above, the pair that does not increase takes in an infeasible rung's kept number.
+                string held = OperatingPointSweep.Conflicts(section.Rungs).Count > 0
+                    ? "the thresholds picked do not increase"
+                    : "the thresholds picked and the number an infeasible rung keeps do not increase";
+                writer.WriteLine(
+                    $"stopped after {count}: {held} with severity, so no policy can hold them for another pass, and the "
+                    + "gate is measured at the ones the pass started from");
+                return;
+            case PassesEnd.Alternating:
+                writer.WriteLine($"no fixed point after {count}: successive passes alternate between these two sets of picks");
+                break;
+            default:
+                writer.WriteLine(
+                    $"no fixed point after {count}: the picks were still changing, the last pass from the first set below "
+                    + "to the second");
+                break;
+        }
+
+        writer.WriteLine($"  {Picks(passes.SweptAt!)}");
+        writer.WriteLine($"  {Picks(passes.Picked!)}");
+        writer.WriteLine("  neither is recommended: put each in the policy file and run report to see what it does");
+    }
+
+    private static string Picks(RuleOperatingPoint point) =>
+        string.Join(
+            ", ",
+            [.. point.Thresholds.Select(threshold => $"{Names.Camel(threshold.Verdict)} {Number(threshold.AtOrAbove)}"), Gate(point.Gate?.Below)]);
 
     // Every rung's curve is the same table, each one replayed on a single-rung ladder, so a higher rung's threshold
     // is a point on the lower rung's curve too. Where the lower rung's goals hold at that point, the higher rung on
