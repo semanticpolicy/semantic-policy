@@ -20,11 +20,13 @@ namespace SemanticPolicy.Evaluation;
 /// the rule is a Choice rule or no answer decided it.
 /// </param>
 /// <param name="EvidenceKind">
-/// The kind of evidence the ladder was read on, for a Boolean rule an answer decided.
+/// The kind of evidence the ladder was read on, for a Boolean rule an answer decided. At a calibrated
+/// operating point it is Probability, the kind the calibration produces, whatever kind the provider returned.
 /// </param>
 /// <param name="EvidenceValue">
 /// The flagged answer's evidence of that kind, after a one-sided probability was completed, for a
-/// Boolean rule an answer decided.
+/// Boolean rule an answer decided. At a calibrated operating point it is the calibrated probability, an
+/// estimate fitted on labelled data, and the provider's own value stays in the deciding attempt's result.
 /// </param>
 /// <param name="Attempts">Every attempt made for the rule, in chain order.</param>
 public sealed record RuleVerdict(

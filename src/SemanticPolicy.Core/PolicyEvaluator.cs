@@ -123,7 +123,7 @@ public sealed class PolicyEvaluator : IPolicyEvaluator
 
     // What Validate() cannot see, because it reads the policy alone: whether every provider the chain
     // names is registered, answers every rule's decision type, and produces the evidence kind each
-    // threshold and gate reads. Capabilities are in-process, so this costs no call.
+    // threshold, calibration and gate reads. Capabilities are in-process, so this costs no call.
     private void Check(Policy policy)
     {
         policy.Validate();
@@ -153,15 +153,31 @@ public sealed class PolicyEvaluator : IPolicyEvaluator
 
             foreach (RuleOperatingPoint point in binding.OperatingPoints)
             {
-                foreach (Threshold threshold in point.Thresholds)
+                // At a calibrated point the thresholds compare the probability the calibration produces, so the
+                // provider owes the kind the calibration reads, not the thresholds' Probability.
+                if (point.Calibration is { } calibration)
                 {
-                    if (!capabilities.Evidence.Contains(threshold.Kind))
+                    if (!capabilities.Evidence.Contains(calibration.SourceKind))
                     {
                         throw PolicyConfigurationException.For(
                             policy.Id,
-                            $"the provider does not produce {threshold.Kind} evidence, which a threshold reads.",
+                            $"the provider does not produce {calibration.SourceKind} evidence, which the calibration reads.",
                             point.RuleId,
                             providerId);
+                    }
+                }
+                else
+                {
+                    foreach (Threshold threshold in point.Thresholds)
+                    {
+                        if (!capabilities.Evidence.Contains(threshold.Kind))
+                        {
+                            throw PolicyConfigurationException.For(
+                                policy.Id,
+                                $"the provider does not produce {threshold.Kind} evidence, which a threshold reads.",
+                                point.RuleId,
+                                providerId);
+                        }
                     }
                 }
 
@@ -479,6 +495,19 @@ public sealed class PolicyEvaluator : IPolicyEvaluator
         if (attempt.Margin is { } margin)
         {
             span.SetTag(MarginTag, margin);
+        }
+
+        // Calibrated evidence is only ever made at a point that carries a calibration, so the method is read
+        // off the point the attempt was read at; the mark says the calibration may not fit this model.
+        if (attempt.CalibratedEvidence is not null
+            && PolicyEvaluation.OperatingPointFor(policy.Bindings[attempt.BindingIndex], rule.RuleId)?.Calibration
+                is { } calibration)
+        {
+            span.SetTag(CalibrationMethodTag, Name(calibration.Method));
+            if (attempt.CalibrationModelMismatch)
+            {
+                span.SetTag(CalibrationModelMismatchTag, true);
+            }
         }
 
         string? movedBy = attempt.Disposition switch

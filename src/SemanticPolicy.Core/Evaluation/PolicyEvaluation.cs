@@ -129,8 +129,9 @@ public static class PolicyEvaluation
                 }
             }
 
+            bool mismatch = reading.Calibrated is not null && FittedOnAnotherModel(result, point!.Calibration!);
             Attempt Record(AttemptDisposition disposition, double? margin = null) =>
-                new(index, binding.ProviderId, result, effective, margin, disposition);
+                new(index, binding.ProviderId, result, effective, margin, disposition, reading.Calibrated, mismatch);
 
             if (effective.Status != OutcomeStatus.Success)
             {
@@ -207,12 +208,16 @@ public static class PolicyEvaluation
             return valueError;
         }
 
-        // A Boolean rule's thresholds always read evidence, and Validate() keeps the gate on the same
-        // kind; a Choice or Score rule reads evidence only through its gate.
-        EvidenceKind? kind = rule is BooleanRule ? point!.Thresholds[0].Kind : point?.Gate?.Kind;
+        // A Boolean rule always reads evidence: at a calibrated point the calibration's source kind, which the
+        // calibration maps to the probability the thresholds compare, and otherwise the thresholds' own kind.
+        // Validate() keeps the gate on the kind read here either way, so it reads the provider's margin. A
+        // Choice or Score rule reads evidence only through its gate.
+        EvidenceKind? kind = rule is BooleanRule
+            ? point!.Calibration?.SourceKind ?? point.Thresholds[0].Kind
+            : point?.Gate?.Kind;
         if (kind is null)
         {
-            reading = new Reading(result.Value, Evidence: null, Margin: null);
+            reading = new Reading(result.Value, Evidence: null, Margin: null, Calibrated: null);
             return null;
         }
 
@@ -251,8 +256,28 @@ public static class PolicyEvaluation
             }
         }
 
-        reading = new Reading(result.Value, evidence, margin);
+        Evidence? calibrated = null;
+        if (point?.Calibration is { } calibration && rule is BooleanRule flagged)
+        {
+            calibrated = Calibrate(calibration, flagged, evidence);
+        }
+
+        reading = new Reading(result.Value, evidence, margin, calibrated);
         return null;
+    }
+
+    // The calibration produces probability evidence the ladder then reads as it reads a provider's: the
+    // flagged answer's value mapped, and its complement under the other answer. No scale is named, because
+    // the scale member names the provider's, and no provider produced this.
+    private static Evidence Calibrate(EvidenceCalibration calibration, BooleanRule rule, Evidence evidence)
+    {
+        double flagged = calibration.Apply(evidence.Values[FlaggedKey(rule)]);
+        Dictionary<string, double> values = new(StringComparer.Ordinal)
+        {
+            ["true"] = rule.FlaggedAnswer ? flagged : 1 - flagged,
+            ["false"] = rule.FlaggedAnswer ? 1 - flagged : flagged,
+        };
+        return new Evidence(EvidenceKind.Probability, values);
     }
 
     private static string? CheckOption(ChoiceRule rule, DecisionValue value)
@@ -303,7 +328,7 @@ public static class PolicyEvaluation
         List<Attempt> trace) =>
         rule switch
         {
-            BooleanRule boolean => DecideBoolean(boolean, point!, reading.Evidence!, index, trace),
+            BooleanRule boolean => DecideBoolean(boolean, point!, reading.Calibrated ?? reading.Evidence!, index, trace),
             ChoiceRule choice => DecideChoice(choice, (ChoiceValue)reading.Value, index, trace),
             ScoreRule score => DecideScore(score, (ScoreValue)reading.Value, index, trace),
             _ => throw new UnreachableException(),
@@ -388,7 +413,7 @@ public static class PolicyEvaluation
         return -1;
     }
 
-    private static RuleOperatingPoint? OperatingPointFor(ProviderBinding binding, string ruleId) =>
+    internal static RuleOperatingPoint? OperatingPointFor(ProviderBinding binding, string ruleId) =>
         binding.OperatingPoints.FirstOrDefault(point => string.Equals(point.RuleId, ruleId, StringComparison.Ordinal));
 
     // A stored result can deserialize with no evidence list at all; that reads as no evidence of any
@@ -396,10 +421,17 @@ public static class PolicyEvaluation
     private static Evidence? FindEvidence(IReadOnlyList<Evidence>? evidence, EvidenceKind kind) =>
         evidence?.FirstOrDefault(entry => entry is not null && entry.Kind == kind && entry.Values is not null);
 
+    // Without a name on either side there is nothing to compare, and a provider that never reports its model
+    // would otherwise be marked on every call. A stored result can deserialize without its provider.
+    private static bool FittedOnAnotherModel(ProviderResult result, EvidenceCalibration calibration) =>
+        result.Provider?.Model is { } model
+        && calibration.Provenance?.Model is { } fitted
+        && !string.Equals(model, fitted, StringComparison.Ordinal);
+
     private static string FlaggedKey(BooleanRule rule) => rule.FlaggedAnswer ? "true" : "false";
 
     // What a success yielded once it passed the contract: its typed value, the evidence entry the
-    // operating point reads (completed, for a one-sided Boolean probability), and the margin on it
-    // when a gate applies.
-    private readonly record struct Reading(DecisionValue Value, Evidence? Evidence, double? Margin);
+    // operating point reads (completed, for a one-sided Boolean probability), the margin on it when a
+    // gate applies, and at a calibrated point the probability evidence the calibration made of it.
+    private readonly record struct Reading(DecisionValue Value, Evidence? Evidence, double? Margin, Evidence? Calibrated);
 }

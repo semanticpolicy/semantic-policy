@@ -88,6 +88,45 @@ public sealed class PolicyTests
         spelledOut.Should().BeEquivalentTo(shorthand, Exactly);
     }
 
+    [Fact]
+    public void ForRule_Calibrate_Sets_The_Last_Calibration_Of_That_Rule_Only()
+    {
+        EvidenceCalibration first = new(
+            CalibrationMethod.Platt,
+            EvidenceKind.Probability,
+            CalibrationTransform.LogOdds,
+            Slope: 1.2,
+            Intercept: 0.1);
+        EvidenceCalibration second = first with { Slope = 0.9, Intercept = -0.3 };
+        BooleanRule calibrated = Policy.Rule("calibrated").Boolean("q1").WhenTrue(Verdict.Warn, Verdict.Deny);
+        BooleanRule plain = Policy.Rule("plain").Boolean("q2").WhenTrue(Verdict.Warn, Verdict.Deny);
+
+        Policy policy = Policy.Define("p").Shadow().Rule(calibrated).Rule(plain)
+            .Using("jev", b => b
+                .ForRule("calibrated", op => op
+                    .WarnAboveProbability(0.6)
+                    .DenyAboveProbability(0.9)
+                    .Calibrate(first)
+                    .Calibrate(second))
+                .ForRule("plain", op => op.WarnAboveProbability(0.6).DenyAboveProbability(0.9)))
+            .OnFailure(FailureBehavior.Allow)
+            .Build();
+
+        IReadOnlyList<RuleOperatingPoint> points = policy.Bindings.Single().OperatingPoints;
+        points.Single(point => point.RuleId == "calibrated").Calibration.Should().BeSameAs(second);
+        points.Single(point => point.RuleId == "plain").Calibration.Should().BeNull();
+    }
+
+    [Fact]
+    public void Calibrate_Rejects_A_Null_Calibration()
+    {
+        Action build = () => Policy.Define("p").Shadow()
+            .Rule(Policy.Rule("r").Boolean("q").WhenTrue(Verdict.Warn, Verdict.Deny))
+            .Using("jev", b => b.ForRule("r", op => op.Calibrate(null!)));
+
+        build.Should().Throw<ArgumentNullException>().WithParameterName("calibration");
+    }
+
     // Rules are compared as the record they are, not as the abstract Rule, and lists in declared order.
     private static EquivalencyOptions<Policy> Exactly(EquivalencyOptions<Policy> options) =>
         options.PreferringRuntimeMemberTypes().WithStrictOrdering();

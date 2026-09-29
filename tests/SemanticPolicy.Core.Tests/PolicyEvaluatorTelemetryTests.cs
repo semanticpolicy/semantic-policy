@@ -277,6 +277,101 @@ public sealed class PolicyEvaluatorTelemetryTests
         error.ProviderId.Should().Be("ghost");
     }
 
+    // Both bindings calibrate score evidence with σ(2 · x + 3 · ln 3): an even score on "first" is gated
+    // on its own margin of 0, and a score of 0.25 on "second" maps to 0.75, which crosses Warn.
+    [Fact]
+    public async Task Calibrated_Attempt_Span_Carries_The_Calibrated_Evidence_And_The_Method()
+    {
+        ScriptedProvider first = new ScriptedProvider("one").Returns(Scored(0.5));
+        ScriptedProvider second = new ScriptedProvider("two").Returns(Scored(0.25));
+        PolicyEvaluator evaluator = Evaluator(("first", first), ("second", second));
+        Policy policy = Policy.Define("tel-calibrated")
+            .Enforce()
+            .Rule(Policy.Rule("a").Boolean("question-a").WhenTrue(Verdict.Warn, Verdict.Deny))
+            .Using("first", b => b.ForRule("a", p => p
+                .WarnAboveProbability(0.6)
+                .DenyAboveProbability(0.9)
+                .WhenScoreMarginBelow(0.2)
+                .Calibrate(FromScore())))
+            .Using("second", b => b.ForRule("a", p => p
+                .WarnAboveProbability(0.6)
+                .DenyAboveProbability(0.9)
+                .Calibrate(FromScore())))
+            .OnFailure(FailureBehavior.Deny)
+            .Build();
+        using ActivityRecorder recorder = new();
+
+        PolicyVerdict verdict = await evaluator.EvaluateAsync(policy, _context, TestContext.Current.CancellationToken);
+
+        verdict.Evaluated.Should().Be(Verdict.Warn);
+        Activity parent = recorder.Stopped.Should().ContainSingle(activity =>
+            activity.OperationName == EvaluateActivity && Equals(activity.GetTagItem(PolicyIdTag), "tel-calibrated"))
+            .Subject;
+        Activity[] children = [.. recorder.Stopped.Where(activity => activity.Parent == parent)];
+        children.Should().HaveCount(2);
+        Tags(children.Single(child => Is(child, "a", "first"))).Should().Equal(new Dictionary<string, object?>
+        {
+            [RuleIdTag] = "a",
+            [ProviderIdTag] = "first",
+            [ProviderModelTag] = "scripted-model",
+            [DecisionTypeTag] = "boolean",
+            [OutcomeStatusTag] = "success",
+            [MarginTag] = 0.0,
+            [CalibrationMethodTag] = "platt",
+            [ChainMovedByTag] = "gate",
+            [FallbackToTag] = "second",
+        });
+        Dictionary<string, object?> decided = Tags(children.Single(child => Is(child, "a", "second")));
+        decided.Should().ContainKey(EvidenceValueTag)
+            .WhoseValue.Should().BeOfType<double>().Which.Should().BeApproximately(0.75, 1e-9);
+        decided.Remove(EvidenceValueTag);
+        decided.Should().Equal(new Dictionary<string, object?>
+        {
+            [RuleIdTag] = "a",
+            [ProviderIdTag] = "second",
+            [ProviderModelTag] = "scripted-model",
+            [DecisionTypeTag] = "boolean",
+            [OutcomeStatusTag] = "success",
+            [EvidenceKindTag] = "probability",
+            [ThresholdCrossedTag] = "warn",
+            [CalibrationMethodTag] = "platt",
+        });
+    }
+
+    public static TheoryData<string, object?> FittedModels => new()
+    {
+        { "another-model", true },
+        { "scripted-model", null },
+    };
+
+    [Theory]
+    [MemberData(nameof(FittedModels))]
+    public async Task Model_Mismatch_Is_Tagged_On_The_Attempt_Span(string fittedOn, object? mismatch)
+    {
+        string id = $"tel-mismatch-{fittedOn}";
+        ScriptedProvider provider = new ScriptedProvider("one").Returns(Scored(0.25));
+        PolicyEvaluator evaluator = Evaluator(("first", provider));
+        Policy policy = Policy.Define(id)
+            .Enforce()
+            .Rule(Policy.Rule("a").Boolean("question-a").WhenTrue(Verdict.Warn, Verdict.Deny))
+            .Using("first", b => b.ForRule("a", p => p
+                .WarnAboveProbability(0.6)
+                .DenyAboveProbability(0.9)
+                .Calibrate(FromScore(fittedOn))))
+            .OnFailure(FailureBehavior.Deny)
+            .Build();
+        using ActivityRecorder recorder = new();
+
+        await evaluator.EvaluateAsync(policy, _context, TestContext.Current.CancellationToken);
+
+        Activity parent = recorder.Stopped.Should().ContainSingle(activity =>
+            activity.OperationName == EvaluateActivity && Equals(activity.GetTagItem(PolicyIdTag), id))
+            .Subject;
+        Activity span = recorder.Stopped.Should().ContainSingle(activity => activity.Parent == parent).Subject;
+        span.GetTagItem(CalibrationMethodTag).Should().Be("platt");
+        span.GetTagItem(CalibrationModelMismatchTag).Should().Be(mismatch);
+    }
+
     private static bool Is(Activity child, string ruleId, string providerId) =>
         Equals(child.GetTagItem(RuleIdTag), ruleId) && Equals(child.GetTagItem(ProviderIdTag), providerId);
 
@@ -300,6 +395,22 @@ public sealed class PolicyEvaluatorTelemetryTests
             new BooleanValue(probability >= 0.5),
             ("true", probability),
             ("false", 1 - probability));
+
+    private static ProviderResult Scored(double score) =>
+        ScriptedProvider.Success(new BooleanValue(score >= 0.5)) with
+        {
+            Evidence = [new Evidence(EvidenceKind.Score, new Dictionary<string, double> { ["true"] = score, ["false"] = 1 - score })],
+        };
+
+    // σ(2 · x + 3 · ln 3) on the log-odds of a score, fitted on the named model when one is given.
+    private static EvidenceCalibration FromScore(string? fittedOn = null) =>
+        new(
+            CalibrationMethod.Platt,
+            EvidenceKind.Score,
+            CalibrationTransform.LogOdds,
+            Slope: 2,
+            Intercept: 3 * Math.Log(3),
+            fittedOn is null ? null : new CalibrationProvenance(Model: fittedOn));
 
     // Shadow, a 100 ms budget and Fallback(then: Deny) over "first" then "second". Rule "a" is gated on
     // "first" only; rule "b" is not gated. Both are Warn at 0.6 / Deny at 0.9 on probability everywhere.

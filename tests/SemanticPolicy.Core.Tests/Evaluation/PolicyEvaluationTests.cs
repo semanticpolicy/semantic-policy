@@ -125,6 +125,27 @@ public sealed class PolicyEvaluationTests
         first["provider"]!["id"]!.GetValue<string>().Should().Be("local");
         rules[1]!["attempts"]![0]!["result"]!["value"]!.GetValue<bool>().Should().BeFalse();
         json.Should().NotContain("raw-marker").And.NotContain("\"raw\"");
+        json.Should().NotContain("calibratedEvidence").And.NotContain("calibrationModelMismatch");
+
+        EvidenceCalibration calibration = Platt(EvidenceKind.Score, CalibrationTransform.LogOdds, 2, 3 * Math.Log(3)) with
+        {
+            Provenance = new CalibrationProvenance("model-x"),
+        };
+        ProviderResult scored = Answer(new BooleanValue(false), Of(EvidenceKind.Score, ("true", 0.25), ("false", 0.75))) with
+        {
+            Raw = raw,
+        };
+        PolicyVerdict calibrated = PolicyEvaluation.Evaluate(Calibrated(calibration), Attempts((_rule, 0, scored))).Verdict!;
+
+        string calibratedJson = JsonSerializer.Serialize(calibrated, SemanticPolicyJson.Options);
+
+        JsonNode attempt = JsonNode.Parse(calibratedJson)!["rules"]![0]!["attempts"]![0]!;
+        attempt["result"]!["evidence"]![0]!["kind"]!.GetValue<string>().Should().Be("score");
+        attempt["calibratedEvidence"]!["kind"]!.GetValue<string>().Should().Be("probability");
+        attempt["calibratedEvidence"]!["values"]!["true"]!.GetValue<double>().Should().BeApproximately(0.75, 1e-9);
+        attempt["calibratedEvidence"]!["values"]!["false"]!.GetValue<double>().Should().BeApproximately(0.25, 1e-9);
+        attempt["calibrationModelMismatch"]!.GetValue<bool>().Should().BeTrue();
+        calibratedJson.Should().NotContain("raw-marker").And.NotContain("\"raw\"");
     }
 
     [Fact]
@@ -369,6 +390,7 @@ public sealed class PolicyEvaluationTests
                 .DenyAtOrAbove("serious")
                 .Build();
             Policy level = Define(FailureBehavior.Deny, ["local"], [severity]);
+            Policy calibrated = Calibrated(Platt(EvidenceKind.Score, CalibrationTransform.LogOdds, 1.5, 0));
             ProviderResult good = BooleanAnswer(0.95);
 
             return new TheoryData<string, Policy, ProviderResult>
@@ -403,6 +425,16 @@ public sealed class PolicyEvaluationTests
                     gatedChoice,
                     Answer(new ChoiceValue("allow"), Probability(("allow", 0.9)))
                 },
+                {
+                    "calibrated point without its source kind's evidence",
+                    calibrated,
+                    Answer(new BooleanValue(true), Probability(("true", 0.95), ("false", 0.05)))
+                },
+                {
+                    "one-key score evidence at a calibrated point",
+                    calibrated,
+                    Answer(new BooleanValue(true), Of(EvidenceKind.Score, ("true", 0.8)))
+                },
             };
         }
     }
@@ -431,6 +463,257 @@ public sealed class PolicyEvaluationTests
         attempt.EffectiveOutcome.Kind.Should().Be(FailureKind.Malformed);
         attempt.Disposition.Should().Be(AttemptDisposition.TerminatedByFailure);
         attempt.Margin.Should().BeNull();
+    }
+
+    // Each expected value is a closed form, σ(ln k) = k / (1 + k): the Score row maps its raw 0.25 through
+    // 2 · ln(1/3) + 3 · ln 3 = ln 3 to 0.75, the Logit row its raw 0.5 through 2 · 0.5 + ln 19 − 1 = ln 19 to
+    // 0.95, and the one-key Probability row, flagged on false, completes 0.75 on true to 0.25 on false before
+    // mapping it through ln(1/3) + ln 9 = ln 3 to 0.75 — where 1 − Apply(0.75) would be 1/28, an Allow.
+    public static TheoryData<string, bool, EvidenceCalibration, Evidence, Verdict, double> CalibratedLadders => new()
+    {
+        {
+            "score under log-odds",
+            true,
+            Platt(EvidenceKind.Score, CalibrationTransform.LogOdds, 2, 3 * Math.Log(3)),
+            Of(EvidenceKind.Score, ("true", 0.25), ("false", 0.75)),
+            Verdict.Warn,
+            0.75
+        },
+        {
+            "logit under identity",
+            true,
+            Platt(EvidenceKind.Logit, CalibrationTransform.Identity, 2, Math.Log(19) - 1),
+            Of(EvidenceKind.Logit, ("true", 0.5), ("false", -0.5)),
+            Verdict.Deny,
+            0.95
+        },
+        {
+            "one-key probability flagged on false",
+            false,
+            Platt(EvidenceKind.Probability, CalibrationTransform.LogOdds, 1, Math.Log(9)),
+            Probability(("true", 0.75)),
+            Verdict.Warn,
+            0.75
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(CalibratedLadders))]
+    public void Calibrated_Point_Decides_The_Ladder_On_The_Calibrated_Probability(
+        string label,
+        bool flaggedAnswer,
+        EvidenceCalibration calibration,
+        Evidence evidence,
+        Verdict expected,
+        double calibrated)
+    {
+        Policy policy = Calibrated(calibration, Flagged(answer: flaggedAnswer));
+        var attempts = Attempts((_rule, 0, Answer(new BooleanValue(true), evidence)));
+
+        RuleVerdict rule = PolicyEvaluation.Evaluate(policy, attempts).Verdict!.Rules.Single();
+
+        rule.Verdict.Should().Be(expected, label);
+        rule.Source.Should().Be(VerdictSource.Threshold, label);
+        rule.RungCrossed.Should().Be(expected, label);
+        rule.EvidenceKind.Should().Be(EvidenceKind.Probability, label);
+        rule.EvidenceValue.Should().BeApproximately(calibrated, 1e-9, label);
+        Evidence produced = rule.Attempts.Single().CalibratedEvidence!;
+        string flagged = flaggedAnswer ? "true" : "false";
+        string other = flaggedAnswer ? "false" : "true";
+        produced.Values.Keys.Should().BeEquivalentTo(["true", "false"], label);
+        produced.Values[flagged].Should().BeApproximately(calibrated, 1e-9, label);
+        produced.Values[other].Should().BeApproximately(1 - calibrated, 1e-9, label);
+    }
+
+    [Fact]
+    public void Calibrated_Attempt_Keeps_The_Result_And_Carries_The_Calibrated_Evidence()
+    {
+        EvidenceCalibration calibration = Platt(EvidenceKind.Score, CalibrationTransform.LogOdds, 1, Math.Log(9));
+        Policy policy = Policy.Define("p").Enforce().Rule(Flagged())
+            .Using("local", b => b.ForRule(_rule, op => op
+                .WarnAboveProbability(0.6)
+                .DenyAboveProbability(0.9)
+                .WhenScoreMarginBelow(0.2)
+                .Calibrate(calibration)))
+            .Using("plain", b => b.WarnAboveProbability(0.6).DenyAboveProbability(0.9).WhenProbabilityMarginBelow(0.2))
+            .Using("jev", b => b.ForRule(_rule, op => op.WarnAboveProbability(0.6).DenyAboveProbability(0.9).Calibrate(calibration)))
+            .OnFailure(FailureBehavior.Deny)
+            .Build();
+        ProviderResult gated = Answer(new BooleanValue(true), Of(EvidenceKind.Score, ("true", 0.55), ("false", 0.45)));
+        ProviderResult flat = BooleanAnswer(0.52);
+        ProviderResult deciding = Answer(new BooleanValue(false), Of(EvidenceKind.Score, ("true", 0.25), ("false", 0.75)));
+
+        RuleVerdict rule = PolicyEvaluation.Evaluate(policy, Attempts((_rule, 0, gated), (_rule, 1, flat), (_rule, 2, deciding)))
+            .Verdict!.Rules.Single();
+
+        rule.Attempts.Select(attempt => attempt.Disposition).Should().Equal(
+            AttemptDisposition.MovedOnByGate,
+            AttemptDisposition.MovedOnByGate,
+            AttemptDisposition.Decided);
+        rule.Attempts.Select(attempt => attempt.Result).Should().Equal(gated, flat, deciding);
+        gated.Evidence.Should().ContainSingle().Which.Values["true"].Should().Be(0.55);
+        rule.Attempts[1].CalibratedEvidence.Should().BeNull();
+        (Attempt Attempt, double True)[] calibrated = [(rule.Attempts[0], 11.0 / 12), (rule.Attempts[2], 0.75)];
+        foreach ((Attempt attempt, double pTrue) in calibrated)
+        {
+            Evidence evidence = attempt.CalibratedEvidence!;
+            evidence.Kind.Should().Be(EvidenceKind.Probability);
+            evidence.Scale.Should().BeNull();
+            evidence.Values.Keys.Should().BeEquivalentTo(["true", "false"]);
+            evidence.Values["true"].Should().BeApproximately(pTrue, 1e-9);
+            evidence.Values["false"].Should().BeApproximately(1 - pTrue, 1e-9);
+        }
+
+        rule.Attempts.Should().AllSatisfy(attempt => attempt.CalibrationModelMismatch.Should().BeFalse());
+        rule.Verdict.Should().Be(Verdict.Warn);
+    }
+
+    public static TheoryData<string, CalibrationProvenance?, string?, bool> ModelPairs => new()
+    {
+        { "same model", new CalibrationProvenance("model-l"), "model-l", false },
+        { "another model", new CalibrationProvenance("model-x"), "model-l", true },
+        { "the same name in another case", new CalibrationProvenance("Model-L"), "model-l", true },
+        { "result names no model", new CalibrationProvenance("model-x"), null, false },
+        { "provenance names no model", new CalibrationProvenance(DatasetDigest: "sha256:digest-marker"), "model-l", false },
+        { "no provenance", null, "model-l", false },
+    };
+
+    [Theory]
+    [MemberData(nameof(ModelPairs))]
+    public void Model_Mismatch_Is_Marked_Only_When_Both_Models_Are_Named_And_Differ(
+        string label,
+        CalibrationProvenance? provenance,
+        string? model,
+        bool marked)
+    {
+        EvidenceCalibration calibration = Platt(EvidenceKind.Score, CalibrationTransform.LogOdds, 2, 3 * Math.Log(3)) with
+        {
+            Provenance = provenance,
+        };
+        ProviderResult result = Answer(new BooleanValue(false), Of(EvidenceKind.Score, ("true", 0.25), ("false", 0.75))) with
+        {
+            Provider = _provider with { Model = model },
+        };
+
+        RuleVerdict rule = PolicyEvaluation.Evaluate(Calibrated(calibration), Attempts((_rule, 0, result)))
+            .Verdict!.Rules.Single();
+
+        rule.Attempts.Single().CalibrationModelMismatch.Should().Be(marked, label);
+        rule.Verdict.Should().Be(Verdict.Warn, label);
+        rule.EvidenceValue.Should().BeApproximately(0.75, 1e-9, label);
+    }
+
+    [Fact]
+    public void Native_Probability_Does_Not_Replace_The_Calibrated_Value()
+    {
+        Policy policy = Calibrated(Platt(EvidenceKind.Score, CalibrationTransform.LogOdds, 2, 3 * Math.Log(3)));
+        ProviderResult result = Answer(
+            new BooleanValue(true),
+            Of(EvidenceKind.Score, ("true", 0.25), ("false", 0.75)),
+            Probability(("true", 0.95), ("false", 0.05)));
+
+        RuleVerdict rule = PolicyEvaluation.Evaluate(policy, Attempts((_rule, 0, result))).Verdict!.Rules.Single();
+
+        rule.Verdict.Should().Be(Verdict.Warn);
+        rule.EvidenceKind.Should().Be(EvidenceKind.Probability);
+        rule.EvidenceValue.Should().BeApproximately(0.75, 1e-9);
+    }
+
+    // A raw margin of 0.1 under the 0.2 gate, which the calibration spreads to 11/12 − 1/12; and a raw margin
+    // of 0.6 above it, which the calibration flattens to σ(0) − σ(0) = 0.
+    public static TheoryData<string, EvidenceCalibration, Evidence, bool, double> CalibratedGates => new()
+    {
+        {
+            "raw margin under the gate, calibrated margin above it",
+            Platt(EvidenceKind.Score, CalibrationTransform.LogOdds, 1, Math.Log(9)),
+            Of(EvidenceKind.Score, ("true", 0.55), ("false", 0.45)),
+            true,
+            0.1
+        },
+        {
+            "raw margin above the gate, calibrated margin under it",
+            Platt(EvidenceKind.Score, CalibrationTransform.LogOdds, 1, -Math.Log(4)),
+            Of(EvidenceKind.Score, ("true", 0.8), ("false", 0.2)),
+            false,
+            0.6
+        },
+    };
+
+    [Theory]
+    [MemberData(nameof(CalibratedGates))]
+    public void Calibrated_Point_Gate_Reads_The_Providers_Own_Margin(
+        string label,
+        EvidenceCalibration calibration,
+        Evidence evidence,
+        bool movesOn,
+        double margin)
+    {
+        Policy policy = Calibrated(calibration, providers: ["local", "jev"], gate: 0.2);
+        var attempts = Attempts((_rule, 0, Answer(new BooleanValue(true), evidence)));
+
+        EvaluationStep step = PolicyEvaluation.Evaluate(policy, attempts);
+
+        if (movesOn)
+        {
+            step.Required.Should().Equal([new AttemptKey(_rule, 1)], label);
+            return;
+        }
+
+        RuleVerdict rule = step.Verdict!.Rules.Single();
+        rule.DecidingBinding.Should().Be(0, label);
+        rule.Verdict.Should().Be(Verdict.Allow, label);
+        rule.EvidenceValue.Should().BeApproximately(0.5, 1e-9, label);
+        Attempt attempt = rule.Attempts.Should().ContainSingle().Subject;
+        attempt.Disposition.Should().Be(AttemptDisposition.Decided, label);
+        attempt.Margin.Should().BeApproximately(margin, 1e-9, label);
+    }
+
+    // A policy's thresholds converted through a calibration's arithmetic, computed here in one process, flag
+    // the rows the original flagged. Every stored value sits well clear of every raw threshold — 0.4 and 0.8
+    // before the first calibration, about 0.54 and 0.82 behind the re-fit's — so an ulp decides nothing.
+    public static TheoryData<string, Policy, Policy> Conversions
+    {
+        get
+        {
+            EvidenceCalibration first = Platt(EvidenceKind.Score, CalibrationTransform.LogOdds, 1.3, 0.2);
+            EvidenceCalibration refit = Platt(EvidenceKind.Score, CalibrationTransform.LogOdds, 0.8, -0.5);
+            Policy raw = Policy.Define("p").Enforce().Rule(Flagged())
+                .Using("local", b => b.WarnAboveScore(0.4).DenyAboveScore(0.8))
+                .OnFailure(FailureBehavior.Deny)
+                .Build();
+
+            return new TheoryData<string, Policy, Policy>
+            {
+                {
+                    "first calibration",
+                    raw,
+                    Calibrated(first, warn: first.Apply(0.4), deny: first.Apply(0.8))
+                },
+                {
+                    "re-fit",
+                    Calibrated(first),
+                    Calibrated(refit, warn: refit.Apply(first.Invert(0.6)), deny: refit.Apply(first.Invert(0.9)))
+                },
+            };
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Conversions))]
+    public void Thresholds_Converted_Through_The_Calibration_Flag_The_Same_Rows(string label, Policy before, Policy after)
+    {
+        double[] stored = [0.05, 0.35, 0.45, 0.6, 0.7, 0.85, 0.95];
+        foreach (double value in stored)
+        {
+            var attempts = Attempts(
+                (_rule, 0, Answer(new BooleanValue(value >= 0.5), Of(EvidenceKind.Score, ("true", value), ("false", 1 - value)))));
+
+            RuleVerdict was = PolicyEvaluation.Evaluate(before, attempts).Verdict!.Rules.Single();
+            RuleVerdict now = PolicyEvaluation.Evaluate(after, attempts).Verdict!.Rules.Single();
+
+            now.Source.Should().Be(VerdictSource.Threshold, label);
+            (now.Verdict, now.RungCrossed).Should().Be((was.Verdict, was.RungCrossed), $"{label}, stored {value}");
+        }
     }
 
     // Every policy here is "p": the rules given, the providers given in chain order, and on each provider
@@ -467,6 +750,50 @@ public sealed class PolicyEvaluationTests
 
         return builder.OnFailure(onFailure).Build();
     }
+
+    // Policy "p" with the rule given, or the flagged "injection", on each provider given, or "local" alone:
+    // Warn at warn / Deny at deny on the probability the calibration produces, and the gate on the
+    // calibration's source kind when one is asked for.
+    private static Policy Calibrated(
+        EvidenceCalibration calibration,
+        BooleanRule? rule = null,
+        string[]? providers = null,
+        double? gate = null,
+        double warn = 0.6,
+        double deny = 0.9)
+    {
+        BooleanRule flagged = rule ?? Flagged();
+        PolicyBuilder builder = Policy.Define("p").Enforce().Rule(flagged);
+        foreach (string provider in providers ?? ["local"])
+        {
+            builder.Using(provider, b => b.ForRule(flagged.Id, op =>
+            {
+                op.WarnAboveProbability(warn).DenyAboveProbability(deny).Calibrate(calibration);
+                if (gate is not { } below)
+                {
+                    return;
+                }
+
+                if (calibration.SourceKind == EvidenceKind.Score)
+                {
+                    op.WhenScoreMarginBelow(below);
+                }
+                else
+                {
+                    op.WhenProbabilityMarginBelow(below);
+                }
+            }));
+        }
+
+        return builder.OnFailure(FailureBehavior.Deny).Build();
+    }
+
+    private static EvidenceCalibration Platt(
+        EvidenceKind source,
+        CalibrationTransform transform,
+        double slope,
+        double intercept) =>
+        new(CalibrationMethod.Platt, source, transform, slope, intercept);
 
     private static BooleanRule Flagged(string id = _rule, bool answer = true) =>
         answer

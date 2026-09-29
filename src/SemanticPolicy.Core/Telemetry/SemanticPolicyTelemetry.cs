@@ -79,12 +79,29 @@ public static class SemanticPolicyTelemetry
     public const string OutcomeFailureKindTag = "semanticpolicy.outcome.failure_kind";
 
     /// <summary>
-    /// The kind of evidence a decided Boolean rule was read on: <c>probability</c>, <c>score</c>, …
+    /// The kind of evidence a decided Boolean rule was read on: <c>probability</c>, <c>score</c>, … At a
+    /// calibrated operating point it is <c>probability</c>, the kind the calibration produces.
     /// </summary>
     public const string EvidenceKindTag = "semanticpolicy.evidence.kind";
 
-    /// <summary>The flagged answer's evidence of that kind, the number the ladder was read against.</summary>
+    /// <summary>
+    /// The flagged answer's evidence of that kind, the number the ladder was read against. At a calibrated
+    /// operating point it is the calibrated probability — an estimate fitted on labelled data, which can be
+    /// wrong on inputs unlike that data — not the provider's own value.
+    /// </summary>
     public const string EvidenceValueTag = "semanticpolicy.evidence.value";
+
+    /// <summary>
+    /// The calibration method, <c>platt</c>, on an attempt read at a calibrated operating point — whether it
+    /// decided the rule or a gate moved the chain past it. Absent on every other attempt.
+    /// </summary>
+    public const string CalibrationMethodTag = "semanticpolicy.calibration.method";
+
+    /// <summary>
+    /// <see langword="true"/> on a calibrated attempt whose result names a model other than the one the
+    /// calibration was fitted on; absent otherwise, including when either model is not named.
+    /// </summary>
+    public const string CalibrationModelMismatchTag = "semanticpolicy.calibration.model_mismatch";
 
     /// <summary>The gap between the top answer and the runner-up, on an attempt a margin gate applied to.</summary>
     public const string MarginTag = "semanticpolicy.margin";
