@@ -13,8 +13,9 @@ namespace SemanticPolicy.Evals.Results;
 /// <param name="Split">Which rows the numbers were chosen on and which they are reported on.</param>
 /// <param name="Rungs">One entry per ladder rung of a Boolean rule, in ladder order; empty for any other rule.</param>
 /// <param name="Conflict">
-/// Whether the thresholds, as recommended or kept, fail to increase with severity. Such a set is reported as
-/// it is: the tool does not move one to make room for another.
+/// Whether the thresholds, as recommended or kept, fail to increase with severity; a rung whose goals cannot be
+/// met keeps the number it was swept at. Such a set is reported as it is: the tool does not move one to make
+/// room for another.
 /// </param>
 /// <param name="Gate">
 /// The gate's curve and recommendation, or <see langword="null"/> when the binding declares no evidence kind a

@@ -103,8 +103,10 @@ public static class OperatingPointSweep
             };
             if (end is not null)
             {
+                // Conflicts reads only the thresholds a rung reports, and a rung whose goals cannot be met reports none
+                // while the pass keeps it at the number it was swept at; the pass end reads that number too.
                 string provider = policy.Bindings[bindingIndex].ProviderId;
-                bool conflict = Conflicts(pass.Rungs).Count > 0;
+                bool conflict = end.End == PassesEnd.Conflict || Conflicts(pass.Rungs).Count > 0;
                 return (new SweepSection(provider, wording, pass.Rungs, conflict, pass.Gate, end), current);
             }
 

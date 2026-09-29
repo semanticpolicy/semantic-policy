@@ -454,6 +454,49 @@ public sealed class SweepVerbTests
         passes.GetProperty("end").GetString().Should().Be("conflict");
     }
 
+    [Fact]
+    public async Task A_Pick_Above_The_Number_An_Infeasible_Rung_Keeps_Is_A_Conflict_No_Pair_Line_Can_Name()
+    {
+        using CliFixture fixture = await CliFixture.CreateAsync(Guard(), Graded());
+
+        // Recall 0.2 holds up to 0.95, above the 0.9 deny keeps when recall 1 and fpr 0 never hold together. Deny
+        // reports no threshold, so there is no pair for a conflict line to print.
+        CliRun run = await fixture.RunAsync(
+            "sweep", "--warn", "min-recall=0.2", "--deny", "min-recall=1", "--deny", "max-fpr=0");
+
+        run.ExitCode.Should().Be(ExitCodes.InfeasibleConstraint);
+        run.Output.Should().Contain("warn: min-recall=0.2 → threshold 0.95, ");
+        run.Output.Should().Contain(
+            "\nstopped after 1 pass: the thresholds picked and the number an infeasible rung keeps do not increase with "
+            + "severity, so no policy can hold them for another pass, and the gate is measured at the ones the pass "
+            + "started from");
+        run.Output.Should().NotContain("conflict: ");
+        JsonElement sweep = fixture.ReadOut().GetProperty("sweep");
+        sweep.GetProperty("conflict").GetBoolean().Should().BeTrue();
+        sweep.GetProperty("passes").GetProperty("end").GetString().Should().Be("conflict");
+    }
+
+    [Fact]
+    public async Task A_Sweep_That_Settles_With_A_Goal_Unmet_Says_So_Rather_Than_That_It_Picked_The_Kept_Number()
+    {
+        using CliFixture fixture = await CliFixture.CreateAsync(Guard(), Graded());
+
+        // Recall 1 holds up to 0.35 and fpr 0 from 0.75 on, so deny keeps the 0.9 it is swept at in every pass.
+        CliRun once = await fixture.RunAsync("sweep", "--deny", "min-recall=1", "--deny", "max-fpr=0");
+        CliRun twice = await fixture.RunAsync(
+            "sweep", "--warn", "min-recall=0.8", "--deny", "min-recall=1", "--deny", "max-fpr=0");
+
+        once.ExitCode.Should().Be(ExitCodes.InfeasibleConstraint);
+        once.Output.Should().Contain(
+            "\nsettled in 1 pass with a goal unmet: what is infeasible above keeps the policy file's number, and the file "
+            + "already holds every pick");
+        once.Output.Should().NotContain("these picks");
+        twice.ExitCode.Should().Be(ExitCodes.InfeasibleConstraint);
+        twice.Output.Should().Contain(
+            "\nsettled in 2 passes with a goal unmet: each pass was swept at the picks of the one before, the last one "
+            + "picked what it was swept at, and what is infeasible above keeps the number it was swept at");
+    }
+
     // The rows of the table printed under the line that starts with the title: past the header and the rule of
     // dashes under it, up to the blank line that ends the table.
     private static int TableRows(string[] lines, string title)
