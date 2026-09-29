@@ -338,6 +338,7 @@ Replays a recording at the policy file's thresholds and gates and prints what it
 |---|---|
 | `--recording <file>` | Required. The recording to read. |
 | `--force` | Read the recording although the dataset changed since it was recorded. Answers are matched to rows by id, and the report notes that they may be about other content. |
+| `--diagram <file>` | Also draw the [calibration](#reading-the-report) section as an SVG reliability diagram: each bin's observed frequency against its mean prediction, the diagonal a calibrated provider follows, and every bin's row count, so a sparse bin shows as sparse. Only where the section applies; otherwise nothing is written and standard error says why, as the section does. |
 
 The test rows only, with `$P`, `$D` and `$R` as in the quick start:
 
@@ -520,8 +521,8 @@ Eighty synthetic rows show the two bindings side by side, not which provider rou
   first binding's threshold moves, so with several bindings, judge each provider with `compare`.
   Failed and abstained rows are left out, and the section says so.
 - **calibration** (probability evidence): whether a provider's 0.8 is right eight times in ten: ECE
-  (lower is better), the Brier score and ten bins. Otherwise it reads *"calibration: not
-  applicable:"* and the reason. Nothing is recalibrated.
+  (lower is better), the Brier score and ten bins, which `report --diagram <file>` also draws.
+  Otherwise it reads *"calibration: not applicable:"* and the reason. Nothing is recalibrated.
 - **providers**: per provider, the model, the number of calls, p50 and p95 latency, and each usage
   field summed as the provider reports it, to 15 significant digits, so `cost` is in the provider's
   own unit.
