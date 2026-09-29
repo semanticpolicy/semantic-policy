@@ -57,7 +57,15 @@ public sealed class PolicyJsonTests
                     { "verdict": "warn", "kind": "probability", "atOrAbove": 0.6 },
                     { "verdict": "deny", "kind": "probability", "atOrAbove": 0.9 }
                   ],
-                  "gate": { "kind": "probability", "below": 0.05 }
+                  "gate": { "kind": "probability", "below": 0.05 },
+                  "calibration": {
+                    "method": "platt", "sourceKind": "probability", "transform": "logOdds",
+                    "slope": 0.9, "intercept": -0.25,
+                    "provenance": {
+                      "model": "model-j", "datasetDigest": "sha256:digest-marker", "split": "calibration",
+                      "flaggedRows": 120, "otherRows": 380
+                    }
+                  }
                 }
               ]
             }
@@ -88,6 +96,13 @@ public sealed class PolicyJsonTests
         threshold["kind"]!.GetValue<string>().Should().Be("probability", label);
         document["onFailure"]!["action"]!.GetValue<string>().Should().Be("fallback", label);
         document["onFailure"]!["then"]!.GetValue<string>().Should().Be("deny", label);
+        JsonNode calibration = document["bindings"]![1]!["operatingPoints"]![0]!["calibration"]!;
+        calibration["method"]!.GetValue<string>().Should().Be("platt", label);
+        calibration["sourceKind"]!.GetValue<string>().Should().Be("probability", label);
+        calibration["transform"]!.GetValue<string>().Should().Be("logOdds", label);
+        calibration["provenance"]!["flaggedRows"]!.GetValue<int>().Should().Be(120, label);
+        document["bindings"]![0]!["operatingPoints"]!.AsArray()
+            .Should().AllSatisfy(point => point!.AsObject().ContainsKey("calibration").Should().BeFalse(label));
 
         read.Should().NotBeNull(label);
         read.Invoking(p => p.Validate()).Should().NotThrow(label);
@@ -112,6 +127,11 @@ public sealed class PolicyJsonTests
         "bindings/0/operatingPoints/0/thresholds/0/atOrAbove",
         "bindings/0/operatingPoints/0/gate/kind",
         "bindings/0/operatingPoints/0/gate/below",
+        "bindings/1/operatingPoints/0/calibration/method",
+        "bindings/1/operatingPoints/0/calibration/sourceKind",
+        "bindings/1/operatingPoints/0/calibration/transform",
+        "bindings/1/operatingPoints/0/calibration/slope",
+        "bindings/1/operatingPoints/0/calibration/intercept",
     };
 
     [Theory]
@@ -157,7 +177,17 @@ public sealed class PolicyJsonTests
             .Using("local", b => b.WarnAboveScore(0.4).DenyAboveScore(0.8).WhenScoreMarginBelow(0.1))
             .Using("jev", b => b.ForRule(
                 "prompt-injection",
-                op => op.WarnAboveProbability(0.6).DenyAboveProbability(0.9).WhenProbabilityMarginBelow(0.05)))
+                op => op
+                    .WarnAboveProbability(0.6)
+                    .DenyAboveProbability(0.9)
+                    .WhenProbabilityMarginBelow(0.05)
+                    .Calibrate(new EvidenceCalibration(
+                        CalibrationMethod.Platt,
+                        EvidenceKind.Probability,
+                        CalibrationTransform.LogOdds,
+                        Slope: 0.9,
+                        Intercept: -0.25,
+                        new CalibrationProvenance("model-j", "sha256:digest-marker", "calibration", 120, 380)))))
             .OnFailure(FailureBehavior.Fallback(Verdict.Deny))
             .Budget(TimeSpan.FromSeconds(2))
             .Build();

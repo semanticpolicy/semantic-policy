@@ -89,10 +89,15 @@ public sealed record Policy(
     /// unknown or repeated level, a rung of Allow or Abstain, or rungs whose severity does not increase
     /// along the scale. A binding has an operating point for a rule the policy does not have, or two for
     /// one rule; a Boolean rule has no operating point on it, or one with no thresholds, or thresholds that
-    /// are not exactly one per ladder rung, or values that do not increase with severity; an operating
-    /// point reads more than one evidence kind; a threshold value is not finite, or a Probability threshold
-    /// is outside [0, 1]; a gate is not a finite number greater than zero; a Choice or Score operating point
-    /// carries thresholds. The message names the ids and the error, never a question, an option or a level.
+    /// are not exactly one per ladder rung, or values that do not increase with severity; an uncalibrated
+    /// operating point reads more than one evidence kind; a threshold value is not finite, or a Probability
+    /// threshold is outside [0, 1]; a gate is not a finite number greater than zero; a Choice or Score
+    /// operating point carries thresholds or a calibration. A calibration has an undefined method or
+    /// transform, reads evidence other than Score, Logit or Probability, reads a Logit under LogOdds, or has
+    /// a slope that is not a finite number greater than zero or an intercept that is not finite; a calibrated
+    /// operating point has a threshold on any kind but Probability, or a gate on any kind but the
+    /// calibration's source kind. The message names the ids and the error, never a question, an option or a
+    /// level.
     /// </exception>
     public void Validate()
     {
@@ -388,6 +393,14 @@ public sealed record Policy(
             throw Fail("the margin gate must be a finite number greater than zero.", ruleId, providerId);
         }
 
+        if (point.Calibration is not null && rule is not BooleanRule)
+        {
+            throw Fail(
+                "a calibration belongs to a Boolean rule's operating point; a Choice or Score rule has no threshold to read it.",
+                ruleId,
+                providerId);
+        }
+
         if (rule is not BooleanRule boolean)
         {
             if (point.Thresholds.Count > 0)
@@ -428,17 +441,27 @@ public sealed record Policy(
             throw Fail("the thresholds must be exactly one per ladder rung.", ruleId, providerId);
         }
 
-        EvidenceKind kind = point.Thresholds[0].Kind;
-        if (point.Gate is { } g && g.Kind != kind)
+        // Uncalibrated, the thresholds and the gate read one kind. Calibrated, the thresholds read the
+        // probability the calibration produces, while the gate reads the provider's own evidence, which is
+        // of the calibration's source kind.
+        EvidenceCalibration? calibration = point.Calibration;
+        if (calibration is not null)
         {
-            throw Fail(_oneKind, ruleId, providerId);
+            ValidateCalibration(calibration, ruleId, providerId);
+        }
+
+        EvidenceKind kind = calibration is null ? point.Thresholds[0].Kind : EvidenceKind.Probability;
+        EvidenceKind gateKind = calibration?.SourceKind ?? kind;
+        if (point.Gate is { } g && g.Kind != gateKind)
+        {
+            throw Fail(calibration is null ? _oneKind : _calibratedGateKind, ruleId, providerId);
         }
 
         foreach (Threshold threshold in point.Thresholds)
         {
             if (threshold.Kind != kind)
             {
-                throw Fail(_oneKind, ruleId, providerId);
+                throw Fail(calibration is null ? _oneKind : _calibratedThresholdKind, ruleId, providerId);
             }
 
             if (!double.IsFinite(threshold.AtOrAbove))
@@ -462,7 +485,52 @@ public sealed record Policy(
         }
     }
 
+    private void ValidateCalibration(EvidenceCalibration calibration, string ruleId, string providerId)
+    {
+        if (!Enum.IsDefined(calibration.Method))
+        {
+            throw Fail("the calibration method is not defined.", ruleId, providerId);
+        }
+
+        // A margin carries no distribution to map, and an unknown number has no meaning to fit.
+        if (calibration.SourceKind is not (EvidenceKind.Score or EvidenceKind.Logit or EvidenceKind.Probability))
+        {
+            throw Fail("a calibration reads Score, Logit or Probability evidence.", ruleId, providerId);
+        }
+
+        if (!Enum.IsDefined(calibration.Transform))
+        {
+            throw Fail("the calibration transform is not defined.", ruleId, providerId);
+        }
+
+        // Clamped to [ε, 1 − ε], an unbounded logit would lose everything outside that band, and its log-odds
+        // would be the log-odds of a log-odds.
+        if (calibration.SourceKind == EvidenceKind.Logit && calibration.Transform == CalibrationTransform.LogOdds)
+        {
+            throw Fail("a Logit calibration reads the value itself; LogOdds is for a value in [0, 1].", ruleId, providerId);
+        }
+
+        if (!(double.IsFinite(calibration.Slope) && calibration.Slope > 0))
+        {
+            throw Fail(
+                "the calibration slope must be a finite number greater than zero; Platt's A and B enter negated.",
+                ruleId,
+                providerId);
+        }
+
+        if (!double.IsFinite(calibration.Intercept))
+        {
+            throw Fail("the calibration intercept must be a finite number.", ruleId, providerId);
+        }
+    }
+
     private const string _oneKind = "an operating point reads one evidence kind for all its thresholds and its gate.";
+
+    private const string _calibratedThresholdKind =
+        "a calibrated operating point's thresholds read the calibrated probability, so each must be a Probability threshold.";
+
+    private const string _calibratedGateKind =
+        "a calibrated operating point's gate reads the provider's own evidence, so it must be on the calibration's source kind.";
 
     private PolicyConfigurationException Fail(string error, string? ruleId = null, string? providerId = null) =>
         PolicyConfigurationException.For(Id, error, ruleId, providerId);

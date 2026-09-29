@@ -110,11 +110,35 @@ public sealed class PolicyEvaluatorTests
         provider.Calls.Should().ContainSingle().Which.Token.IsCancellationRequested.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task Evaluator_Accepts_A_Calibrated_Point_Whose_Provider_Declares_Only_The_Source_Kind()
+    {
+        ScriptedProvider provider = new ScriptedProvider(
+                capabilities: ScriptedProvider.Everything with { Evidence = new HashSet<EvidenceKind> { EvidenceKind.Score } })
+            .Returns(Scored(0.25));
+        Policy policy = CalibratedFromScore();
+        PolicyEvaluator evaluator = new([new ProviderRegistration("primary", provider)], [policy]);
+
+        PolicyVerdict registered = await evaluator.EvaluateAsync("p", _context, TestContext.Current.CancellationToken);
+        PolicyVerdict adHoc = await evaluator.EvaluateAsync(policy, _context, TestContext.Current.CancellationToken);
+
+        foreach (PolicyVerdict verdict in new[] { registered, adHoc })
+        {
+            verdict.Evaluated.Should().Be(Verdict.Warn);
+            RuleVerdict rule = verdict.Rules.Should().ContainSingle().Subject;
+            rule.EvidenceKind.Should().Be(EvidenceKind.Probability);
+            rule.EvidenceValue.Should().BeApproximately(0.75, 1e-9);
+        }
+
+        provider.Calls.Should().HaveCount(2);
+    }
+
     public static TheoryData<string> Misconfigurations => new()
     {
         "unknown provider",
         "undeclared threshold kind",
         "undeclared gate kind",
+        "undeclared calibration source kind",
         "unsupported decision type",
         "invalid policy",
         "duplicate provider name",
@@ -134,6 +158,11 @@ public sealed class PolicyEvaluatorTests
         error.ProviderId.Should().Be(setup.ProviderId);
         error.RuleId.Should().Be(setup.RuleId);
         error.Message.Should().NotContain("question-a");
+        if (setup.Names is { } names)
+        {
+            error.Message.Should().Contain(names);
+        }
+
         setup.Primary.Calls.Should().BeEmpty();
     }
 
@@ -320,6 +349,7 @@ public sealed class PolicyEvaluatorTests
         "unknown provider",
         "undeclared threshold kind",
         "undeclared gate kind",
+        "undeclared calibration source kind",
         "unsupported decision type",
         "invalid policy",
     };
@@ -339,6 +369,11 @@ public sealed class PolicyEvaluatorTests
         error.ProviderId.Should().Be(setup.ProviderId);
         error.RuleId.Should().Be(setup.RuleId);
         error.Message.Should().NotContain("question-a");
+        if (setup.Names is { } names)
+        {
+            error.Message.Should().Contain(names);
+        }
+
         setup.Primary.Calls.Should().BeEmpty();
     }
 
@@ -438,6 +473,9 @@ public sealed class PolicyEvaluatorTests
                     .OnFailure(FailureBehavior.Deny)
                     .Build();
                 return One(primary, scoreGated, "p", "primary", _rule);
+            case "undeclared calibration source kind":
+                primary = new(capabilities: everything with { Evidence = Kinds(EvidenceKind.Probability) });
+                return One(primary, CalibratedFromScore(), "p", "primary", _rule) with { Names = "Score" };
             case "unsupported decision type":
                 primary = new(capabilities: everything with { Types = Types(DecisionType.Boolean) });
                 return One(primary, Define(FailureBehavior.Deny, ["primary"], [Graded()]), "p", "primary", _rule);
@@ -475,13 +513,37 @@ public sealed class PolicyEvaluatorTests
 
     private static ProviderRegistration Register(ScriptedProvider provider) => new("primary", provider);
 
+    // Names is what the message must also carry, beyond the ids, when a case asks for more.
     private sealed record Misconfiguration(
         ProviderRegistration[] Providers,
         Policy[] Policies,
         ScriptedProvider Primary,
         string? PolicyId,
         string? ProviderId,
-        string? RuleId);
+        string? RuleId,
+        string? Names = null);
+
+    // Policy "p": rule "r" on "primary", Warn at 0.6 / Deny at 0.9 on the probability a calibration from
+    // score produces — σ(2 · x + 3 · ln 3), which maps a score of 0.25 to 0.75.
+    private static Policy CalibratedFromScore() =>
+        Policy.Define("p").Enforce().Rule(Flagged())
+            .Using("primary", b => b.ForRule(_rule, op => op
+                .WarnAboveProbability(0.6)
+                .DenyAboveProbability(0.9)
+                .Calibrate(new EvidenceCalibration(
+                    CalibrationMethod.Platt,
+                    EvidenceKind.Score,
+                    CalibrationTransform.LogOdds,
+                    Slope: 2,
+                    Intercept: 3 * Math.Log(3)))))
+            .OnFailure(FailureBehavior.Deny)
+            .Build();
+
+    private static ProviderResult Scored(double score) =>
+        ScriptedProvider.Success(new BooleanValue(score >= 0.5)) with
+        {
+            Evidence = [new Evidence(EvidenceKind.Score, new Dictionary<string, double> { ["true"] = score, ["false"] = 1 - score })],
+        };
 
     private static BooleanRule Flagged(string id = _rule) =>
         Policy.Rule(id).Boolean("question-a").WhenTrue(Verdict.Warn, Verdict.Deny);

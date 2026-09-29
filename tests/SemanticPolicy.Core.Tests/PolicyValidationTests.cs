@@ -268,6 +268,73 @@ public sealed class PolicyValidationTests
             "s", "p"
         },
 
+        // Calibration.
+        {
+            "calibration on a choice operating point",
+            () => Base(_choice).Using("p", b => b.ForRule("c", op => op.Calibrate(Platt()))).Build(),
+            "c", "p"
+        },
+        {
+            "calibration on a score operating point",
+            () => Base(Score("a", "b").DenyAtOrAbove("b").Build())
+                .Using("p", b => b.ForRule("s", op => op.Calibrate(Platt()))).Build(),
+            "s", "p"
+        },
+        { "calibration from margin evidence", () => Calibrated(Platt(EvidenceKind.Margin)), "r", "p" },
+        { "calibration from unknown evidence", () => Calibrated(Platt(EvidenceKind.Unknown)), "r", "p" },
+        {
+            "undefined calibration method",
+            () => Calibrated(Platt() with { Method = (CalibrationMethod)7 }),
+            "r", "p"
+        },
+        {
+            "undefined calibration transform",
+            () => Calibrated(Platt(transform: (CalibrationTransform)7)),
+            "r", "p"
+        },
+        {
+            "logit calibration under the log-odds transform",
+            () => Calibrated(Platt(EvidenceKind.Logit, CalibrationTransform.LogOdds)),
+            "r", "p"
+        },
+        { "calibration slope of zero", () => Calibrated(Platt(slope: 0)), "r", "p" },
+        { "calibration slope below zero", () => Calibrated(Platt(slope: -1)), "r", "p" },
+        { "calibration slope of NaN", () => Calibrated(Platt(slope: double.NaN)), "r", "p" },
+        { "calibration slope of positive infinity", () => Calibrated(Platt(slope: double.PositiveInfinity)), "r", "p" },
+        { "calibration intercept of NaN", () => Calibrated(Platt(intercept: double.NaN)), "r", "p" },
+        {
+            "calibration intercept of negative infinity",
+            () => Calibrated(Platt(intercept: double.NegativeInfinity)),
+            "r", "p"
+        },
+        {
+            "score threshold on a calibrated operating point",
+            () => Base(Flag("r"))
+                .Using("p", b => b.ForRule("r", op => op.WarnAboveScore(0.4).DenyAboveScore(0.8).Calibrate(Platt())))
+                .Build(),
+            "r", "p"
+        },
+        {
+            "probability threshold above one on a calibrated operating point",
+            () => Base(Flag("r"))
+                .Using("p", b => b.ForRule(
+                    "r",
+                    op => op.WarnAboveProbability(0.6).DenyAboveProbability(1.5).Calibrate(Platt())))
+                .Build(),
+            "r", "p"
+        },
+        {
+            "probability gate on an operating point calibrated from score",
+            () => Base(Flag("r"))
+                .Using("p", b => b.ForRule("r", op => op
+                    .WarnAboveProbability(0.6)
+                    .DenyAboveProbability(0.9)
+                    .WhenProbabilityMarginBelow(0.1)
+                    .Calibrate(Platt(EvidenceKind.Score))))
+                .Build(),
+            "r", "p"
+        },
+
         // Build() only.
         {
             "no mode",
@@ -336,6 +403,86 @@ public sealed class PolicyValidationTests
         noThreshold.Should().BeEquivalentTo(new { PolicyId = "pol", RuleId = "r", ProviderId = "p" });
         noThreshold.Message.Should().Contain("pol").And.Contain("r").And.Contain("p");
     }
+
+    public static TheoryData<EvidenceKind, CalibrationTransform, bool> CalibratedPoints
+    {
+        get
+        {
+            TheoryData<EvidenceKind, CalibrationTransform, bool> rows = new();
+            foreach (bool gated in new[] { false, true })
+            {
+                rows.Add(EvidenceKind.Score, CalibrationTransform.LogOdds, gated);
+                rows.Add(EvidenceKind.Score, CalibrationTransform.Identity, gated);
+                rows.Add(EvidenceKind.Probability, CalibrationTransform.LogOdds, gated);
+                rows.Add(EvidenceKind.Probability, CalibrationTransform.Identity, gated);
+                rows.Add(EvidenceKind.Logit, CalibrationTransform.Identity, gated);
+            }
+
+            return rows;
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(CalibratedPoints))]
+    public void Calibrated_Point_Is_Valid_With_Probability_Thresholds_And_A_Source_Kind_Gate(
+        EvidenceKind source,
+        CalibrationTransform transform,
+        bool gated)
+    {
+        EvidenceCalibration calibration = Platt(source, transform);
+        Policy policy;
+        if (source == EvidenceKind.Logit && gated)
+        {
+            // The builder spells no Logit gate, so this one point is written out.
+            Threshold warn = new(Verdict.Warn, EvidenceKind.Probability, 0.6);
+            Threshold deny = new(Verdict.Deny, EvidenceKind.Probability, 0.9);
+            policy = new(
+                "pol",
+                PolicyMode.Enforce,
+                [new BooleanRule("r", _question, true, [Verdict.Warn, Verdict.Deny])],
+                [
+                    new ProviderBinding(
+                        "p",
+                        [new RuleOperatingPoint("r", [warn, deny], new MarginGate(EvidenceKind.Logit, 0.5), calibration)])
+                ],
+                FailureBehavior.Deny);
+        }
+        else
+        {
+            policy = Base(Flag("r"))
+                .Using("p", b => b.ForRule("r", op =>
+                {
+                    op.WarnAboveProbability(0.6).DenyAboveProbability(0.9).Calibrate(calibration);
+                    if (gated && source == EvidenceKind.Score)
+                    {
+                        op.WhenScoreMarginBelow(0.1);
+                    }
+                    else if (gated)
+                    {
+                        op.WhenProbabilityMarginBelow(0.1);
+                    }
+                }))
+                .Build();
+        }
+
+        policy.Invoking(p => p.Validate()).Should().NotThrow();
+        RuleOperatingPoint point = policy.Bindings.Single().OperatingPoints.Single();
+        point.Calibration.Should().BeSameAs(calibration);
+        (point.Gate?.Kind).Should().Be(gated ? source : (EvidenceKind?)null);
+    }
+
+    private static EvidenceCalibration Platt(
+        EvidenceKind source = EvidenceKind.Score,
+        CalibrationTransform transform = CalibrationTransform.LogOdds,
+        double slope = 1.5,
+        double intercept = -0.2) =>
+        new(CalibrationMethod.Platt, source, transform, slope, intercept);
+
+    // Rule "r" on provider "p", Warn at 0.6 / Deny at 0.9 on probability, under the calibration given.
+    private static Policy Calibrated(EvidenceCalibration calibration) =>
+        Base(Flag("r"))
+            .Using("p", b => b.ForRule("r", op => op.WarnAboveProbability(0.6).DenyAboveProbability(0.9).Calibrate(calibration)))
+            .Build();
 
     private static PolicyBuilder Base(params Rule[] rules)
     {

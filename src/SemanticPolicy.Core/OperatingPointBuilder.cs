@@ -5,13 +5,16 @@ namespace SemanticPolicy;
 /// <summary>
 /// The numbers for one rule on one provider, inside <see cref="BindingBuilder.ForRule"/>. A threshold
 /// is inclusive and reads the flagged answer's evidence of the named kind; the gate reads the margin on
-/// the same kind. Every number is a measured operating point for this provider on this policy's data,
-/// not a recommendation, and it does not carry over to another provider.
+/// the same kind. With <see cref="Calibrate"/>, the thresholds read the calibrated probability instead,
+/// so they are the probability ones, and the gate reads the margin of the calibration's source kind as
+/// the provider returned it. Every number is a measured operating point for this provider on this
+/// policy's data, not a recommendation, and it does not carry over to another provider.
 /// </summary>
 public sealed class OperatingPointBuilder
 {
     private readonly List<Threshold> _thresholds = [];
     private MarginGate? _gate;
+    private EvidenceCalibration? _calibration;
 
     internal OperatingPointBuilder()
     {
@@ -62,7 +65,22 @@ public sealed class OperatingPointBuilder
     /// <param name="value">Greater than zero, on the provider's scale. A later call replaces an earlier one.</param>
     public OperatingPointBuilder WhenScoreMarginBelow(double value) => Gate(EvidenceKind.Score, value);
 
-    internal RuleOperatingPoint Build(string ruleId) => new(ruleId, [.. _thresholds], _gate);
+    /// <summary>
+    /// Map the provider's evidence through the calibration before the thresholds read it: they then compare
+    /// the calibrated probability, an estimate fitted on labelled data that can be wrong on inputs unlike that
+    /// data. Only a Boolean rule takes one; the thresholds go on probability and any gate on the calibration's
+    /// source kind.
+    /// </summary>
+    /// <param name="calibration">The calibration. A later call replaces an earlier one.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="calibration"/> is <see langword="null"/>.</exception>
+    public OperatingPointBuilder Calibrate(EvidenceCalibration calibration)
+    {
+        ArgumentNullException.ThrowIfNull(calibration);
+        _calibration = calibration;
+        return this;
+    }
+
+    internal RuleOperatingPoint Build(string ruleId) => new(ruleId, [.. _thresholds], _gate, _calibration);
 
     internal RuleOperatingPoint BuildGateOnly(string ruleId) => new(ruleId, [], _gate);
 

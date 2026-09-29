@@ -7,6 +7,26 @@ Notable changes to the packages `SemanticPolicy.Core`, `SemanticPolicy.Providers
 [Semantic Versioning](https://semver.org/); while the major version is 0, any release can change the
 API.
 
+## Unreleased
+
+A Boolean rule's operating point can calibrate the provider's evidence before the thresholds read it.
+
+- **`SemanticPolicy.Core`.** `Calibrate` on an operating point takes an `EvidenceCalibration`: Platt's
+  map p = σ(`Slope` · x + `Intercept`), where x is the log-odds of a score or probability, or the raw
+  value of a logit or an unbounded score. The thresholds then read the calibrated probability, and a
+  margin gate still reads the provider's own margin. A pair fitted as P = 1 / (1 + exp(A · f + B)), as
+  Platt and scikit-learn write it, enters negated: `Slope` = −A and `Intercept` = −B. The calibrated
+  probability is an estimate fitted on labelled data and can be wrong on inputs unlike that data.
+  `Validate()` refuses a calibration on a Choice or Score rule, a source kind other than score, logit
+  or probability, a logit read through log-odds, a slope that is not finite and above zero, an
+  intercept that is not finite, and a threshold or gate of the wrong kind at a calibrated point, and
+  the evaluator needs the provider to produce only the kind the calibration reads. Each attempt
+  read at a calibrated point carries the `CalibratedEvidence` beside its untouched result, and is
+  marked when the result names a model other than the one the calibration was fitted on, which spans
+  tag as `semanticpolicy.calibration.method` and `semanticpolicy.calibration.model_mismatch`. The
+  arithmetic is public: `Apply`, `Invert` and `Input` turn a threshold between the two scales. A
+  policy without a calibration evaluates, serializes and traces as before.
+
 ## 0.1.0-alpha.2
 
 The System One provider, for a decision model you run yourself, a provider for any server that
