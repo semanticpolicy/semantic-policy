@@ -9,6 +9,9 @@ namespace SemanticPolicy;
 /// yields Abstain when there is none. A flat distribution is the local model's failure mode; a margin
 /// sees it where a top probability does not.
 /// </summary>
-/// <param name="Kind">The evidence the margin is computed on; the operating point's one kind.</param>
+/// <param name="Kind">
+/// The evidence the margin is computed on. At a Boolean rule's operating point it is the thresholds' kind,
+/// or, when the point is calibrated, the calibration's source kind, whose margin the provider returned.
+/// </param>
 /// <param name="Below">The margin under which the attempt does not decide; finite and greater than zero.</param>
 public sealed record MarginGate([property: JsonRequired] EvidenceKind Kind, [property: JsonRequired] double Below);

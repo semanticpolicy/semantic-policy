@@ -25,7 +25,12 @@ A Boolean rule's operating point can calibrate the provider's evidence before th
   marked when the result names a model other than the one the calibration was fitted on, which spans
   tag as `semanticpolicy.calibration.method` and `semanticpolicy.calibration.model_mismatch`. The
   arithmetic is public: `Apply`, `Invert` and `Input` turn a threshold between the two scales. A
-  policy without a calibration evaluates, serializes and traces as before.
+  policy without a calibration evaluates, serializes and traces as before. `RuleOperatingPoint` gains
+  `Calibration`, and `Attempt` gains `CalibratedEvidence` and `CalibrationModelMismatch`, as optional
+  last parameters, so each record's constructor and `Deconstruct` change: a call to the constructor
+  compiles as before, a positional deconstruction or pattern needs a place for each new member, and
+  an assembly built against 0.1.0-alpha.2 that constructs or deconstructs either record must be
+  rebuilt.
 
 ## 0.1.0-alpha.2
 
