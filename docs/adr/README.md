@@ -12,7 +12,8 @@ belongs here.
   core plus declared capabilities, frozen only after two providers pass it.
 - [0003](0003-evidence-semantics.md) — A raw provider score is not a probability, and every numeric
   evidence carries its kind. [0011](0011-absence-of-evidence-is-an-empty-list.md) withdraws its
-  `None` kind.
+  `None` kind. [0019](0019-calibration-is-data-on-a-boolean-operating-point.md) narrows its
+  calibration sources to `Score`, `Logit` and `Probability`.
 - [0004](0004-decision-policy-enforcement-separation.md) — Provider result, semantic decision,
   policy evaluation and verdict are separate layers.
   [0009](0009-normalization-layer-deferred-to-calibration.md) narrows it: there is no
@@ -27,6 +28,8 @@ belongs here.
   judged content is an explicit opt-in.
 - [0009](0009-normalization-layer-deferred-to-calibration.md) — The normalization layer has no type
   of its own until a calibration layer produces it.
+  [0019](0019-calibration-is-data-on-a-boolean-operating-point.md) answers it: the calibration adds
+  evidence beside the result, and there is still no `SemanticDecision` type.
 - [0010](0010-core-decision-runtime-architecture.md) — The core runtime fixes six boundaries that
   the provider, integration and evaluation packages inherit.
 - [0011](0011-absence-of-evidence-is-an-empty-list.md) — Absence of evidence is an empty evidence
@@ -49,6 +52,9 @@ belongs here.
   over one HTTP binding, read strictly, and every HTTP provider shares one internal transport.
 - [0018](0018-evaluation-tool-reads-providers-from-a-file.md) — The evaluation tool reads its
   providers from a file of the adapters' own options, and kinds stay compiled into the tool.
+- [0019](0019-calibration-is-data-on-a-boolean-operating-point.md) — A calibration is data on a
+  Boolean operating point: the step function applies it before the thresholds, and it adds evidence
+  beside the untouched result.
 
 ## Format
 
