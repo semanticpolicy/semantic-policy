@@ -44,6 +44,13 @@ internal sealed class ScriptedDecisionProvider : IDecisionProvider
         return this;
     }
 
+    /// <summary>Answer each request with the result the script picks for it.</summary>
+    public ScriptedDecisionProvider Answers(Func<DecisionRequest, ProviderResult> script)
+    {
+        _script = (request, _) => Task.FromResult(script(request));
+        return this;
+    }
+
     /// <summary>Answer nothing until the token is cancelled, then surface the cancellation.</summary>
     public ScriptedDecisionProvider AnswersOnlyOnCancellation()
     {

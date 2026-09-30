@@ -29,6 +29,39 @@ public sealed class FailureTests
         failure.ErrorCode.Should().Be("SemanticPolicyValidator");
     }
 
+    // The rule hands a call's verdict and severity to the failure FluentValidation builds through the
+    // validation's shared context data. Two rules flagged in one validation must each report their own,
+    // never the one the other rule wrote.
+    [Fact]
+    public async Task Two_Flagged_Rules_Each_Carry_Their_Own_Verdict_And_Severity()
+    {
+        Dictionary<string, Verdict> verdicts = new(StringComparer.Ordinal)
+        {
+            ["""{"text":"text-1"}"""] = Verdict.Deny,
+            ["""{"text":"text-2"}"""] = Verdict.Escalate,
+        };
+        ScriptedDecisionProvider provider = new ScriptedDecisionProvider()
+            .Answers(request => Semantics.Answer(verdicts[request.Context.GetRawText()]));
+        using ServiceProvider container = Semantics.Container(
+            provider, Semantics.Ladder(), Semantics.Ladder(id: "ticket-notes"));
+        IPolicyEvaluator evaluator = container.GetRequiredService<IPolicyEvaluator>();
+        InlineValidator<Ticket> validator = new();
+        validator.RuleFor(ticket => ticket.Description).Semantic(evaluator, Semantics.PolicyId);
+        validator.RuleFor(ticket => ticket.Notes).Semantic(evaluator, "ticket-notes");
+
+        ValidationResult result = await validator.ValidateAsync(new Ticket("category-1", "text-1", "text-2"), Token);
+
+        result.Errors
+            .Select(failure =>
+            {
+                PolicyVerdict verdict = (PolicyVerdict)failure.CustomState;
+                return (failure.PropertyName, failure.Severity, verdict.PolicyId, verdict.Evaluated);
+            })
+            .Should().Equal(
+                ("Description", Severity.Error, "ticket-description", Verdict.Deny),
+                ("Notes", Severity.Warning, "ticket-notes", Verdict.Escalate));
+    }
+
     [Theory]
     [InlineData("id")]
     [InlineData("policy")]
