@@ -11,9 +11,10 @@ logic, around a model call, or inside an AI agent's loop.
 
 > **Status: alpha.** `0.1.0-alpha.1` is the first release: the core library (policies, the evaluation
 > engine, telemetry, DI registration), the TypeSafe Jev provider and the Microsoft Agent Framework
-> integration, as prerelease packages on NuGet. The System One and Http providers and the evaluation
-> CLI, the `semantic-policy` dotnet tool, are in this repository, and on NuGet from `0.1.0-alpha.2`.
-> Every part of the API can still change between alpha releases.
+> integration, as prerelease packages on NuGet. The System One and Http providers, the
+> FluentValidation integration and the evaluation CLI, the `semantic-policy` dotnet tool, are in this
+> repository, and on NuGet from `0.1.0-alpha.2`. Every part of the API can still change between alpha
+> releases.
 
 ## The idea
 
@@ -82,10 +83,12 @@ dotnet add package SemanticPolicy.Providers.TypeSafe --prerelease  # the TypeSaf
 dotnet add package SemanticPolicy.Providers.SystemOne --prerelease # any System One server, from 0.1.0-alpha.2
 dotnet add package SemanticPolicy.Providers.Http --prerelease      # any protocol v0 server, from 0.1.0-alpha.2
 dotnet add package SemanticPolicy.AgentFramework --prerelease      # for a Microsoft Agent Framework agent
+dotnet add package SemanticPolicy.FluentValidation --prerelease    # semantic rules on a validator, from 0.1.0-alpha.2
 ```
 
-The providers and the Agent Framework package all depend on `SemanticPolicy.Core`, so any one of
-them brings it along. From `0.1.0-alpha.2`, the TypeSafe provider is built on the System One provider
+The providers, the Agent Framework package and the FluentValidation package all depend on
+`SemanticPolicy.Core`, so any one of them brings it along; the FluentValidation package brings
+FluentValidation too. From `0.1.0-alpha.2`, the TypeSafe provider is built on the System One provider
 and brings it too, at exactly its own version.
 
 The evaluation CLI is a dotnet tool whose command is `semantic-policy`, installed for your user
@@ -98,6 +101,7 @@ dotnet tool install --global SemanticPolicy.Evals --prerelease  # the semantic-p
 The snippets on this page assume these `using` directives:
 
 ```csharp
+using FluentValidation;                         // AbstractValidator, Severity and Semantic
 using Microsoft.Agents.AI;                      // AIAgentBuilder and UseSemanticPolicyAfterTool
 using Microsoft.Extensions.DependencyInjection; // ServiceCollection and AddSemanticPolicy
 using SemanticPolicy;                           // Policy, Verdict, the evaluator and handler types
@@ -340,21 +344,70 @@ static ValueTask<PostToolOutcome> OnToolResult(
 enforces. [The adapter's README][adapter-readme] covers the three
 points, what each one asks the policy, and every outcome a handler can return.
 
+## Outside agents
+
+Not every semantic decision is an agent's. `SemanticPolicy.FluentValidation` puts a rule on an
+ordinary [FluentValidation][fluentvalidation] validator, beside the rules you already write:
+`.Semantic(...)` asks a policy about a property and reports a flagged verdict as a validation
+failure. Here a support form asks the `ticket-description` policy, registered with `AddPolicy` like
+any other, whether the description says what the customer needs:
+
+```csharp
+public sealed record SupportTicket(string Category, string Description);
+
+public sealed class SupportTicketValidator : AbstractValidator<SupportTicket>
+{
+    public SupportTicketValidator(IPolicyEvaluator evaluator)
+    {
+        RuleFor(ticket => ticket.Category).NotEmpty();
+        RuleFor(ticket => ticket.Description)
+            .NotEmpty()
+            .Semantic(evaluator, "ticket-description");
+    }
+}
+```
+
+The rule asks a provider over the network, so validate with `ValidateAsync`; `Validate` throws.
+
+```csharp
+// validator: a SupportTicketValidator built on the evaluator above; ticket: the submitted form.
+var result = await validator.ValidateAsync(ticket, cancellationToken);
+bool sendBack = result.Errors.Any(failure => failure.Severity == Severity.Error);
+```
+
+By default the rule reads `Effective`: `Deny` fails as an `Error`, `Escalate` as a `Warning`, and
+`Warn`, `Abstain` and `Allow` do not fail. Pass `severity:` by name to map the verdict yourself.
+FluentValidation counts a failure of every severity against `IsValid`, so read `Severity` to tell a
+ticket to send back from one to put in front of a person. A policy in Shadow mode never fails a
+validation, because its effective verdict is always `Allow`.
+
+A flagged value is a model's probabilistic reading of the text, not proof of anything, and a
+semantic rule is not a security boundary or an authorization check: what happens to the ticket is
+your application's decision.
+
+[The package's README][fluentvalidation-readme] covers a rule over several fields, the message and
+what a failure carries, and [`examples/SupportTicketForm`][support-ticket-form] is a minimal API
+built on it. A validator answers valid or not; to pick a label, such as the team a ticket goes to,
+[Classification][classification] runs a Choice rule on Core alone, with no agent.
+
 ## Examples
 
 Each demo is a single `dotnet run` on TypeSafe Jev through OpenRouter. Set `OPENROUTER_API_KEY` —
-one key covers both the chat model and the decision model — then:
+one key covers the decision model and, where a demo runs an agent, its chat model too — then:
 
 ```bash
 dotnet run --project examples/PromptInjectionGuard   # an instruction planted in the user's input
 dotnet run --project examples/ToolIntentGuard        # a tool call that does not match the request
 dotnet run --project examples/ToolResultGuard        # an instruction planted in a tool's result
 dotnet run --project examples/AgentRouter            # the same runtime routing support requests
+dotnet run --project examples/SupportTicketForm      # a support form's validator, with no agent
 ```
 
 Each security example runs twice, in Shadow and then in Enforce, and prints what the policy concluded
-and what the application did about it. [examples/README.md][examples] says what each one
-shows, what five live runs of it returned, where the rules get it wrong, and how long a check takes.
+and what the application did about it. `SupportTicketForm` starts a minimal API, posts a few made-up
+tickets to it and prints what it answered to each. [examples/README.md][examples] says what each
+demo shows, what five live runs of each agent demo returned, where their rules get it wrong, and how
+long a check takes.
 
 `examples/CustomProvider` is not a demo but a pattern to copy, and it needs no key:
 [its README][custom-provider-example] says how to start the classifier it calls on your machine.
@@ -393,18 +446,22 @@ src/
   SemanticPolicy.Providers.TypeSafe/    hosted decision provider — TypeSafe Jev
   SemanticPolicy.Providers.Http/        decision provider for any protocol v0 server
   SemanticPolicy.AgentFramework/        Microsoft Agent Framework integration
+  SemanticPolicy.FluentValidation/      FluentValidation integration — semantic rules on validators
 tools/
   SemanticPolicy.Evals/                 the evaluation CLI — runs on TypeSafe Jev and a local Von
 examples/
   PromptInjectionGuard/ ToolIntentGuard/ ToolResultGuard/ AgentRouter/
+  SupportTicketForm/                    a support form whose validator asks a policy, with no agent
   CustomProvider/                       a provider of your own over a local classifier, with its tests
 tests/
   SemanticPolicy.Core.Tests/            unit tests
   SemanticPolicy.Providers.ContractTests/  one suite every provider must pass
   SemanticPolicy.AgentFramework.Tests/  the adapter's tests, no key needed
+  SemanticPolicy.FluentValidation.Tests/  the validator integration's tests, no key needed
   SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, no key needed
 docs/
   adr/                                  architecture decisions, immutable once merged
+  classification.md                     a Choice rule that picks a label, outside any agent
   custom-providers.md                   which provider to use, and the rules for writing your own
   local-models.md                       what a probe measured on three local System One servers
   protocol-v0.md                        the shape every provider speaks, and its HTTP binding
@@ -449,6 +506,10 @@ Apache-2.0. See [`LICENSE`][licence].
 [system-one-api]: https://docs.typesafe.ai/api
 [von]: https://github.com/wfzyx/von
 [adapter-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/src/SemanticPolicy.AgentFramework/README.md
+[fluentvalidation]: https://docs.fluentvalidation.net/
+[fluentvalidation-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/src/SemanticPolicy.FluentValidation/README.md
+[support-ticket-form]: https://github.com/semanticpolicy/semantic-policy/tree/main/examples/SupportTicketForm
+[classification]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/classification.md
 [evals-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md
 [contributing]: https://github.com/semanticpolicy/semantic-policy/blob/main/CONTRIBUTING.md
 [issues]: https://github.com/semanticpolicy/semantic-policy/issues
