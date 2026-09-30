@@ -273,42 +273,30 @@ semantic-policy run --policy $P --dataset $D --record $R
 semantic-policy compare --policy $P --dataset $D --recording $R --escalate min-precision=0.9
 ```
 
-[Local setup](../README.md#local-setup) starts Von and warms it. `run` also prints the report the
-tool's `report` command prints. The goal is on the `escalate` rung because the rule's ladder holds
-`escalate` alone: the `--deny` goal of the tool README's examples stops `compare` with exit code 1
-and a message naming the rung the rule does not have.
+[Local setup](../README.md#local-setup) starts Von and warms it. The goal is on `escalate` because
+that is the rule's only rung; a `--deny` goal, as in the tool README's examples, stops `compare` with
+exit code 1.
 
-`compare` measures each binding as if the policy held only that one, and prints:
+`compare` measures each binding as if the policy held only that one: it picks the threshold on the
+`tune` rows and prints every table on the `test` rows. The tool README's
+[`compare`](../tools/SemanticPolicy.Evals/README.md#compare) and
+[Reading the report](../tools/SemanticPolicy.Evals/README.md#reading-the-report) explain each table
+and column. What is particular to this set:
 
-- **The rows**: how many the dataset, the recording and the filters hold, and how many the
-  thresholds are chosen on (`tune`) and reported on (`test`). Every table is on the test rows. The
-  escalate rates leave the `ambiguous` rows out; `abstention` and `failure` divide by every test
-  row, though an ambiguous row never counts as either. `n/a` means there was nothing to divide by.
-- **`escalate on split 'test'`**, one line per binding. `threshold` is the escalate threshold the
-  binding settled on for the goal, in its own evidence: a score for `local`, a probability for
-  `jev`, so the two do not compare. The rates read a verdict of `Escalate` against the labels, with
-  `false`, a description that does not fit its category, as the flagged answer: `precision` is the
-  share of escalations that were right, `recall` the share of misfiled tickets caught, `fpr` the
-  share of fitting tickets escalated anyway, `fnr` the share of misfiled ones let through,
-  `accuracy` the share of tickets it got right and `f1` precision and recall in one number. They
-  cover only the rows the binding decides. `roc-auc` and `pr-auc` say how well the evidence
-  separates the two labels at any threshold.
-- **`95% Wilson intervals`** under it: for each of those rates, the range of true rates these rows
-  are consistent with. On twenty test rows they are wide, and two bindings whose intervals overlap
+- **The flagged answer is `false`**, a description that does not fit its category. `precision` is the
+  share of escalations that were right, `recall` the share of misfiled tickets caught, `fpr` the share
+  of fitting tickets escalated anyway and `fnr` the share of misfiled ones let through.
+- **`threshold` is in each binding's own evidence**, a score for `local` and a probability for `jev`,
+  so the two do not compare.
+- **The rates leave the `ambiguous` rows out** and cover only the rows a binding decides. `local`
+  keeps the gate the policy file gives it, so its `abstention` counts the rows that, in the policy,
+  go on to `jev`.
+- **Twenty test rows make every interval wide.** Two bindings whose `95% Wilson intervals` overlap
   are not told apart by these rows.
-- **`outcomes, latency and usage on split 'test'`**: `abstention`, the share of rows the binding
-  leaves undecided on its own: `local` keeps the gate the policy file gives it, and in the policy
-  the rows under that gate go on to `jev`; `failure`, the share with no answer; `p50 ms` and
-  `p95 ms`, how long a call took; and `input_tokens`, `output_tokens` and `cost`, summed as the
-  provider reports them, `n/a` where it reports nothing. Its own `95% Wilson intervals` table
-  follows, for `abstention` and `failure`.
-- **One paragraph per binding**: the goal, the threshold chosen for it with the rate it was chosen
-  on and that rate's interval, the gate the binding kept, and how many passes the sweep took to
-  settle.
 
-`compare` exits with code 0 when every binding meets its goal. When one cannot, or its passes do not
-settle, it still prints everything and then exits with code 2. Whatever it prints holds for these
-fifty synthetic tickets only: choose a threshold from tickets of your own.
+When a binding cannot meet its goal or does not settle, `compare` still prints everything and exits
+with code 2. Whatever it prints holds for these fifty synthetic tickets only: choose a threshold from
+tickets of your own.
 
 ## Where it gets it wrong
 

@@ -101,7 +101,9 @@ public static class SemanticPolicyRuleBuilderExtensions
     /// <summary>
     /// Asks the policy registered under <paramref name="policyId"/> about the context the delegate builds
     /// from the object being validated. The property can be of any type: the delegate decides what the
-    /// policy sees.
+    /// policy sees. No value is skipped: a field the delegate reads can be null or blank, and
+    /// <see cref="ContextPart.Text"/> throws on null, so put the rules that catch that first, under
+    /// <see cref="CascadeMode.Stop"/>.
     /// </summary>
     /// <typeparam name="T">The type being validated.</typeparam>
     /// <typeparam name="TProperty">The type of the property the rule is on.</typeparam>
@@ -142,7 +144,9 @@ public static class SemanticPolicyRuleBuilderExtensions
     /// <summary>
     /// Asks the policy about the context the delegate builds from the object being validated. The property
     /// can be of any type: the delegate decides what the policy sees. The policy is given here, so it needs
-    /// no registration.
+    /// no registration. No value is skipped: a field the delegate reads can be null or blank, and
+    /// <see cref="ContextPart.Text"/> throws on null, so put the rules that catch that first, under
+    /// <see cref="CascadeMode.Stop"/>.
     /// </summary>
     /// <typeparam name="T">The type being validated.</typeparam>
     /// <typeparam name="TProperty">The type of the property the rule is on.</typeparam>
