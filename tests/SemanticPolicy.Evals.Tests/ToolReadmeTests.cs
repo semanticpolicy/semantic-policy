@@ -68,8 +68,8 @@ public sealed partial class ToolReadmeTests
     [Fact]
     public async Task Readme_Sample_Providers_File_Loads()
     {
-        Match sample = JsonBlock().Match(Section(await ReadmeAsync(), "## The provider"));
-        sample.Success.Should().BeTrue("'## The provider' carries a sample providers file");
+        Match sample = JsonBlock().Match(Section(await ReadmeAsync(), "## Providers"));
+        sample.Success.Should().BeTrue("'## Providers' carries a sample providers file");
         using TempFile file = TempFile.Write(sample.Groups["json"].Value, ".json");
         NameRecordingBuilder builder = new();
 
