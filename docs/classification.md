@@ -4,7 +4,7 @@ A Choice rule asks a decision model to pick one of several options, so a policy 
 classifier: which team should answer a ticket, which queue a document belongs in. It needs no agent
 and no package beyond Core and a provider. This page routes a support ticket to one of four teams
 with `IPolicyEvaluator` alone. It is the same Core the agent integrations use, and
-[`examples/AgentRouter`](../examples/AgentRouter/Program.cs) runs the same policy in a program, where
+[`examples/AgentRouter`](../examples/AgentRouter/Program.cs) runs the same rule in a program, where
 the chosen team's agent answers the customer.
 
 A label from a decision model is a probabilistic reading of the text, not a fact about it. It can be
