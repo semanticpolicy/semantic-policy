@@ -19,10 +19,17 @@ internal sealed class FakeTeiHandler : HttpMessageHandler
 
     public string? LastBody { get; private set; }
 
-    public void Respond(HttpStatusCode status, string body) =>
+    /// <summary>
+    /// Answer with the status and the body. With <paramref name="declareLength"/> the response carries
+    /// its <c>Content-Length</c>, as a buffered one does; without it the reader learns the length only
+    /// by reading, as from a server that streams its answer.
+    /// </summary>
+    public void Respond(HttpStatusCode status, string body, bool declareLength = true) =>
         _script = _ => Task.FromResult(new HttpResponseMessage(status)
         {
-            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+            Content = declareLength
+                ? new StringContent(body, Encoding.UTF8, "application/json")
+                : new StreamedContent(Encoding.UTF8.GetBytes(body)),
         });
 
     /// <summary>Fail before any response exists, as a transport does when nothing listens.</summary>
@@ -50,5 +57,20 @@ internal sealed class FakeTeiHandler : HttpMessageHandler
         LastUri = request.RequestUri;
         LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
         return await _script(cancellationToken);
+    }
+
+    private sealed class StreamedContent(byte[] body) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context) =>
+            SerializeToStreamAsync(stream, context, CancellationToken.None);
+
+        protected override Task SerializeToStreamAsync(Stream stream, TransportContext? context, CancellationToken cancellationToken) =>
+            stream.WriteAsync(body, cancellationToken).AsTask();
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
+        }
     }
 }

@@ -111,12 +111,16 @@ public sealed class TeiClassifierProviderTests : IDisposable
         result.Outcome.Message.Should().Be("InvalidOperationException from the HTTP pipeline");
     }
 
+    // A declared length over the limit is refused before a byte is read; a body that declares none is
+    // refused inside the read loop, at the chunk that crosses the limit.
     [Theory]
-    [InlineData(HttpStatusCode.OK, FailureKind.Malformed)]
-    [InlineData(HttpStatusCode.ServiceUnavailable, FailureKind.Unavailable)]
-    public async Task Body_Over_The_Limit_Is_Not_Read(HttpStatusCode status, FailureKind kind)
+    [InlineData(HttpStatusCode.OK, FailureKind.Malformed, true)]
+    [InlineData(HttpStatusCode.OK, FailureKind.Malformed, false)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, FailureKind.Unavailable, true)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, FailureKind.Unavailable, false)]
+    public async Task Body_Over_The_Limit_Is_Not_Read(HttpStatusCode status, FailureKind kind, bool declareLength)
     {
-        _handler.Respond(status, new string(' ', TeiClassifierProvider.MaxBodyBytes) + "[]");
+        _handler.Respond(status, new string(' ', TeiClassifierProvider.MaxBodyBytes) + "[]", declareLength);
 
         ProviderResult result = await Provider(Configured()).DecideAsync(Request("a synthetic note"), TestContext.Current.CancellationToken);
 
