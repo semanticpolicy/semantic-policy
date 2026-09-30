@@ -35,6 +35,12 @@ interval, and can fail a build.
   rebuilt. A success whose evidence of the kind a rule reads carries NaN or an infinity is
   `Malformed`, so the policy's `OnFailure` decides; until now NaN and −∞ read as `Allow` and +∞
   crossed every threshold.
+- **`SemanticPolicy.Providers.SystemOne`, `SemanticPolicy.Providers.Http` and
+  `SemanticPolicy.Providers.TypeSafe`.** A body that starts with a UTF-8 byte order mark is read as
+  the JSON after the mark. It used to read as a body that is not JSON: `malformed` on a 200, and on
+  any other status a failure without the body's error code in its message, without the raw JSON
+  and, from the Http provider, without the failure kind the server named. JSON sent over a network
+  should carry no such mark, but a parser may ignore one.
 - **`SemanticPolicy.Evals`.** `run --providers <file>` calls the providers a file names, System One
   servers and Jev routes, in place of `local` and `jev`; a key is named by its environment variable,
   never written in the file. A call answered `unavailable` is made again up to `--retries` times, 2

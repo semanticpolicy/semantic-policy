@@ -88,6 +88,19 @@ public sealed class TypeSafeJevNormalisationTests
         HasExtra(result, "confidence").Should().BeFalse();
     }
 
+    // A byte order mark in front of the JSON is skipped, so the body reads as it would without one.
+    [Fact]
+    public async Task Byte_Order_Mark_Before_An_Answer_Is_Skipped()
+    {
+        TypeSafeJevHarness harness = new();
+        harness.Handler.RespondWithByteOrderMark(HttpStatusCode.OK, SystemOneFixtures.BooleanAnswer(0.91));
+
+        ProviderResult result = await Decide(harness, DecisionType.Boolean);
+
+        result.Outcome.Should().Be(ProviderOutcome.Success);
+        result.Value.Should().Be(new BooleanValue(true));
+    }
+
     [Fact]
     public async Task Choice_Answer_Keeps_The_Provider_Choice_And_The_Distribution_Over_The_Options()
     {

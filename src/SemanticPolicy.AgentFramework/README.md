@@ -55,9 +55,9 @@ static ValueTask<PostToolOutcome> OnToolResult(
 }
 ```
 
-Three of the four programs under `examples/` — PromptInjectionGuard, ToolIntentGuard and
-ToolResultGuard — are complete, runnable versions of this, one per point. The fourth, AgentRouter,
-calls `IPolicyEvaluator` directly and uses no guard.
+PromptInjectionGuard, ToolIntentGuard and ToolResultGuard, under `examples/`, are complete, runnable
+versions of this, one per point. AgentRouter, beside them, calls `IPolicyEvaluator` directly and
+uses no guard.
 
 ## Not a security boundary
 
