@@ -1,6 +1,6 @@
 # Examples
 
-Four demos, each a single `dotnet run` that plays a fixed scenario and prints what the policy
+Five demos, each a single `dotnet run` that plays a fixed scenario and prints what the policy
 concluded and what the application did about it, and one example of a provider of your own.
 
 | | Demo | Point | What it shows |
@@ -9,12 +9,15 @@ concluded and what the application did about it, and one example of a provider o
 | B | `ToolIntentGuard` | before a tool | a tool call that does not do what the user asked |
 | C | `ToolResultGuard` | after a tool | an instruction planted in a web page a tool fetched |
 | D | `AgentRouter` | routing | choosing which support team answers, and leaving a close call to a person |
+| E | `SupportTicketForm` | validation | a support form that files a ticket, puts it in front of a person or sends it back |
 
 A, B and C guard an agent through `SemanticPolicy.AgentFramework`. D uses the same library for
 something that is not about security, picking a support team, so it calls `IPolicyEvaluator`
-directly. Between them the demos reach every verdict: `Allow`, `Warn` (A), `Escalate` (B), `Deny`
-(A, B, C) and `Abstain` (D). [Where it gets it wrong](#where-it-gets-it-wrong) shows the cases they
-get wrong, and [How long a check takes](#how-long-a-check-takes) what each check costs in time.
+directly. E has no agent at all: a web form's FluentValidation validator asks its policies through
+`SemanticPolicy.FluentValidation`. Between them the demos reach every verdict: `Allow`, `Warn` (A),
+`Escalate` (B, E), `Deny` (A, B, C, E) and `Abstain` (D).
+[Where it gets it wrong](#where-it-gets-it-wrong) shows cases the agent demos get wrong, and
+[How long a check takes](#how-long-a-check-takes) what each of their checks costs in time.
 
 [`CustomProvider`](CustomProvider/README.md) is not a demo but a provider of your own to copy, over a
 classifier on your machine, with its own tests. It needs no key, and its README says how to start the
@@ -27,27 +30,30 @@ person in the loop for anything irreversible. [`SECURITY.md`](../SECURITY.md) sa
 
 ## Running them
 
-The four demos need `OPENROUTER_API_KEY`. One OpenRouter key covers both the chat model the agents
-talk to and the decision model the policies ask. B scripts its chat model, but its policy still needs
-the key.
+The five demos need `OPENROUTER_API_KEY`. One OpenRouter key covers both the chat model the agents
+talk to and the decision model the policies ask. B scripts its chat model and E has none, but their
+policies still need the key.
 
 ```bash
 dotnet run --project examples/PromptInjectionGuard
 dotnet run --project examples/ToolIntentGuard
 dotnet run --project examples/ToolResultGuard
 dotnet run --project examples/AgentRouter
+dotnet run --project examples/SupportTicketForm
 ```
 
-Without the key, each of the four demos prints one line naming the variable and exits with code 2,
-before an agent runs and before anything is sent.
+Without the key, each of the five demos prints one line naming the variable and exits with code 2,
+before an agent runs or E's app starts, and before anything is sent.
 
-The first line of every demo's run names both models. In A, C and D:
+The first line of each agent demo's run names both models. In A, C and D:
 
 ```
 chat model: openai/gpt-4.1-mini   decision model: typesafe/jev-1.13   both through OpenRouter
 ```
 
-B scripts its chat model, so its line starts `chat model: scripted, no model`.
+B scripts its chat model, so its line starts `chat model: scripted, no model`. E has no chat model,
+so its first line names the decision model alone:
+`decision model: typesafe/jev-1.13 through OpenRouter`.
 
 `OPENROUTER_MODEL` picks the chat model for A, C and D. It never changes the decision model: every
 demo registers the decision provider with
@@ -56,6 +62,9 @@ demo registers the decision provider with
 default chat model is an older one on purpose; *Worth knowing* at the end says why.
 
 ## Reading the output
+
+A to D print each check like this; E prints the form's answers instead, as
+[its section](#e--supportticketform-validation) shows.
 
 ```
 policy: <id>  mode: <Shadow|Enforce>  evaluated: <verdict>  effective: <verdict>
@@ -81,9 +90,9 @@ handler and inputs, and only the mode differs. Shadow is how a new policy starts
 enforcing would do while the agent behaves as before.
 
 Each handler is a few lines of application code that switches over every verdict; the library applies
-what the handler returns and decides nothing itself. The tables below come from five runs of each demo
-on 23 September 2026 with the default chat model; a range covers every run. The chat model's own words
-are not quoted, because they change every run.
+what the handler returns and decides nothing itself. The tables of A to D below come from five runs
+of each of those demos on 23 September 2026 with the default chat model; a range covers every run.
+The chat model's own words are not quoted, because they change every run.
 
 ## A — PromptInjectionGuard, before the model
 
@@ -180,11 +189,132 @@ around the pick is declared and visible: the numbers for every option, a gate th
 to a person, and an answer for a failed call (`OnFailure(FailureBehavior.Allow)`: no team is picked,
 so a person picks).
 
+## E — SupportTicketForm, validation
+
+No agent and no chat model: a minimal API with one endpoint, `POST /tickets`, whose FluentValidation
+validator asks two policies about each ticket through `SemanticPolicy.FluentValidation`. A ticket has
+a category and a description, and the categories are D's four teams, each described in D's words:
+the same Core, with no agent. `dotnet run` starts the app on a loopback port, posts four made-up
+tickets to it and prints each answer.
+
+The validator runs its rules in this order and stops at the first that fails, so a ticket that fails
+a cheap rule never reaches the decision model, and one whose description is flagged is not asked
+about its category too.
+
+| Rule | Asks the model | Failure |
+|---|---|---|
+| the category is `billing`, `technical`, `account` or `sales` | no | an `Error` |
+| the description is not empty and at least 20 characters long | no | an `Error` |
+| `ticket-description`: *Does the description say what the customer needs?*, about the description alone | yes | `Deny` when the probability of *no* is 0.80 or more, an `Error` |
+| `ticket-category`: *Does the description fit the category the customer chose?*, about the category and the description, with the four categories' descriptions in the question | yes | `Escalate` when the probability of *no* is 0.70 or more, a `Warning` |
+
+The numbers are illustrative, as in every demo. `Deny` becomes an `Error` and `Escalate` a `Warning`
+by the package's default mapping. The endpoint answers `400 Bad Request` with the validation problem
+when any failure is an `Error`, so the customer changes the ticket; `202 Accepted` when failures
+remain but none is an `Error`, so a person checks the ticket before it is filed; and `201 Created`
+when nothing fails. A decision call that fails lets the description through, because an outage must
+not reject a customer (`OnFailure(FailureBehavior.Allow)`), and sends the category to a person
+(`OnFailure(FailureBehavior.Escalate)`).
+
+| Category | Description | Written for |
+|---|---|---|
+| `billing` | *I was charged twice for September. Please refund one of the two charges.* | `201 Created`: the ticket is filed |
+| `sales` | *Since this morning every build fails with the error 'runner image not found'. Please fix it.* | `202 Accepted`: the category rule flags a build failure filed under sales, and a person checks it |
+| `technical` | *Please see the subject line. Thanks in advance for your help.* | `400 Bad Request`: the description rule flags a description that says nothing |
+| `urgent` | *Our deploys stopped after we switched the card on file.* | `400 Bad Request`: not a category, so no model is asked |
+
+The last column is what each ticket is written for, not what a run returned: a verdict is a model's
+reading of the text, so a run can still send a ticket elsewhere, and the program prints the answer
+each one got:
+
+```
+--- ticket, written to be <outcome>
+    category: <category>
+    description: <description>
+<status> <what happens to the ticket>
+    <each failure's message>
+```
+
+A semantic rule's message says the field was flagged by the named policy, not that it is wrong.
+
+E runs both policies in Enforce so that the form shows what a verdict does to a ticket. In Shadow the
+effective verdict is always `Allow`, so the validator would never fail and every ticket would be
+filed. A real form starts in Shadow all the same: it files every ticket as before, reads each
+verdict's `Evaluated` in telemetry, and moves to Enforce once an evaluation on its own tickets
+justifies it.
+
+### Measuring the category rule
+
+The evaluation CLI carries a dataset for `ticket-category`: fifty synthetic tickets, labelled `true`
+when the description fits the category, `false` when it belongs to another and `ambiguous` when it
+fits two, and split into tune and test rows. Beside it, a policy file holds the same rule, bound to
+`local`, a Von server on your machine, first and to `jev` second. The set has no recording, so
+measuring it starts with a `run` of your own, and it is a set to learn `compare` on, not a benchmark
+([Shipped datasets](../tools/SemanticPolicy.Evals/README.md#shipped-datasets)).
+
+With the tool installed (`dotnet tool install --global SemanticPolicy.Evals --prerelease`, from
+0.1.0-alpha.2), from an empty directory outside any clone of this repository:
+
+```bash
+# 1. Write the sets the tool carries under ./datasets, the support-ticket set among them.
+semantic-policy samples datasets
+
+P=datasets/examples/support-ticket.policy.json
+D=datasets/examples/support-ticket.jsonl
+R=support-ticket.recording.jsonl
+
+# 2. Ask both providers about every ticket and write their answers to $R. It needs a Von server on
+#    127.0.0.1:8000 and OPENROUTER_API_KEY, and sends every ticket to both. Call the server once
+#    before: its first answer can take longer than the 30-second --timeout, which records a timeout.
+semantic-policy run --policy $P --dataset $D --record $R
+
+# 3. Each binding on its own: the lowest escalate threshold at which at least 90% of escalations
+#    are right, chosen on the tune rows and reported on the test rows.
+semantic-policy compare --policy $P --dataset $D --recording $R --escalate min-precision=0.9
+```
+
+[Local setup](../README.md#local-setup) starts Von and warms it. `run` also prints the report the
+tool's `report` command prints. The goal is on the `escalate` rung because the rule's ladder holds
+`escalate` alone: the `--deny` goal of the tool README's examples stops `compare` with exit code 1
+and a message naming the rung the rule does not have.
+
+`compare` measures each binding as if the policy held only that one, and prints:
+
+- **The rows**: how many the dataset, the recording and the filters hold, and how many the
+  thresholds are chosen on (`tune`) and reported on (`test`). Every table is on the test rows. The
+  escalate rates leave the `ambiguous` rows out; `abstention` and `failure` divide by every test
+  row, though an ambiguous row never counts as either. `n/a` means there was nothing to divide by.
+- **`escalate on split 'test'`**, one line per binding. `threshold` is the escalate threshold the
+  binding settled on for the goal, in its own evidence: a score for `local`, a probability for
+  `jev`, so the two do not compare. The rates read a verdict of `Escalate` against the labels, with
+  `false`, a description that does not fit its category, as the flagged answer: `precision` is the
+  share of escalations that were right, `recall` the share of misfiled tickets caught, `fpr` the
+  share of fitting tickets escalated anyway, `fnr` the share of misfiled ones let through,
+  `accuracy` the share of tickets it got right and `f1` precision and recall in one number. They
+  cover only the rows the binding decides. `roc-auc` and `pr-auc` say how well the evidence
+  separates the two labels at any threshold.
+- **`95% Wilson intervals`** under it: for each of those rates, the range of true rates these rows
+  are consistent with. On twenty test rows they are wide, and two bindings whose intervals overlap
+  are not told apart by these rows.
+- **`outcomes, latency and usage on split 'test'`**: `abstention`, the share of rows the binding
+  leaves undecided on its own: `local` keeps the gate the policy file gives it, and in the policy
+  the rows under that gate go on to `jev`; `failure`, the share with no answer; `p50 ms` and
+  `p95 ms`, how long a call took; and `input_tokens`, `output_tokens` and `cost`, summed as the
+  provider reports them, `n/a` where it reports nothing. Its own `95% Wilson intervals` table
+  follows, for `abstention` and `failure`.
+- **One paragraph per binding**: the goal, the threshold chosen for it with the rate it was chosen
+  on and that rate's interval, the gate the binding kept, and how many passes the sweep took to
+  settle.
+
+`compare` exits with code 0 when every binding meets its goal. When one cannot, or its passes do not
+settle, it still prints everything and then exits with code 2. Whatever it prints holds for these
+fifty synthetic tickets only: choose a threshold from tickets of your own.
+
 ## Where it gets it wrong
 
-The tables above show inputs the rules get right. These four do not. They were measured on 23
-September 2026, five runs each in both modes, by putting the text in place of B's scenarios or C's
-pages; none of them is in the demos.
+The tables of A to D above show inputs their rules get right. These four do not. They were measured
+on 23 September 2026, five runs each in both modes, by putting the text in place of B's scenarios or
+C's pages; none of them is in the demos.
 
 | Demo | Input | Evaluated, evidence | Should be |
 |---|---|---|---|
@@ -201,8 +331,8 @@ like these from your own traffic before you enforce it.
 
 ## How long a check takes
 
-Every check is one HTTP call to the decision model, and the agent waits for it. Five more runs of each
-demo on 23 September 2026 made 125 checks:
+Every check is one HTTP call to the decision model, and the agent, or in E the request, waits for it.
+Five more runs of each agent demo on 23 September 2026 made 125 checks:
 
 - The first check of each run took 322–1061 ms, about 600 ms in the middle.
 - The 105 checks after it took 261–672 ms: half under 325 ms, and nearly nine in ten under 450 ms.
@@ -253,7 +383,8 @@ decision call runs out of time: the verdict then comes from the declared failure
 `source: FailureBehavior`. That is "the check did not happen", not "the model said no", and it is why
 a failure behaviour is mandatory.
 
-**`Abstain` is reachable in every demo.** D shows it, and every binding in A, B and C declares
+**`Abstain` is reachable in every agent demo.** D shows it, and every binding in A, B and C declares
 `WhenProbabilityMarginBelow(0.10)`, so an answer too close to call crosses no threshold, and with
 nothing to fall back to the policy abstains. Each handler decides what that means at its point: A and
-C carry on, B refuses the call, D hands the request to a person.
+C carry on, B refuses the call, D hands the request to a person. E's bindings declare no gate, so its
+rules do not abstain, and under the default mapping an `Abstain` would fail no validation anyway.

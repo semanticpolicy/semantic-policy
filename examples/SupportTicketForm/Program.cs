@@ -1,7 +1,7 @@
-// A support-ticket form outside any agent: a minimal API whose FluentValidation validator runs its cheap
-// rules first and two semantic rules after them, one on the description alone and one on the description
-// against the category the customer chose. Running it starts the app on a loopback port, posts a fixed
-// scenario of made-up tickets to its own endpoint and prints each answer.
+// Demo E - validation: a support-ticket form outside any agent. A minimal API's FluentValidation validator
+// runs its cheap rules first and two semantic rules after them, one on the description alone and one on
+// the description against the category the customer chose. Running it starts the app on a loopback port,
+// posts a fixed scenario of made-up tickets to its own endpoint and prints each answer.
 // A verdict is a probabilistic signal, never a security boundary; here it only decides whether a ticket is
 // filed, put in front of a person first, or sent back to the customer.
 using System.Net;
