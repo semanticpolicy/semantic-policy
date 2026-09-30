@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Globalization;
 using System.Text.Json;
 using System.Xml.Linq;
 using SemanticPolicy.Evals.Cli;
@@ -72,6 +73,47 @@ public sealed class ReportVerbTests
         router.Should().Contain("\nclasses: accuracy 0.917 [0.830, 0.961], macro-F1 0.919; ")
             .And.Contain("\nfailed 0, failure rate 0.000 [0.000, 0.046]\n")
             .And.NotContain("95% Wilson intervals");
+    }
+
+    // Deny's precision is 32 of 33, its recall 32 of 45; one row of the hundred abstained and none failed.
+    [Theory]
+    [InlineData("deny.min-precision=0.95", 32.0 / 33, "passed at 0.970 (32/33) [0.847, 0.995]; warning: lower bound 0.847 is below the goal")]
+    [InlineData("deny.min-recall=0.8", 32.0 / 45, "failed at 0.711 (32/45) [0.566, 0.823]")]
+    [InlineData("max-failure-rate=0", 0.0, "passed at 0.000 (0/100) [0.000, 0.037]; warning: upper bound 0.037 is above the goal")]
+    [InlineData("max-abstain=0.005", 0.01, "failed at 0.010 (1/100) [0.002, 0.054]")]
+    public async Task Report_Requirement_Passes_Fails_And_Warns_On_The_Smoke_Recording(string requirement, double value, string judged)
+    {
+        string smoke = Path.Combine(ExampleDatasetsTests.RepositoryRoot(), "tools", "SemanticPolicy.Evals", "datasets", "smoke");
+        string[] report =
+        [
+            "report",
+            "--policy", Path.Combine(smoke, "prompt-injection.policy.json"),
+            "--dataset", Path.Combine(smoke, "prompt-injection.smoke.jsonl"),
+            "--recording", Path.Combine(smoke, "prompt-injection.recording.jsonl"),
+        ];
+        using TempFile json = TempFile.Write("", ".json");
+        bool passed = judged.StartsWith("passed", StringComparison.Ordinal);
+
+        (_, string ungated, _) = await InvokeAsync(report);
+        (int exit, string output, string error) = await InvokeAsync([.. report, "--require", requirement, "--out", json.Path]);
+
+        exit.Should().Be(passed ? ExitCodes.Success : ExitCodes.InfeasibleConstraint, error);
+        output.Should().StartWith(ungated, "the gate prints after the report and changes nothing above its lines");
+        string[] lines = output[ungated.Length..].ReplaceLineEndings("\n").Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        lines.Should().HaveCount(2).And.OnlyContain(line => line.Length <= 120);
+        lines[0].Should().StartWith("requirements:");
+        lines[1].Should().Be($"{requirement}: {judged}");
+
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(json.Path));
+        JsonElement entry = document.RootElement.GetProperty("requirements").EnumerateArray().Should().ContainSingle().Subject;
+        entry.GetProperty("requirement").GetString().Should().Be(requirement);
+        entry.GetProperty("goal").GetDouble().Should().Be(double.Parse(requirement[(requirement.IndexOf('=') + 1)..], CultureInfo.InvariantCulture));
+        entry.GetProperty("value").GetDouble().Should().Be(value);
+        JsonElement interval = entry.GetProperty("interval");
+        judged.Should().Contain(FormattableString.Invariant(
+            $"[{interval.GetProperty("lower").GetDouble():0.000}, {interval.GetProperty("upper").GetDouble():0.000}]"));
+        entry.GetProperty("passed").GetBoolean().Should().Be(passed);
+        entry.GetProperty("warned").GetBoolean().Should().Be(judged.Contains("warning", StringComparison.Ordinal));
     }
 
     [Fact]

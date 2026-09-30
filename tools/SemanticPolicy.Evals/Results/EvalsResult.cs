@@ -1,4 +1,5 @@
 using SemanticPolicy.Evals.Curves;
+using SemanticPolicy.Evals.Gating;
 using SemanticPolicy.Evals.Metrics;
 using SemanticPolicy.Protocol;
 
@@ -22,6 +23,10 @@ namespace SemanticPolicy.Evals.Results;
 /// <param name="RecordingPath">The recording the numbers were replayed from, as it was given.</param>
 /// <param name="Sweep">What <c>sweep</c> found for the swept binding; <see langword="null"/> from any other verb.</param>
 /// <param name="Compare">What <c>compare</c> found for each binding; <see langword="null"/> from any other verb.</param>
+/// <param name="Requirements">
+/// Each <c>--require</c> of <c>report</c> or <c>run</c>, judged on <paramref name="Report"/>, in the order given;
+/// <see langword="null"/> when none was given, so a result without them has no such member.
+/// </param>
 public sealed record EvalsResult(
     string Format,
     string Verb,
@@ -35,7 +40,8 @@ public sealed record EvalsResult(
     ReportSection? Report,
     string? RecordingPath = null,
     SweepSection? Sweep = null,
-    CompareSection? Compare = null)
+    CompareSection? Compare = null,
+    IReadOnlyList<RequirementResult>? Requirements = null)
 {
     /// <summary>The format of a result file this tool writes.</summary>
     public const string FormatV0 = "semanticpolicy/evals-result/v0";

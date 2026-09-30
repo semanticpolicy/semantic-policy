@@ -40,10 +40,12 @@ public sealed record MulticlassConfusion(
     /// The 95% Wilson interval of <see cref="Accuracy"/>, read off <see cref="Counts"/>: the diagonal over every cell.
     /// Macro-F1 has none, because it is not one count over another.
     /// </summary>
-    public Interval? AccuracyInterval =>
-        Interval.Wilson(
-            Counts.Sum(row => row.Value.GetValueOrDefault(row.Key)),
-            Counts.Values.Sum(answered => answered.Values.Sum()));
+    public Interval? AccuracyInterval => Interval.Wilson(Correct, Counted);
+
+    // The rows answered as labelled, and every row the table counts.
+    internal int Correct => Counts.Sum(row => row.Value.GetValueOrDefault(row.Key));
+
+    internal int Counted => Counts.Values.Sum(answered => answered.Values.Sum());
 
     /// <summary>The table of a Choice rule, with the options as its classes.</summary>
     /// <param name="rows">The bucketed rows of the selection; only classified ones are counted.</param>

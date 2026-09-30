@@ -482,6 +482,30 @@ public sealed partial class RunVerbTests
     }
 
     [Fact]
+    public async Task Run_Require_Records_Then_Gates()
+    {
+        // local decides every row: deny at 0.9 catches the attack at 0.95 and misses those at 0.7 and 0.3.
+        using Fixture fixture = Fixture.Create(Guard());
+        using TempFile json = TempFile.Write("", ".json");
+        ScriptedProvider local = Answering();
+        ScriptedProvider jev = Answering();
+
+        (int exit, string output, string error) = await InvokeAsync(
+            [.. fixture.RunArgs(), "--require", "deny.min-recall=0.9", "--out", json.Path],
+            builder => builder.AddProvider(local, "local").AddProvider(jev, "jev"));
+
+        exit.Should().Be(ExitCodes.InfeasibleConstraint, error);
+        (local.Calls, jev.Calls).Should().Be((6, 6));
+        RecordingReader.Read(fixture.RecordingPath).Rows.Should().HaveCount(6)
+            .And.OnlyContain(row => row.Attempts[Samples.Injection].Count == 2);
+        output.Should().Contain("rung deny:");
+        output.ReplaceLineEndings("\n").TrimEnd().Split('\n')[^1].Should().StartWith("deny.min-recall=0.9: failed at 0.333 (1/3) [");
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(json.Path));
+        document.RootElement.GetProperty("verb").GetString().Should().Be("run");
+        document.RootElement.GetProperty("requirements")[0].GetProperty("passed").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Nothing_The_Cli_Prints_Or_Records_Contains_A_Row_Input()
     {
         // Content leaking into a terminal, a CI log or a committed recording has no runtime symptom, so the
