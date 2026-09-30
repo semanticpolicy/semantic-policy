@@ -174,7 +174,7 @@ public static class ProvidersFile
         string kindName = kind.Value.GetString()!;
         if (!_kinds.TryGetValue(kindName, out Type? optionsType))
         {
-            throw where.Refuse($"kind '{kindName}' is not known; known kinds: {known}.");
+            throw where.Refuse($"'{_kind}' names a kind that is not known; known kinds: {known}.");
         }
 
         if (options is not { ValueKind: JsonValueKind.Object } optionsObject)
