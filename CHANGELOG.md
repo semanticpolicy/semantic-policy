@@ -8,6 +8,17 @@ Notable changes to the packages `SemanticPolicy.Core`, `SemanticPolicy.Providers
 [Semantic Versioning](https://semver.org/); while the major version is 0, any release can change the
 API.
 
+## Unreleased
+
+A Choice rule's verdict names the option the provider picked.
+
+- **`SemanticPolicy.Core`.** `RuleVerdict` gains `ChosenOption`, the key of the option the deciding
+  answer picked on a Choice rule, and `DecidingAttempt`, the attempt at `DecidingBinding`, whose
+  result holds that answer and the evidence the provider returned with it. Both are null when no
+  answer decided the rule, because the gate abstained or the failure behaviour set the verdict, and
+  `ChosenOption` is null on a Boolean or Score rule. Both are read from `Attempts`, so the
+  constructor, `Deconstruct` and the serialized verdict are as before.
+
 ## 0.1.0-alpha.2 - 2026-09-30
 
 The System One provider, for a decision model you run yourself, a provider for any server that
