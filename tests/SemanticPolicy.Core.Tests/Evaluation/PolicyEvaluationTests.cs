@@ -500,6 +500,22 @@ public sealed class PolicyEvaluationTests
         attempt.Margin.Should().BeNull();
     }
 
+    [Fact]
+    public void Non_Finite_Evidence_Of_A_Kind_Nothing_Reads_Leaves_The_Answer_Deciding()
+    {
+        Policy policy = Define(FailureBehavior.Deny, ["local"], [Flagged()]);
+        ProviderResult result = Answer(
+            new BooleanValue(true),
+            Probability(("true", 0.95), ("false", 0.05)),
+            Of(EvidenceKind.Logit, ("true", double.NaN), ("false", double.NegativeInfinity)));
+
+        RuleVerdict rule = PolicyEvaluation.Evaluate(policy, Attempts((_rule, 0, result))).Verdict!.Rules.Single();
+
+        rule.Verdict.Should().Be(Verdict.Deny);
+        rule.Source.Should().Be(VerdictSource.Threshold);
+        rule.Attempts.Single().EffectiveOutcome.Status.Should().Be(OutcomeStatus.Success);
+    }
+
     // Each expected value is a closed form, σ(ln k) = k / (1 + k): the Score row maps its raw 0.25 through
     // 2 · ln(1/3) + 3 · ln 3 = ln 3 to 0.75, the Logit row its raw 0.5 through 2 · 0.5 + ln 19 − 1 = ln 19 to
     // 0.95, and the one-key Probability row, flagged on false, completes 0.75 on true to 0.25 on false before
