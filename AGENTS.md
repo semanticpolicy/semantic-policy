@@ -9,11 +9,14 @@ SemanticPolicy evaluates semantic decisions — "is this input trying to manipul
 this tool call consistent with what the user asked for" — through a pluggable decision provider, and
 makes those decisions testable. Alpha: `src/SemanticPolicy.Core/`,
 `src/SemanticPolicy.Providers.TypeSafe/` and `src/SemanticPolicy.AgentFramework/` are implemented and
-tested, and the demos under `examples/` run on them. `src/SemanticPolicy.Providers.SystemOne/`, the
-provider for any System One server and the base TypeSafe is built on, and
-`src/SemanticPolicy.Providers.Http/`, the client for any protocol v0 server, are implemented and
-tested too. `examples/CustomProvider/` is a provider of your own, over a local classifier and with
-its own tests, and `docs/custom-providers.md` gives the rules it follows.
+tested. `src/SemanticPolicy.Providers.SystemOne/`, the provider for any System One server and the
+base TypeSafe is built on, and `src/SemanticPolicy.Providers.Http/`, the client for any protocol v0
+server, are implemented and tested too, and so is `src/SemanticPolicy.FluentValidation/`, which puts
+semantic rules on a FluentValidation validator. The five demos under `examples/` run on Jev: four
+around an agent, and `examples/SupportTicketForm/`, a support form's validator with no agent.
+`docs/classification.md` shows a Choice rule picking a label on Core alone.
+`examples/CustomProvider/` is a provider of your own, over a local classifier and with its own
+tests, and `docs/custom-providers.md` gives the rules it follows.
 
 `tools/SemanticPolicy.Evals/`, the evaluation CLI, is implemented and tested. Its `run` verb calls
 Jev through OpenRouter and a local Von server through SystemOne, or the providers a providers file
@@ -30,7 +33,7 @@ src/SemanticPolicy.Providers.Http/          decision provider for any protocol v
 src/SemanticPolicy.AgentFramework/          Microsoft Agent Framework integration
 src/SemanticPolicy.FluentValidation/        FluentValidation integration: semantic rules on validators
 tools/SemanticPolicy.Evals/                 evaluation CLI
-examples/                                   demos on Jev: PromptInjectionGuard, ToolIntentGuard, ToolResultGuard, AgentRouter
+examples/                                   demos on Jev: PromptInjectionGuard, ToolIntentGuard, ToolResultGuard, AgentRouter, SupportTicketForm
 examples/CustomProvider/                    a provider of your own over a local classifier, and its tests
 tests/SemanticPolicy.Core.Tests/            unit tests
 tests/SemanticPolicy.Providers.ContractTests/  the suite every provider must pass
@@ -38,6 +41,7 @@ tests/SemanticPolicy.AgentFramework.Tests/  the adapter's tests, on a scripted m
 tests/SemanticPolicy.FluentValidation.Tests/  the integration's tests, on a scripted provider
 tests/SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, on a scripted provider
 docs/adr/                                   architecture decisions, immutable once merged
+docs/classification.md                      a Choice rule that picks a label, outside any agent
 docs/custom-providers.md                    which provider to use, and the rules for writing your own
 docs/local-models.md                        what a probe measured on three local System One servers
 docs/protocol-v0.md                         the language-neutral request/result shape

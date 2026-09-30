@@ -2,7 +2,8 @@
 
 Notable changes to the packages `SemanticPolicy.Core`, `SemanticPolicy.Providers.SystemOne` (from
 0.1.0-alpha.2), `SemanticPolicy.Providers.Http` (from 0.1.0-alpha.2),
-`SemanticPolicy.Providers.TypeSafe`, `SemanticPolicy.AgentFramework` and `SemanticPolicy.Evals` (from
+`SemanticPolicy.Providers.TypeSafe`, `SemanticPolicy.AgentFramework`,
+`SemanticPolicy.FluentValidation` (from 0.1.0-alpha.2) and `SemanticPolicy.Evals` (from
 0.1.0-alpha.2), which share one version. Versions follow
 [Semantic Versioning](https://semver.org/); while the major version is 0, any release can change the
 API.
@@ -10,8 +11,9 @@ API.
 ## Unreleased
 
 A Boolean rule's operating point can calibrate the provider's evidence before the thresholds read it.
-The evaluation CLI names its providers in a file, retries and resumes a run, gives each rate an
-interval, and can fail a build.
+A new package puts a semantic rule on a FluentValidation validator, outside any agent. The evaluation
+CLI names its providers in a file, retries and resumes a run, gives each rate an interval, and can
+fail a build.
 
 - **`SemanticPolicy.Core`.** `Calibrate` on an operating point takes an `EvidenceCalibration`: Platt's
   map p = σ(`Slope` · x + `Intercept`), where x is the log-odds of a score or probability, or the raw
@@ -41,6 +43,17 @@ interval, and can fail a build.
   any other status a failure without the body's error code in its message, without the raw JSON
   and, from the Http provider, without the failure kind the server named. JSON sent over a network
   should carry no such mark, but a parser may ignore one.
+- **`SemanticPolicy.FluentValidation`.** New. `RuleFor(...).Semantic(evaluator, "policy-id")` asks a
+  policy about a property of a FluentValidation validator and reports a flagged verdict as a
+  validation failure, beside the validator's other rules. A rule names a registered policy or takes a
+  `Policy`, and sends the property's text or, through a context delegate, the parts the delegate
+  builds; a null or whitespace text passes without a call. By default it reads the effective verdict:
+  `Deny` fails as an `Error`, `Escalate` as a `Warning`, and `Warn`, `Abstain` and `Allow` do not
+  fail, so a policy in Shadow mode never fails a validation. A `severity:` delegate replaces that
+  mapping. A failure carries the `PolicyVerdict` as its `CustomState` and `SemanticPolicyValidator`
+  as its error code, and its default message says the value was flagged by the policy, never that it
+  is invalid. The rule runs under `ValidateAsync` only. The package depends on FluentValidation and
+  `SemanticPolicy.Core`, not on ASP.NET Core, so a web endpoint calls `ValidateAsync` itself.
 - **`SemanticPolicy.Evals`.** `run --providers <file>` calls the providers a file names, System One
   servers and Jev routes, in place of `local` and `jev`; a key is named by its environment variable,
   never written in the file. A call answered `unavailable` is made again up to `--retries` times, 2
@@ -50,6 +63,12 @@ interval, and can fail a build.
   `report` and `run` take `--require`, such as `deny.min-precision=0.95` or `max-failure-rate=0.02`,
   and exit with code 2 when a requirement fails, so a build that replays a committed recording can
   gate on it.
+
+[examples/SupportTicketForm](examples/SupportTicketForm) is a minimal API whose validator asks two
+policies about a support ticket, and the evaluation CLI carries `support-ticket.jsonl`, fifty
+synthetic tickets for the example's category rule, to measure that rule with `compare`.
+[docs/classification.md](docs/classification.md) shows a Choice rule picking a label outside any
+agent, on Core alone.
 
 ## 0.1.0-alpha.2
 
