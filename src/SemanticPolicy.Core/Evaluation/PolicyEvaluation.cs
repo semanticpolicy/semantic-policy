@@ -227,6 +227,14 @@ public static class PolicyEvaluation
             return $"the result carries no {kind} evidence, which the operating point reads.";
         }
 
+        // NaN and −∞ pass no threshold, +∞ passes every one, and any of them skews the margin, so each would
+        // decide the rule rather than send it to the failure behaviour. Only the entry read is checked,
+        // because nothing in the other kinds reaches a verdict.
+        if (evidence.Values.Values.Any(value => !double.IsFinite(value)))
+        {
+            return $"the {kind} evidence carries a value that is not a finite number.";
+        }
+
         if (rule is BooleanRule boolean)
         {
             // A one-sided probability is completed as 1 − p. Any other kind has no complement, so with one

@@ -32,7 +32,9 @@ interval, and can fail a build.
   last parameters, so each record's constructor and `Deconstruct` change: a call to the constructor
   compiles as before, a positional deconstruction or pattern needs a place for each new member, and
   an assembly built against 0.1.0-alpha.2 that constructs or deconstructs either record must be
-  rebuilt.
+  rebuilt. A success whose evidence of the kind a rule reads carries NaN or an infinity is
+  `Malformed`, so the policy's `OnFailure` decides; until now NaN and −∞ read as `Allow` and +∞
+  crossed every threshold.
 - **`SemanticPolicy.Providers.SystemOne`, `SemanticPolicy.Providers.Http` and
   `SemanticPolicy.Providers.TypeSafe`.** A body that starts with a UTF-8 byte order mark is read as
   the JSON after the mark. It used to read as a body that is not JSON: `malformed` on a 200, and on

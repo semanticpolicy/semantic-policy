@@ -435,6 +435,41 @@ public sealed class PolicyEvaluationTests
                     calibrated,
                     Answer(new BooleanValue(true), Of(EvidenceKind.Score, ("true", 0.8)))
                 },
+                {
+                    "NaN score evidence",
+                    score,
+                    Answer(new BooleanValue(true), Of(EvidenceKind.Score, ("true", double.NaN), ("false", double.NaN)))
+                },
+                {
+                    "NaN on the other answer only",
+                    score,
+                    Answer(new BooleanValue(true), Of(EvidenceKind.Score, ("true", 2.0), ("false", double.NaN)))
+                },
+                {
+                    "positive infinity on the flagged answer",
+                    probability,
+                    Answer(new BooleanValue(true), Probability(("true", double.PositiveInfinity), ("false", 0.1)))
+                },
+                {
+                    "negative infinity on the flagged answer",
+                    probability,
+                    Answer(new BooleanValue(false), Probability(("true", double.NegativeInfinity), ("false", 0.9)))
+                },
+                {
+                    "NaN one-sided probability",
+                    probability,
+                    Answer(new BooleanValue(true), Probability(("true", double.NaN)))
+                },
+                {
+                    "NaN under a gate",
+                    gatedChoice,
+                    Answer(new ChoiceValue("allow"), Probability(("allow", double.NaN), ("deny", 0.1)))
+                },
+                {
+                    "NaN at a calibrated point",
+                    calibrated,
+                    Answer(new BooleanValue(true), Of(EvidenceKind.Score, ("true", double.NaN), ("false", 0.2)))
+                },
             };
         }
     }
@@ -463,6 +498,22 @@ public sealed class PolicyEvaluationTests
         attempt.EffectiveOutcome.Kind.Should().Be(FailureKind.Malformed);
         attempt.Disposition.Should().Be(AttemptDisposition.TerminatedByFailure);
         attempt.Margin.Should().BeNull();
+    }
+
+    [Fact]
+    public void Non_Finite_Evidence_Of_A_Kind_Nothing_Reads_Leaves_The_Answer_Deciding()
+    {
+        Policy policy = Define(FailureBehavior.Deny, ["local"], [Flagged()]);
+        ProviderResult result = Answer(
+            new BooleanValue(true),
+            Probability(("true", 0.95), ("false", 0.05)),
+            Of(EvidenceKind.Logit, ("true", double.NaN), ("false", double.NegativeInfinity)));
+
+        RuleVerdict rule = PolicyEvaluation.Evaluate(policy, Attempts((_rule, 0, result))).Verdict!.Rules.Single();
+
+        rule.Verdict.Should().Be(Verdict.Deny);
+        rule.Source.Should().Be(VerdictSource.Threshold);
+        rule.Attempts.Single().EffectiveOutcome.Status.Should().Be(OutcomeStatus.Success);
     }
 
     // Each expected value is a closed form, σ(ln k) = k / (1 + k): the Score row maps its raw 0.25 through
