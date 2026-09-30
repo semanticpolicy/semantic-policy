@@ -31,6 +31,8 @@ measures them.
 3. `report`, `sweep` and `compare` replay the recording through the library's own evaluation step.
    Change a threshold in the policy file and you see what the library would decide, in seconds and
    for free.
+4. With `--require`, `report` and `run` exit with code 2 when a rate misses what you require, so a
+   build that replays a committed recording fails when a policy change makes the rule worse.
 
 A recording holds row ids and answers, never an input or a label. The tool depends on
 `SemanticPolicy.Core`; nothing in the library depends on the tool.
@@ -194,8 +196,8 @@ split from metadata.split: 60 tune, 40 test, 0 unassigned
 
 outcomes
 classified 93
-failed 0, failure rate 0.000
-abstained 1, abstention rate 0.010
+failed 0, failure rate 0.000 [0.000, 0.037]
+abstained 1, abstention rate 0.010 [0.002, 0.054]
 ambiguous 6 (allow 3, deny 3)
 
 ...
@@ -205,20 +207,26 @@ tp  fp  tn  fn  accuracy  precision  recall     f1    fpr    fnr  failed  abstai
 --  --  --  --  --------  ---------  ------  -----  -----  -----  ------  ---------  ---------
 32   1  47  13     0.849      0.970   0.711  0.821  0.021  0.289       0          1          6
 
+95% Wilson intervals
+accuracy        precision       recall          fpr             fnr
+--------------  --------------  --------------  --------------  --------------
+[0.763, 0.908]  [0.847, 0.995]  [0.566, 0.823]  [0.004, 0.109]  [0.177, 0.434]
+
 ...
 
 providers: every recorded attempt of the rule
-provider  model                       attempts  p50 ms  p95 ms  cost         input_tokens  output_tokens
---------  --------------------------  --------  ------  ------  -----------  ------------  -------------
-local     von-1.2.0                        100    66.7    99.1  n/a                  6722            100
-jev       typesafe/jev-1.13-20260917       100   277.4   362.1  0.001663032         39596           2000
+provider  model                       attempts  retried  p50 ms  p95 ms  cost         input_tokens  output_tokens
+--------  --------------------------  --------  -------  ------  ------  -----------  ------------  -------------
+local     von-1.2.0                        100        0    66.7    99.1  n/a                  6722            100
+jev       typesafe/jev-1.13-20260917       100        0   277.4   362.1  0.001663032         39596           2000
 ```
 
 Read it like this: 93 rows had a clear label and got a verdict. The rule denied 32 of the 45 attacks
 among them (recall 0.711) and one safe input (precision 0.970); of the other 13 attacks, 9 got warn
-and 4 were allowed. One row was left undecided by both providers, and the six rows labelled
-`ambiguous` are counted apart. In the replay, `local` decides first and passes the rows whose margin
-is below its gate to `jev`. The smoke rows are clear-cut on purpose, so these numbers show that the
+and 4 were allowed. The intervals under the table are the rates these rows are consistent with (see
+[How far to trust a rate](#how-far-to-trust-a-rate)). One row was left undecided by both providers,
+and the six rows labelled `ambiguous` are counted apart. In the replay, `local` decides first and
+passes the rows whose margin is below its gate to `jev`. The smoke rows are clear-cut on purpose, so these numbers show that the
 pieces fit together, not how a rule does on real traffic, and the policy's thresholds are
 illustrations, not a recommendation.
 
@@ -400,6 +408,7 @@ same report as [`report`](#report).
 | `--retries <n>` | How many times a call answered `unavailable` is made again; 2 by default, 0 for none. |
 | `--resume <recording>` | Finish that recording instead of starting a new one; see below. |
 | `--providers <file>` | The providers `run` may call, from a [providers file](#the-provider), in place of `local` and `jev`. |
+| `--require <requirement>` | A rate the report must reach, such as `max-failure-rate=0.02`; repeatable. When one fails, `run` still records every row and prints the report, then exits with code 2; see [Gating a pipeline](#gating-a-pipeline). |
 
 A binding's `providerId` is a registration name: `local` or `jev`, or with `--providers` a name in
 the file (see [The provider](#the-provider)). A policy that binds a name nothing registers stops
@@ -435,6 +444,7 @@ Replays a recording at the policy file's thresholds and gates and prints what it
 | `--recording <file>` | Required. The recording to read. |
 | `--force` | Read the recording although the dataset changed since it was recorded. Answers are matched to rows by id, and the report notes that they may be about other content. |
 | `--diagram <file>` | Also draw the [calibration](#reading-the-report) section as an SVG reliability diagram: each bin's observed frequency against its mean prediction, the diagonal a calibrated provider follows, and every bin's row count, so a sparse bin shows as sparse. Only where the section applies; otherwise nothing is written and standard error says why, as the section does. |
+| `--require <requirement>` | A rate the report must reach, such as `deny.min-precision=0.95`; repeatable. When one fails, the report is still printed and `--out` written, and the exit code is 2; see [Gating a pipeline](#gating-a-pipeline). |
 
 The test rows only, with `$P`, `$D` and `$R` as in the quick start:
 
@@ -564,11 +574,25 @@ provider  threshold  accuracy  precision  recall     f1    fpr    fnr  roc-auc  
 local        0.9349     0.615      1.000   0.167  0.286  0.000  0.833    0.786   0.842
 jev            0.15     0.974      0.947   1.000  0.973  0.050  0.000    1.000   1.000
 
+95% Wilson intervals
+provider  accuracy        precision       recall          fpr             fnr
+--------  --------------  --------------  --------------  --------------  --------------
+local     [0.355, 0.823]  [0.207, 1.000]  [0.030, 0.564]  [0.000, 0.354]  [0.436, 0.970]
+jev       [0.865, 0.995]  [0.754, 0.991]  [0.824, 1.000]  [0.009, 0.236]  [0.000, 0.176]
+
 outcomes, latency and usage on split 'test' (40 rows)
 provider  abstention  failure  p50 ms  p95 ms  input_tokens  output_tokens  cost
 --------  ----------  -------  ------  ------  ------------  -------------  -----------
 local          0.625    0.000    63.8    89.8          2695             40  n/a
 jev            0.000    0.000   276.5   350.7         15858            800  0.000666036
+
+95% Wilson intervals
+provider  abstention      failure
+--------  --------------  --------------
+local     [0.470, 0.758]  [0.000, 0.088]
+jev       [0.000, 0.088]  [0.000, 0.088]
+
+...
 ```
 
 Alone, `local` leaves 25 of the 40 test rows undecided: its gate of 0.5418 hands them to `jev` in
@@ -597,12 +621,18 @@ provider  abstention  failure  p50 ms  p95 ms  input_tokens  output_tokens  cost
 local          0.438    0.000    61.0    75.3           970             32  n/a
 jev            0.000    0.000   271.3   356.7         13092           1440  0.000549864
 
+95% Wilson intervals
+provider  abstention      failure
+--------  --------------  --------------
+local     [0.282, 0.607]  [0.000, 0.107]
+jev       [0.000, 0.107]  [0.000, 0.107]
+
 binding 'local'
-gate: min-accuracy=0.9 → gate 0.4649 (abstention rate 0.250, accuracy 0.906), chosen on split 'tune' (48 rows), reported on split 'test' (32 rows)
+gate: min-accuracy=0.9 → gate 0.4649 (abstention rate 0.250 [0.149, 0.388], accuracy 0.906 [0.758, 0.968]), chosen on split 'tune' (48 rows), reported on split 'test' (32 rows)
 settled in 2 passes: each pass was swept at the picks of the one before, and the last one picked what it was swept at
 
 binding 'jev'
-gate: min-accuracy=0.9 → no gate (abstention rate 0.000, accuracy 1.000), chosen on split 'tune' (48 rows), reported on split 'test' (32 rows)
+gate: min-accuracy=0.9 → no gate (abstention rate 0.000 [0.000, 0.074], accuracy 1.000 [0.920, 1.000]), chosen on split 'tune' (48 rows), reported on split 'test' (32 rows)
 settled in 2 passes: each pass was swept at the picks of the one before, and the last one picked what it was swept at
 ```
 
@@ -641,6 +671,8 @@ Eighty synthetic rows show the two bindings side by side, not which provider rou
   significant digits, so `cost` is in the provider's own unit.
 - **notes**: that a verdict is an estimate, the policy's mode, that a `budget` was not applied, and
   whether `--force` was used.
+- **requirements**, only with `--require`: one line per requirement, passed, failed or passed with a
+  warning; see [Gating a pipeline](#gating-a-pipeline).
 
 `sweep` prints each rung's curve and the gate's curve on the tune rows, one line per recommendation
 ending with where it was chosen and checked (such as *"chosen on split 'tune' (60 rows), reported on
@@ -670,6 +702,83 @@ PR-AUC, ECE and the Brier score do not: none of them is one count over another.
 - `compare` prints a table of them under each of its tables, and when everything fits in one table,
   as for the router set, one under it.
 - Each class's precision and recall carry one in the JSON result only.
+- After a `--require`, each requirement's line prints its rate's interval; see
+  [Gating a pipeline](#gating-a-pipeline).
+
+## Gating a pipeline
+
+`--require` makes `report` or `run` a check: after the report, one line per requirement says whether
+the report reached it, and when any did not, the exit code is 2. A requirement is a rate and a goal,
+with `v` from 0 to 1:
+
+| Requirement | Passes when | Rules |
+|---|---|---|
+| `<rung>.min-precision=<v>` | at least `v` of that rung's flags are right | Boolean |
+| `<rung>.min-recall=<v>` | that rung catches at least `v` of the flagged rows | Boolean |
+| `<rung>.max-fpr=<v>` | that rung flags at most `v` of the other rows | Boolean |
+| `min-accuracy=<v>` | at least `v` of the classified rows get their label | Choice, Score |
+| `min-macro-f1=<v>` | the macro-F1 is at least `v` | Choice, Score |
+| `max-abstain=<v>` | at most `v` of the rows are left undecided | any |
+| `max-failure-rate=<v>` | at most `v` of the rows get no answer | any |
+
+`<rung>` is `warn`, `escalate` or `deny`, and must be on the rule's ladder.
+
+- **It is measured on what the report above it prints**: the rows after `--where`, the rule `--rule`
+  selects, and the chain's verdicts at the policy file's thresholds and gates. Unlike a goal of
+  `sweep`, it chooses nothing, and the report above its lines is the same as without it.
+- **The value decides.** A `min-` requirement passes at or above its goal, a `max-` one at or below
+  it. A rate that is `n/a` fails.
+- **The interval warns.** A requirement that passes while a bound of its rate's interval misses the
+  goal passes with a warning naming that bound: the goal is met on these rows, not shown in general.
+  A warning never changes the exit code. Macro-F1 has no interval, so `min-macro-f1` never warns.
+- **A mistake stops it early.** A mistyped requirement exits with code 1 before any file is opened.
+  One the rule cannot have, such as `deny.min-precision` on a Choice rule or `escalate.min-recall` on
+  a ladder without escalate, exits with code 1 once the policy is read, before `run` calls a
+  provider.
+- **A failed requirement stops nothing.** `run` records every row, the report is printed and `--out`
+  is written, and then the exit code is 2. When every requirement passes, warnings or not, it is 0.
+
+With `$P`, `$D` and `$R` as in the quick start:
+
+```bash
+semantic-policy report --policy $P --dataset $D --recording $R \
+  --require deny.min-precision=0.95 --require deny.min-recall=0.8 --require max-failure-rate=0
+```
+
+The report is followed by these lines, and the exit code is 2:
+
+```text
+requirements: the value decides, and a bound of its interval that misses the goal warns
+deny.min-precision=0.95: passed at 0.970 (32/33) [0.847, 0.995]; warning: lower bound 0.847 is below the goal
+deny.min-recall=0.8: failed at 0.711 (32/45) [0.566, 0.823]
+max-failure-rate=0: passed at 0.000 (0/100) [0.000, 0.037]; warning: upper bound 0.037 is above the goal
+```
+
+Each line gives the requirement as typed, the value with the counts it divides, and the interval.
+Deny's precision meets 0.95, but 33 flags also fit a provider right 85% of the time, so it warns. Its
+recall misses 0.8, which fails the check. No row failed, yet a hundred rows cannot rule out a failure
+rate of 3.7%.
+
+In a pipeline, `report` replays a recording committed next to its dataset, so a change to the policy
+file is checked without calling a provider: the step needs no key and no server, and costs nothing.
+In a GitHub Actions job, with the policy, dataset and recording at paths of your own:
+
+```yaml
+- uses: actions/setup-dotnet@v4
+  with:
+    dotnet-version: '10.0.x'
+- run: dotnet tool install --global SemanticPolicy.Evals --prerelease
+- run: >-
+    semantic-policy report --policy policies/support.policy.json
+    --dataset evals/support.jsonl --recording evals/support.recording.jsonl
+    --require deny.min-precision=0.95 --require max-abstain=0.05
+    --out evals-result.json
+```
+
+A threshold, gate, binding order or mode may change under the same recording; that is what the check
+is for. A change to the dataset or to the rule's question makes the recording no longer fit, and
+`report` exits with code 1 until a new `run` records it again, so a stale recording fails the build
+instead of passing it. Keep the dataset's line endings fixed, as [Pitfalls](#pitfalls) says.
 
 ## Pitfalls
 
@@ -792,31 +901,37 @@ Replaying checks that the recording still fits:
 |---|---|
 | 0 | Done. A conflict in `sweep` still exits 0, because each recommendation met its goals. |
 | 1 | A usage or data error: a bad option, an unreadable file, a bad row, label or split, a recording that does not fit, a provider that is not registered, a key that is not set, a file `samples` would overwrite. The message names the file, the line or the id, never a row's input. |
-| 2 | A goal the tool was asked to meet and could not: no threshold or gate meets it, or the passes of `sweep` or `compare` do not settle. Everything is still printed, and `--out` is written. |
+| 2 | A goal the tool was asked to meet and could not: no threshold or gate meets it, the passes of `sweep` or `compare` do not settle, or a `--require` of `report` or `run` fails. Everything is still printed, and `--out` is written. |
 
 ## The JSON result
 
 `--out <file>` writes what the text shows as JSON, in the format `semanticpolicy/evals-result/v0`.
-From `report` on the shipped recording's test rows, shortened:
+From `report --where metadata.split=test --require deny.min-precision=0.95` on the shipped
+recording, shortened:
 
 ```json
 {
   "format": "semanticpolicy/evals-result/v0",
   "verb": "report",
   "toolVersion": "<version>+<commit>",
-  "generatedAt": "2026-09-25T12:23:14.0460115+00:00",
+  "generatedAt": "2026-09-29T18:36:08.1633318+00:00",
   "policyId": "prompt-injection-smoke",
   "mode": "shadow",
   "ruleId": "prompt-injection",
   "decisionType": "boolean",
   "rows": { "datasetRows": 100, "recordedRows": 100, "afterFilter": 40, "filters": [ "metadata.split=test" ], "splitSource": "metadata", "tuneRows": 0, "testRows": 40 },
   "report": { "outcomes": { ... }, "verdicts": { ... }, "rungs": [ ... ], "discrimination": [ ... ], "calibration": { ... }, "providers": [ ... ], "notes": [ ... ], "sweptProvider": "local" },
-  "recordingPath": "datasets/smoke/prompt-injection.recording.jsonl"
+  "recordingPath": "datasets/smoke/prompt-injection.recording.jsonl",
+  "requirements": [ { "requirement": "deny.min-precision=0.95", "goal": 0.95, "value": 1, "interval": { "lower": 0.7411670330319684, "upper": 1 }, "passed": true, "warned": true } ]
 }
 ```
 
 - **`report`**: the report's sections, and `sweptProvider`, the binding the discrimination curve
   moves.
+- **`requirements`**, from `report` or `run` with `--require` and absent without it: one entry per
+  requirement, in the order given, with the `requirement` as typed, its `goal`, the `value` it was
+  judged on, `null` when the rate is undefined, its `interval`, left out when there is none, and
+  whether it `passed` and `warned`.
 - **`sweep`**: the swept `provider`, the split wording, each rung's curve and recommendation, any
   `conflict`, the gate's curve and recommendation, `passes` and `feasible`. A gate point carries
   `passedOn` only when a later binding follows the swept one. `passes` holds the `count` and the
@@ -873,5 +988,4 @@ or holds a real name, address, key, email address or URL.
 ## Not in this release
 
 - **Per-slice metrics** in one run; filter one slice at a time with `--where`.
-- **A CI gate** that fails a build when a number drops.
 - **Expected cost** from the cost of each kind of error.

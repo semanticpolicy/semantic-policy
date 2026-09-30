@@ -68,11 +68,12 @@ public sealed record RungConstraint(Verdict Rung, ConstraintKind Kind, double Va
     }
 }
 
-// The name=value shape both kinds of constraint share. Only the value is read here; each kind checks the name
-// against its own vocabulary, so a gate name given to a rung option is rejected by the option it was given to.
+// The name=value shape both kinds of constraint and a requirement share. Only the value is read here; each kind
+// checks the name against its own vocabulary, so a gate name given to a rung option is rejected by the option it
+// was given to.
 internal static class ConstraintToken
 {
-    internal static (string Name, double Value) Split(string option, string token, string expected)
+    internal static (string Name, double Value) Split(string option, string token, string expected, string noun = "constraint")
     {
         int equals = token.IndexOf('=', StringComparison.Ordinal);
         if (equals > 0
@@ -82,11 +83,11 @@ internal static class ConstraintToken
             return (token[..equals], value);
         }
 
-        throw Malformed(option, token, expected);
+        throw Malformed(option, token, expected, noun);
     }
 
-    internal static EvalsException Malformed(string option, string token, string expected) =>
-        new($"{option} '{token}' is not a constraint; expected {expected}, with <v> a number from 0 to 1.");
+    internal static EvalsException Malformed(string option, string token, string expected, string noun = "constraint") =>
+        new($"{option} '{token}' is not a {noun}; expected {expected}, with <v> a number from 0 to 1.");
 
     internal static string Format(string name, double value) =>
         $"{name}={value.ToString(CultureInfo.InvariantCulture)}";

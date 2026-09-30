@@ -14,7 +14,8 @@ public static class ExitCodes
 
     /// <summary>
     /// Every input was fine but a goal the tool was asked to meet could not be: no threshold or gate satisfies the
-    /// constraints given, or a sweep's passes did not settle on one set of picks.
+    /// constraints given, a sweep's passes did not settle on one set of picks, or a requirement of <c>report</c> or
+    /// <c>run</c> failed on what the report measured.
     /// </summary>
     public const int InfeasibleConstraint = 2;
 }

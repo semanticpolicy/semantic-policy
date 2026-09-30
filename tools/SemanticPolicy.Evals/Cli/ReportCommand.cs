@@ -1,4 +1,5 @@
 using System.CommandLine;
+using SemanticPolicy.Evals.Gating;
 using SemanticPolicy.Evals.Metrics;
 using SemanticPolicy.Evals.Output;
 using SemanticPolicy.Evals.Recordings;
@@ -28,28 +29,56 @@ internal static class ReportCommand
         command.Options.Add(SharedOptions.Recording);
         command.Options.Add(SharedOptions.Force);
         command.Options.Add(_diagram);
+        command.Options.Add(SharedOptions.Require);
         command.SetAction(parseResult => EvalsCli.Guard(io, () => Report(parseResult, io)));
         return command;
     }
 
-    // The JSON file is written before the text is printed, so a result that cannot be saved fails the verb
-    // before a script reading the output has seen a report it will then be told is incomplete.
-    public static void Publish(EvalsResult result, string? outPath, CliIo io)
+    // Read before any file is opened, so a mistyped requirement costs no replay and, in `run`, no call.
+    internal static IReadOnlyList<Requirement> Requirements(ParseResult parseResult) =>
+        [.. (parseResult.GetValue(SharedOptions.Require) ?? []).Select(Requirement.Parse)];
+
+    // The inputs, once every requirement is known to fit the rule they select.
+    internal static LoadedInputs Load(InputSelection selection, IReadOnlyList<Requirement> requirements)
     {
+        LoadedInputs inputs = Inputs.Load(selection);
+        foreach (Requirement requirement in requirements)
+        {
+            requirement.EnsureFits(inputs.Rule);
+        }
+
+        return inputs;
+    }
+
+    // Judges the requirements, then writes and prints the result, and says how the verb exits: 2 when a requirement
+    // failed, once everything is written. The JSON file is written before the text is printed, so a result that cannot
+    // be saved fails the verb before a script reading the output has seen a report it will then be told is incomplete.
+    public static int Publish(EvalsResult result, IReadOnlyList<Requirement> requirements, string? outPath, CliIo io)
+    {
+        if (requirements.Count > 0)
+        {
+            ReportSection report = result.Report ?? throw new InvalidOperationException("A requirement needs a report to judge.");
+            result = result with { Requirements = [.. requirements.Select(requirement => requirement.Judge(report))] };
+        }
+
         if (outPath is not null)
         {
             ResultWriter.Write(outPath, result);
         }
 
         ReportRenderer.Write(result, io.Output);
+        return result.Requirements?.Any(requirement => !requirement.Passed) == true
+            ? ExitCodes.InfeasibleConstraint
+            : ExitCodes.Success;
     }
 
     private static int Report(ParseResult parseResult, CliIo io)
     {
+        IReadOnlyList<Requirement> requirements = Requirements(parseResult);
         InputSelection selection = InputSelection.From(parseResult);
         string recordingPath = parseResult.GetValue(SharedOptions.Recording)
             ?? throw new EvalsException("--recording <file> is required.");
-        LoadedInputs inputs = Inputs.Load(selection);
+        LoadedInputs inputs = Load(selection, requirements);
         Recording recording = RecordingReader.Read(recordingPath);
         EvalsResult result = ReportPipeline.Build("report", inputs, recording, parseResult.GetValue(SharedOptions.Force));
 
@@ -59,8 +88,7 @@ internal static class ReportCommand
             Diagram(diagramPath, report.Calibration, result.DecisionType, io);
         }
 
-        Publish(result, parseResult.GetValue(SharedOptions.Out), io);
-        return ExitCodes.Success;
+        return Publish(result, requirements, parseResult.GetValue(SharedOptions.Out), io);
     }
 
     // Without a probability there is nothing to draw, but the report still stands: the verb says why on standard

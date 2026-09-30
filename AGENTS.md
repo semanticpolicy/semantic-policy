@@ -11,8 +11,10 @@ makes those decisions testable. Alpha: `src/SemanticPolicy.Core/`,
 `src/SemanticPolicy.Providers.TypeSafe/` and `src/SemanticPolicy.AgentFramework/` are implemented and
 tested, and the demos under `examples/` run on them; `src/SemanticPolicy.Providers.SystemOne/`, the
 provider for any System One server and the base TypeSafe is built on, is implemented and tested too;
-`tools/SemanticPolicy.Evals/` is implemented and tested, and its `run` verb calls Jev through
-OpenRouter and a local Von server through SystemOne; `src/SemanticPolicy.Providers.Http/`, the
+`tools/SemanticPolicy.Evals/` is implemented and tested: its `run` verb calls Jev through
+OpenRouter and a local Von server through SystemOne, or the providers a providers file names, and
+retries a refused call and resumes a run cut short, and `report` and `run` can gate a build on
+required rates; `src/SemanticPolicy.Providers.Http/`, the
 client for any protocol v0 server, is implemented and tested. `examples/CustomProvider/` is a
 provider of your own, over a local classifier and with its own tests, and
 `docs/custom-providers.md` gives the rules it follows.

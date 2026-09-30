@@ -1,4 +1,5 @@
 using System.Globalization;
+using SemanticPolicy.Evals.Gating;
 using SemanticPolicy.Evals.Metrics;
 using SemanticPolicy.Evals.Results;
 using SemanticPolicy.Protocol;
@@ -51,6 +52,11 @@ public static class ReportRenderer
         foreach (string note in report.Notes)
         {
             output.WriteLine($"- {note}");
+        }
+
+        if (result.Requirements is { } requirements)
+        {
+            Requirements(requirements, output);
         }
     }
 
@@ -267,6 +273,26 @@ public static class ReportRenderer
         output.WriteLine("providers: every recorded attempt of the rule");
         table.Write(output);
         output.WriteLine("Usage is summed by field name as each provider reports it, without interpretation.");
+    }
+
+    // Last, so the report above reads the same with and without them. Each line quotes the requirement as it was typed,
+    // and the warning names the bound that misses the goal.
+    private static void Requirements(IReadOnlyList<RequirementResult> requirements, TextWriter output)
+    {
+        output.WriteLine();
+        output.WriteLine("requirements: the value decides, and a bound of its interval that misses the goal warns");
+        foreach (RequirementResult requirement in requirements)
+        {
+            string counts = requirement.Counts is { } fraction ? $" ({Count(fraction.Successes)}/{Count(fraction.Trials)})" : string.Empty;
+            string interval = requirement.Interval is { } bounds ? $" {Bounds(bounds)}" : string.Empty;
+            string warning = !requirement.Warned || requirement.Interval is not { } missed
+                ? string.Empty
+                : requirement.Minimum
+                    ? $"; warning: lower bound {Rate(missed.Lower)} is below the goal"
+                    : $"; warning: upper bound {Rate(missed.Upper)} is above the goal";
+            output.WriteLine(
+                $"{requirement.Requirement}: {(requirement.Passed ? "passed" : "failed")} at {Rate(requirement.Value)}{counts}{interval}{warning}");
+        }
     }
 
     // Shared with sweep and compare: a table of intervals goes under the table of the rates it belongs to.

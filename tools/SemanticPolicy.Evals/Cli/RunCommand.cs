@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Globalization;
 using System.Text.Json;
 using SemanticPolicy.Evals.Datasets;
+using SemanticPolicy.Evals.Gating;
 using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Evals.Results;
 using SemanticPolicy.Evals.Running;
@@ -70,6 +71,7 @@ internal static class RunCommand
         command.Options.Add(_retries);
         command.Options.Add(_resume);
         command.Options.Add(_providers);
+        command.Options.Add(SharedOptions.Require);
         command.SetAction((parseResult, cancellationToken) =>
             EvalsCli.GuardAsync(io, () => RunAsync(parseResult, io, configureProviders, cancellationToken)));
         return command;
@@ -81,6 +83,7 @@ internal static class RunCommand
         Action<ISemanticPolicyBuilder>? configureProviders,
         CancellationToken cancellationToken)
     {
+        IReadOnlyList<Requirement> requirements = ReportCommand.Requirements(parseResult);
         InputSelection selection = InputSelection.From(parseResult);
         int parallel = parseResult.GetValue(_parallel);
         if (parallel < 1)
@@ -102,11 +105,12 @@ internal static class RunCommand
 
         if (parseResult.GetValue(_resume) is { } resumePath)
         {
-            return await ResumeAsync(parseResult, io, configureProviders, selection, resumePath, parallel, retries, cancellationToken)
+            return await ResumeAsync(
+                parseResult, io, configureProviders, selection, requirements, resumePath, parallel, retries, cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        LoadedInputs inputs = Inputs.Load(selection);
+        LoadedInputs inputs = ReportCommand.Load(selection, requirements);
         IReadOnlyDictionary<string, IDecisionProvider> providers = ResolveProviders(parseResult, configureProviders, inputs.Policy);
         if (inputs.Policy.Budget is not null)
         {
@@ -150,8 +154,7 @@ internal static class RunCommand
         // later `report` on the same recording prints.
         Recording recording = RecordingReader.Read(recordPath);
         EvalsResult result = ReportPipeline.Build("run", inputs, recording, force: false);
-        ReportCommand.Publish(result, parseResult.GetValue(SharedOptions.Out), io);
-        return ExitCodes.Success;
+        return ReportCommand.Publish(result, requirements, parseResult.GetValue(SharedOptions.Out), io);
     }
 
     // Finishes a recording under the conditions it was started with, so that it ends up holding the rows the first
@@ -162,6 +165,7 @@ internal static class RunCommand
         CliIo io,
         Action<ISemanticPolicyBuilder>? configureProviders,
         InputSelection selection,
+        IReadOnlyList<Requirement> requirements,
         string path,
         int parallel,
         int retries,
@@ -208,7 +212,7 @@ internal static class RunCommand
             }
         }
 
-        LoadedInputs inputs = Inputs.Load(selection);
+        LoadedInputs inputs = ReportCommand.Load(selection, requirements);
         CheckSameInputs(path, recording, inputs);
         Dictionary<string, RecordedRow> recorded = new(StringComparer.Ordinal);
         foreach (RecordedRow row in recording.Rows)
@@ -220,11 +224,11 @@ internal static class RunCommand
         {
             io.Error.WriteLine(
                 $"nothing needed calling: recording '{path}' holds every selected row and no unavailable attempt; it is left as it was");
-            ReportCommand.Publish(
+            return ReportCommand.Publish(
                 ReportPipeline.Build("run", inputs, recording, force: false),
+                requirements,
                 parseResult.GetValue(SharedOptions.Out),
                 io);
-            return ExitCodes.Success;
         }
 
         IReadOnlyDictionary<string, IDecisionProvider> providers = ResolveProviders(parseResult, configureProviders, inputs.Policy);
@@ -272,8 +276,7 @@ internal static class RunCommand
         await RecordingWriter.ReplaceHeaderAsync(path, WithModels(resumed, RecordingReader.Read(path)), cancellationToken)
             .ConfigureAwait(false);
         EvalsResult result = ReportPipeline.Build("run", inputs, RecordingReader.Read(path), force: false);
-        ReportCommand.Publish(result, parseResult.GetValue(SharedOptions.Out), io);
-        return ExitCodes.Success;
+        return ReportCommand.Publish(result, requirements, parseResult.GetValue(SharedOptions.Out), io);
     }
 
     // The policy and the data a resume was given against the ones the recording names. The messages name what
