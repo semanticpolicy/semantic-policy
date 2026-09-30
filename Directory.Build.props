@@ -13,7 +13,7 @@
        release is tagged v followed by this version. -->
   <PropertyGroup>
     <VersionPrefix>0.1.0</VersionPrefix>
-    <VersionSuffix>alpha.1</VersionSuffix>
+    <VersionSuffix>alpha.2</VersionSuffix>
   </PropertyGroup>
 
   <!-- Package metadata for everything under src/. A project that is not published to NuGet turns
