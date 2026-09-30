@@ -77,6 +77,21 @@ internal sealed class ScriptedHttpMessageHandler : HttpMessageHandler
     }
 
     /// <summary>
+    /// Answer every request with the status and <paramref name="body"/> as JSON in UTF-8 behind a byte
+    /// order mark, which RFC 8259 forbids a sender to add and lets a parser ignore.
+    /// </summary>
+    public void RespondWithByteOrderMark(HttpStatusCode status, string body)
+    {
+        byte[] bytes = [.. Encoding.UTF8.Preamble, .. Encoding.UTF8.GetBytes(body)];
+        _script = (_, _) =>
+        {
+            ByteArrayContent content = new(bytes);
+            content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+            return Task.FromResult(new HttpResponseMessage(status) { Content = content });
+        };
+    }
+
+    /// <summary>
     /// Answer every request with a JSON string <paramref name="length"/> bytes long. With
     /// <paramref name="declareLength"/> the response carries its length, as a buffered one does;
     /// without it the body arrives in chunks of unknown total, as a streamed one does.

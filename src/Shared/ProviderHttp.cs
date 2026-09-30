@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using SemanticPolicy.Protocol;
@@ -48,12 +49,18 @@ internal static class ProviderHttp
             ? value
             : null;
 
-    /// <summary>The body parsed and detached from its document, or <see langword="null"/> when it is not JSON.</summary>
+    /// <summary>
+    /// The body parsed and detached from its document, or <see langword="null"/> when it is not JSON.
+    /// One leading UTF-8 byte order mark is skipped first: RFC 8259 forbids a sender to add one but
+    /// lets a parser ignore it, and <see cref="JsonDocument"/> does not skip it in bytes.
+    /// </summary>
     public static JsonElement? TryParse(byte[] body)
     {
+        ReadOnlySpan<byte> mark = Encoding.UTF8.Preamble;
+        ReadOnlyMemory<byte> json = body.AsSpan().StartsWith(mark) ? body.AsMemory(mark.Length) : body;
         try
         {
-            using JsonDocument document = JsonDocument.Parse(body);
+            using JsonDocument document = JsonDocument.Parse(json);
             return document.RootElement.Clone();
         }
         catch (JsonException)
