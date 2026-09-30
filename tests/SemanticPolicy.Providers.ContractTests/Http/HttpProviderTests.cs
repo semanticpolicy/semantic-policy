@@ -547,4 +547,35 @@ public sealed class HttpProviderTests
         result.Provider.Model.Should().Be(HttpHarness.Model);
         JsonElement.DeepEquals(result.Raw!.Value, JsonDocument.Parse(body).RootElement).Should().BeTrue();
     }
+
+    // A byte order mark in front of the JSON is skipped, so the body reads as it would without one.
+    [Fact]
+    public async Task Byte_Order_Mark_Before_A_Success_Is_Skipped()
+    {
+        HttpHarness harness = new();
+        harness.Handler.RespondWithByteOrderMark(HttpStatusCode.OK, HttpHarness.Success(DecisionType.Boolean));
+
+        ProviderResult result = await harness.Provider.DecideAsync(
+            harness.CreateRequest(DecisionType.Boolean, ProviderHarness.Marker),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Should().Be(ProviderOutcome.Success);
+        result.Value.Should().Be(new BooleanValue(true));
+    }
+
+    [Fact]
+    public async Task Byte_Order_Mark_Before_A_Failure_Body_Is_Skipped()
+    {
+        HttpHarness harness = new();
+        harness.Handler.RespondWithByteOrderMark(
+            HttpStatusCode.InternalServerError,
+            HttpHarness.FailureBody("rejectedInput", $"refused {ProviderHarness.Marker}"));
+
+        ProviderResult result = await harness.Provider.DecideAsync(
+            harness.CreateRequest(DecisionType.Boolean, ProviderHarness.Marker),
+            TestContext.Current.CancellationToken);
+
+        result.Outcome.Status.Should().Be(OutcomeStatus.Failure);
+        result.Outcome.Kind.Should().Be(FailureKind.RejectedInput);
+    }
 }
