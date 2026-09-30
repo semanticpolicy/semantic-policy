@@ -36,6 +36,8 @@ belongs here.
   list, not a `None` kind.
 - [0012](0012-agent-integrations-leave-the-verdict-to-the-application.md) — An agent integration
   evaluates a policy and the application's handler acts on the verdict.
+  [0021](0021-validation-rules-report-flagged-verdicts-as-failures.md) narrows it: an integration
+  that only reports, such as a validation rule, may map the verdict by default.
 - [0013](0013-evaluation-records-answers-and-replays-them-through-core.md) — The evaluation tool
   records provider answers once and replays them through Core.
   [0018](0018-evaluation-tool-reads-providers-from-a-file.md) narrows it: `run` can name its
@@ -62,6 +64,9 @@ belongs here.
 - [0020](0020-evaluation-tool-retries-resumes-and-gates-a-build.md) — The evaluation tool calls an
   `unavailable` answer again, resumes a run cut short, puts a Wilson interval on every proportion,
   and gates a build on the exact value.
+- [0021](0021-validation-rules-report-flagged-verdicts-as-failures.md) — A validation rule reports a
+  flagged verdict as a failure by default, `Deny` an error and `Escalate` a warning, and the
+  application decides what a failure means.
 
 ## Format
 
