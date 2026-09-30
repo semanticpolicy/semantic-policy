@@ -242,7 +242,9 @@ inside a result.
   is read as strictly as under Malformed provider responses; a model, a request id, a scale or an
   error code the server wrote reaches a result only as an identifier, 1 to 200 printable ASCII
   characters without a space, and no other text the server wrote reaches a failure message
-  ([ADR 0017](adr/0017-protocol-v0-servers-over-one-http-binding.md)).
+  ([ADR 0017](adr/0017-protocol-v0-servers-over-one-http-binding.md)). The Http provider keeps the
+  rest of an answer — its message, `usage` and `extra` — in the result's raw response, which is
+  never serialized.
 - **The application still** chooses the server a provider talks to and the network between them,
   sets `AllowAutoRedirect = false` on any primary handler it sets on the client's name, and applies
   its own redaction to any logging it puts back with `AddDefaultLogger()`.
@@ -250,7 +252,11 @@ inside a result.
   the transport. A registration that sets `AllowInsecureHttp` sends both in clear text across every
   network between the two. A primary handler the host sets on the client's name after the
   registration replaces the one that turned redirects off, and follows them unless the host turns
-  them off itself. A handler the host adds to that client sees each request as it is sent.
+  them off itself. A handler the host adds to that client sees each request as it is sent. The
+  System One and TypeSafe providers relay a success's `usage`, which the evaluation tool reads cost
+  from ([ADR 0013](adr/0013-evaluation-records-answers-and-replays-them-through-core.md)), and the
+  server's `confidence`, `score` and `provider` into the result's metadata as the server wrote them,
+  so that text is written wherever the result is, an evaluation recording included.
 
 ### Configuration tampering
 
