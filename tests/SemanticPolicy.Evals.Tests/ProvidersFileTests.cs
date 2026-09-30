@@ -84,7 +84,7 @@ public sealed class ProvidersFileTests
     [InlineData("no options", "provider 'von': the entry has no 'options'")]
     [InlineData("no providers", "has no top-level 'providers' object.")]
     [InlineData("a second top-level property", "top-level property 'version' is not known")]
-    [InlineData("kind openai", "provider 'von': kind 'openai' is not known; known kinds: systemone, typesafe-jev.")]
+    [InlineData("an unknown kind", "provider 'von': 'kind' names a kind that is not known; known kinds: systemone, typesafe-jev.")]
     [InlineData("a name given twice", "provider 'von' is given twice.")]
     [InlineData("truncated JSON", "is not valid JSON at line 2, byte ")]
     [InlineData("no such file", "cannot be read")]
@@ -102,7 +102,7 @@ public sealed class ProvidersFileTests
             "no options" => Holding("""{ "von": { "kind": "systemone" } }"""),
             "no providers" => "{ }",
             "a second top-level property" => $$"""{ "providers": { "von": {{_von}} }, "version": "{{_marker}}" }""",
-            "kind openai" => Holding("""{ "von": { "kind": "openai", "options": { "model": "von-1.2.2" } } }"""),
+            "an unknown kind" => Holding($$"""{ "von": { "kind": "{{_marker}}", "options": { "model": "von-1.2.2" } } }"""),
             "a name given twice" => Holding($$"""{ "von": {{_von}}, "von": {{_von}} }"""),
             "truncated JSON" => $$"""{ "providers":{{"\n"}}{ "von": { "kind": "systemone", "options": { "model": "{{_marker}}""",
             "no such file" => Holding($$"""{ "von": {{_von}} }"""),
