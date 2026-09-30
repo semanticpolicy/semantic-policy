@@ -218,6 +218,8 @@ public sealed class PolicyEvaluationTests
             .Should().Equal((0, "local", AttemptDisposition.MovedOnByGate), (1, "jev", AttemptDisposition.Decided));
         rule.Attempts[0].Result.Should().BeSameAs(flat);
         rule.Attempts[1].Result.Should().BeSameAs(clear);
+        rule.DecidingAttempt.Should().BeSameAs(rule.Attempts[1]);
+        rule.ChosenOption.Should().BeNull();
     }
 
     public static TheoryData<ProviderOutcome, FailureBehavior, Verdict> FailureBehaviours
@@ -329,6 +331,56 @@ public sealed class PolicyEvaluationTests
         rule.RungCrossed.Should().BeNull();
         rule.EvidenceKind.Should().BeNull();
         rule.EvidenceValue.Should().BeNull();
+        rule.ChosenOption.Should().Be(option);
+    }
+
+    [Fact]
+    public void Choice_Verdict_Names_The_Option_Of_The_Answer_That_Decided_It()
+    {
+        Policy policy = Define(FailureBehavior.Deny, ["local", "jev"], [Graded("route")], gate: 0.2);
+        ProviderResult close = Answer(new ChoiceValue("deny"), Probability(("deny", 0.55), ("allow", 0.45)));
+        ProviderResult clear = Answer(new ChoiceValue("escalate"), Probability(("escalate", 0.9), ("allow", 0.1)));
+
+        var attempts = Attempts(("route", 0, close), ("route", 1, clear));
+        RuleVerdict rule = PolicyEvaluation.Evaluate(policy, attempts).Verdict!.Rules.Single();
+
+        rule.ChosenOption.Should().Be("escalate");
+        rule.DecidingAttempt.Should().BeSameAs(rule.Attempts[1]);
+        rule.DecidingAttempt!.Result.Should().BeSameAs(clear);
+    }
+
+    [Fact]
+    public void Rule_No_Answer_Decided_Has_No_Deciding_Attempt_And_No_Chosen_Option()
+    {
+        ProviderResult close = Answer(new ChoiceValue("deny"), Probability(("deny", 0.55), ("allow", 0.45)));
+        Policy gated = Define(FailureBehavior.Deny, ["local"], [Graded("route")], gate: 0.2);
+        RuleVerdict exhausted = PolicyEvaluation.Evaluate(gated, Attempts(("route", 0, close))).Verdict!.Rules.Single();
+
+        ProviderResult timedOut = ProviderResult.Failed(DecisionType.Choice, FailureKind.Timeout, "no answer", _provider);
+        Policy allowing = Define(FailureBehavior.Allow, ["local"], [Graded("route")]);
+        RuleVerdict failed = PolicyEvaluation.Evaluate(allowing, Attempts(("route", 0, timedOut))).Verdict!.Rules.Single();
+
+        exhausted.Source.Should().Be(VerdictSource.UncertaintyExhausted);
+        failed.Source.Should().Be(VerdictSource.FailureBehavior);
+        foreach (RuleVerdict rule in new[] { exhausted, failed })
+        {
+            rule.Attempts.Should().ContainSingle();
+            rule.DecidingAttempt.Should().BeNull();
+            rule.ChosenOption.Should().BeNull();
+        }
+    }
+
+    [Fact]
+    public void Serialized_Verdict_Leaves_The_Deciding_Attempt_And_The_Chosen_Option_To_Its_Attempts()
+    {
+        Policy policy = Define(FailureBehavior.Deny, ["local"], [Graded("route")]);
+        PolicyVerdict verdict = PolicyEvaluation.Evaluate(policy, Attempts(("route", 0, Yielding(Verdict.Warn)))).Verdict!;
+
+        string json = JsonSerializer.Serialize(verdict, SemanticPolicyJson.Options);
+
+        verdict.Rules.Single().ChosenOption.Should().Be("warn");
+        json.Should().NotContain("chosenOption").And.NotContain("decidingAttempt");
+        JsonNode.Parse(json)!["rules"]![0]!["attempts"]![0]!["result"]!["value"]!.GetValue<string>().Should().Be("warn");
     }
 
     [Theory]

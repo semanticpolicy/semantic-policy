@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy.Evaluation;
@@ -17,7 +18,7 @@ namespace SemanticPolicy.Evaluation;
 /// </param>
 /// <param name="RungCrossed">
 /// The ladder or Score rung the verdict is; <see langword="null"/> when no rung was reached, or when
-/// the rule is a Choice rule or no answer decided it.
+/// the rule is a Choice rule, whose pick is <see cref="ChosenOption"/>, or no answer decided it.
 /// </param>
 /// <param name="EvidenceKind">
 /// The kind of evidence the ladder was read on, for a Boolean rule an answer decided. At a calibrated
@@ -37,4 +38,25 @@ public sealed record RuleVerdict(
     Verdict? RungCrossed,
     EvidenceKind? EvidenceKind,
     double? EvidenceValue,
-    IReadOnlyList<Attempt> Attempts);
+    IReadOnlyList<Attempt> Attempts)
+{
+    // Both members below read the attempts, which the serialized verdict already carries, so writing them
+    // would repeat an attempt's result in every stored verdict.
+
+    /// <summary>
+    /// The attempt at <see cref="DecidingBinding"/>, whose result holds the answer that decided the rule
+    /// and the evidence the provider returned with it; <see langword="null"/> when no answer decided it.
+    /// </summary>
+    [JsonIgnore]
+    public Attempt? DecidingAttempt =>
+        DecidingBinding is { } index ? Attempts.FirstOrDefault(attempt => attempt.BindingIndex == index) : null;
+
+    /// <summary>
+    /// The option the deciding answer picked, for a Choice rule an answer decided; <see langword="null"/>
+    /// for a Boolean or Score rule, and when no answer decided the rule — the gate abstained, or the
+    /// failure behaviour set the verdict. It is the provider's pick, not a measure of how right it is: the
+    /// deciding attempt's evidence carries the provider's number for every option.
+    /// </summary>
+    [JsonIgnore]
+    public string? ChosenOption => (DecidingAttempt?.Result.Value as ChoiceValue)?.Option;
+}

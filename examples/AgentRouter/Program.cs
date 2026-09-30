@@ -114,7 +114,7 @@ foreach (string request in requests)
     Console.WriteLine($"--- customer: {request}");
 
     PolicyVerdict verdict = await evaluator.EvaluateAsync("agent-router", SemanticContext.FromText(request));
-    string? team = ChosenRoute(verdict);
+    string? team = verdict.Rules[0].ChosenOption;
     Report(verdict, team);
 
     if (team is null)
@@ -130,17 +130,6 @@ foreach (string request in requests)
 }
 
 return 0;
-
-// Core does not yet expose a Choice rule's chosen option on the verdict, so the router reads it out of
-// the attempt that decided the rule. Null when nothing decided - the gate abstained, or the provider
-// failed - and the application hands that request to a person rather than guessing.
-static string? ChosenRoute(PolicyVerdict verdict) =>
-    (Deciding(verdict.Rules[0])?.Result.Value as ChoiceValue)?.Option;
-
-static Attempt? Deciding(RuleVerdict rule) =>
-    rule.DecidingBinding is { } index
-        ? rule.Attempts.FirstOrDefault(attempt => attempt.BindingIndex == index)
-        : null;
 
 static void Report(PolicyVerdict verdict, string? team)
 {

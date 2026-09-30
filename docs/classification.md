@@ -66,30 +66,21 @@ using ServiceProvider serviceProvider = services.BuildServiceProvider();
 IPolicyEvaluator evaluator = serviceProvider.GetRequiredService<IPolicyEvaluator>();
 
 PolicyVerdict verdict = await evaluator.EvaluateAsync("ticket-router", SemanticContext.FromText(ticket));
-string? team = ChosenOption(verdict);
+string? team = verdict.Rules[0].ChosenOption;
 ```
 
 `ticket` is the text the customer wrote.
 
 ## Read the chosen option
 
-Every option maps to `Allow`, so the verdict alone does not say which team was picked. The option is
-in the answer of the attempt that decided the rule, and `examples/AgentRouter` reads it from there:
+Every option maps to `Allow`, so the verdict alone does not say which team was picked. The rule's
+`ChosenOption` does: it is the key of the option the deciding answer picked, and
+`examples/AgentRouter` routes on it. It is null when no answer decided the rule, and on a rule that
+is not a Choice rule.
 
-```csharp
-static string? ChosenOption(PolicyVerdict verdict) =>
-    (Deciding(verdict.Rules[0])?.Result.Value as ChoiceValue)?.Option;
-
-static Attempt? Deciding(RuleVerdict rule) =>
-    rule.DecidingBinding is { } index
-        ? rule.Attempts.FirstOrDefault(attempt => attempt.BindingIndex == index)
-        : null;
-```
-
-`DecidingBinding` is null when no binding decided the rule, so `ChosenOption` is null then too. Each
-attempt also carries the provider's number for every option in its result's evidence, which the
-example prints: the highest one names the pick, and none of them is a calibrated probability of
-being right.
+`DecidingAttempt` is the attempt that answer came from. Its result's evidence carries the provider's
+number for every option, which the example prints: the highest one names the pick, and none of them
+is a calibrated probability of being right.
 
 ## Send a close call to a person
 
