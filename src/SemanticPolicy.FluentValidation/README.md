@@ -25,16 +25,16 @@ builder.Services.AddSemanticPolicy()
         .Enforce()
         .Rule(Policy.Rule("not-support")
             .Boolean("Is this text about something other than a request for support?")
-            .WhenTrue(Verdict.Warn, Verdict.Escalate, Verdict.Deny))
+            .WhenTrue(Verdict.Escalate, Verdict.Deny))
         .Using("jev", binding => binding
-            .WarnAboveProbability(0.5)
             .EscalateAboveProbability(0.7)
             .DenyAboveProbability(0.9))
         .OnFailure(FailureBehavior.Escalate)
         .Build());
 ```
 
-The thresholds are illustrative. Choose yours from measured precision and recall on your own data.
+The ladder holds `Escalate` and `Deny`, the two verdicts that fail a validation by default. The
+thresholds are illustrative. Choose yours from measured precision and recall on your own data.
 
 ## Add semantic rules to a validator
 
@@ -52,8 +52,11 @@ public sealed class SupportTicketValidator : AbstractValidator<SupportTicket>
 {
     public SupportTicketValidator(IPolicyEvaluator evaluator)
     {
-        RuleFor(ticket => ticket.Notes).Semantic(evaluator, "off-topic");
+        // Stop at the first failure, so a ticket that fails a cheap rule never reaches the provider.
+        ClassLevelCascadeMode = CascadeMode.Stop;
+        RuleLevelCascadeMode = CascadeMode.Stop;
 
+        RuleFor(ticket => ticket.Category).NotEmpty();
         RuleFor(ticket => ticket.Description)
             .NotEmpty()
             .Semantic(evaluator, "off-topic", ticket => new SemanticContext(
@@ -61,12 +64,18 @@ public sealed class SupportTicketValidator : AbstractValidator<SupportTicket>
                 ContextPart.Text("category", ticket.Category),
                 ContextPart.Text("description", ticket.Description),
             ]));
+
+        RuleFor(ticket => ticket.Notes).Semantic(evaluator, "off-topic");
     }
 }
 ```
 
-A one-field rule passes a null, empty or whitespace value without asking the provider. Register the
-validator like any other, for example with
+Both semantic rules ask the same policy: one about the description with the category beside it, the
+other about the notes alone. A one-field rule passes a null, empty or whitespace value without asking
+the provider. A rule with a context delegate skips nothing, and `ContextPart.Text` throws on a null
+text, so the cheap rules go first and the validator stops at the first failure: a ticket without a
+category or a description never reaches the delegate and costs no call. Register the validator like
+any other, for example with
 `builder.Services.AddSingleton<IValidator<SupportTicket>, SupportTicketValidator>()`.
 
 ## Validate asynchronously
