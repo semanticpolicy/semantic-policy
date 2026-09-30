@@ -8,12 +8,12 @@ Notable changes to the packages `SemanticPolicy.Core`, `SemanticPolicy.Providers
 [Semantic Versioning](https://semver.org/); while the major version is 0, any release can change the
 API.
 
-## Unreleased
+## 0.1.0-alpha.2 - 2026-09-30
 
-A Boolean rule's operating point can calibrate the provider's evidence before the thresholds read it.
-A new package puts a semantic rule on a FluentValidation validator, outside any agent. The evaluation
-CLI names its providers in a file, retries and resumes a run, gives each rate an interval, and can
-fail a build.
+The System One provider, for a decision model you run yourself, a provider for any server that
+speaks protocol v0, a guide to writing a provider of your own, semantic rules on a FluentValidation
+validator, outside any agent, and the evaluation CLI as a package that can fail a build. A Boolean
+rule's operating point can calibrate the provider's evidence before the thresholds read it.
 
 - **`SemanticPolicy.Core`.** `Calibrate` on an operating point takes an `EvidenceCalibration`: Platt's
   map p = σ(`Slope` · x + `Intercept`), where x is the log-odds of a score or probability, or the raw
@@ -33,48 +33,10 @@ fail a build.
   `Calibration`, and `Attempt` gains `CalibratedEvidence` and `CalibrationModelMismatch`, as optional
   last parameters, so each record's constructor and `Deconstruct` change: a call to the constructor
   compiles as before, a positional deconstruction or pattern needs a place for each new member, and
-  an assembly built against 0.1.0-alpha.2 that constructs or deconstructs either record must be
+  an assembly built against 0.1.0-alpha.1 that constructs or deconstructs either record must be
   rebuilt. A success whose evidence of the kind a rule reads carries NaN or an infinity is
   `Malformed`, so the policy's `OnFailure` decides; until now NaN and −∞ read as `Allow` and +∞
   crossed every threshold.
-- **`SemanticPolicy.Providers.SystemOne`, `SemanticPolicy.Providers.Http` and
-  `SemanticPolicy.Providers.TypeSafe`.** A body that starts with a UTF-8 byte order mark is read as
-  the JSON after the mark. It used to read as a body that is not JSON: `malformed` on a 200, and on
-  any other status a failure without the body's error code in its message, without the raw JSON
-  and, from the Http provider, without the failure kind the server named. JSON sent over a network
-  should carry no such mark, but a parser may ignore one.
-- **`SemanticPolicy.FluentValidation`.** New. `RuleFor(...).Semantic(evaluator, "policy-id")` asks a
-  policy about a property of a FluentValidation validator and reports a flagged verdict as a
-  validation failure, beside the validator's other rules. A rule names a registered policy or takes a
-  `Policy`, and sends the property's text or, through a context delegate, the parts the delegate
-  builds; a null or whitespace text passes without a call. By default it reads the effective verdict:
-  `Deny` fails as an `Error`, `Escalate` as a `Warning`, and `Warn`, `Abstain` and `Allow` do not
-  fail, so a policy in Shadow mode never fails a validation. A `severity:` delegate replaces that
-  mapping. A failure carries the `PolicyVerdict` as its `CustomState` and `SemanticPolicyValidator`
-  as its error code, and its default message says the value was flagged by the policy, never that it
-  is invalid. The rule runs under `ValidateAsync` only. The package depends on FluentValidation and
-  `SemanticPolicy.Core`, not on ASP.NET Core, so a web endpoint calls `ValidateAsync` itself.
-- **`SemanticPolicy.Evals`.** `run --providers <file>` calls the providers a file names, System One
-  servers and Jev routes, in place of `local` and `jev`; a key is named by its environment variable,
-  never written in the file. A call answered `unavailable` is made again up to `--retries` times, 2
-  by default, and `run --resume <recording>` finishes a recording a run left short; it needs a
-  recording made by this version, whose header keeps the run's retries and filters. Every rate that
-  is one count over another comes with its 95% Wilson interval, in the text and in the JSON result.
-  `report` and `run` take `--require`, such as `deny.min-precision=0.95` or `max-failure-rate=0.02`,
-  and exit with code 2 when a requirement fails, so a build that replays a committed recording can
-  gate on it.
-
-[examples/SupportTicketForm](examples/SupportTicketForm) is a minimal API whose validator asks two
-policies about a support ticket, and the evaluation CLI carries `support-ticket.jsonl`, fifty
-synthetic tickets for the example's category rule, to measure that rule with `compare`.
-[docs/classification.md](docs/classification.md) shows a Choice rule picking a label outside any
-agent, on Core alone.
-
-## 0.1.0-alpha.2
-
-The System One provider, for a decision model you run yourself, a provider for any server that
-speaks protocol v0, a guide to writing a provider of your own, and the evaluation CLI as a package.
-
 - **`SemanticPolicy.Providers.SystemOne`.** New. Any server that answers TypeSafe's System One API at
   `/v1/systemone`, registered with `AddSystemOne`. It reports the server's numbers as a score unless
   you declare them a probability, refuses plain `http` to anything but a loopback host unless you
@@ -92,20 +54,41 @@ speaks protocol v0, a guide to writing a provider of your own, and the evaluatio
   reads it, and a minimal server to start from.
 - **`SemanticPolicy.Providers.TypeSafe`.** Built on the System One provider, which it now brings
   along at exactly its own version.
-- **Every HTTP provider.** An exception from a handler the host added, such as a circuit breaker or a
-  rate limiter, is an `Unknown` failure for the policy's `OnFailure`, no longer an exception out of
-  `EvaluateAsync`. A body over 1 MiB is not read, and the client a registration sets up follows no
-  redirect. A model, a request id or an error code the server writes is reported only when it is an
-  identifier, printable ASCII without a space. A base URL with a query or a fragment is refused at
-  registration, since the path would land inside it. For `SemanticPolicy.Providers.TypeSafe` each of
-  these is a change from 0.1.0-alpha.1.
+- **Every HTTP provider.** An exception from a handler the host added, such as a circuit breaker or
+  a rate limiter, is an `Unknown` failure for the policy's `OnFailure`, no longer an exception out
+  of `EvaluateAsync`. A body over 1 MiB is not read, and the client a registration sets up follows
+  no redirect. A model, a request id or an error code the server writes is reported only when it is
+  an identifier, printable ASCII without a space. A base URL with a query or a fragment is refused
+  at registration, since the path would land inside it. A body that starts with a UTF-8 byte order
+  mark is read as the JSON after the mark: JSON sent over a network should carry no such mark, but a
+  parser may ignore one. For `SemanticPolicy.Providers.TypeSafe` each of these is a change from
+  0.1.0-alpha.1.
+- **`SemanticPolicy.FluentValidation`.** New. `RuleFor(...).Semantic(evaluator, "policy-id")` asks a
+  policy about a property of a FluentValidation validator and reports a flagged verdict as a
+  validation failure, beside the validator's other rules. A rule names a registered policy or takes a
+  `Policy`, and sends the property's text or, through a context delegate, the parts the delegate
+  builds; a null or whitespace text passes without a call. By default it reads the effective verdict:
+  `Deny` fails as an `Error`, `Escalate` as a `Warning`, and `Warn`, `Abstain` and `Allow` do not
+  fail, so a policy in Shadow mode never fails a validation. A `severity:` delegate replaces that
+  mapping. A failure carries the `PolicyVerdict` as its `CustomState` and `SemanticPolicyValidator`
+  as its error code, and its default message says the value was flagged by the policy, never that it
+  is invalid. The rule runs under `ValidateAsync` only. The package depends on FluentValidation and
+  `SemanticPolicy.Core`, not on ASP.NET Core, so a web endpoint calls `ValidateAsync` itself.
 - **`SemanticPolicy.Evals`.** New. The evaluation CLI, until now run from a clone, as a dotnet tool
   whose command is `semantic-policy`. Its new `samples` command writes out the datasets and
   recordings the package carries, and `report`, `sweep` and `compare` replay those without a key.
   `run` gains a `local` binding for a Von server beside `jev`, and the recordings of the smoke and
   router sets are answered by both. It builds a provider only when a policy binds it, and a curve
   replays at most 101 candidates. `report --diagram <file>` draws the calibration section as an SVG
-  reliability diagram.
+  reliability diagram. `run --providers <file>` calls the providers a file names, System One servers
+  and Jev routes, in place of `local` and `jev`; a key is named by its environment variable, never
+  written in the file. A call answered `unavailable` is made again up to `--retries` times, 2 by
+  default, and `run --resume <recording>` finishes a recording a run left short; it needs a
+  recording made by this version, whose header keeps the run's retries and filters. Every rate that
+  is one count over another comes with its 95% Wilson interval, in the text and in the JSON result.
+  `report` and `run` take `--require`, such as `deny.min-precision=0.95` or `max-failure-rate=0.02`,
+  and exit with code 2 when a requirement fails, so a build that replays a committed recording can
+  gate on it.
 
 [Local setup](README.md#local-setup) starts Von, and [docs/local-models.md](docs/local-models.md)
 has what a probe measured on it and on two other local servers.
@@ -114,6 +97,12 @@ has what a probe measured on it and on two other local servers.
 and, when none does, the rules an `IDecisionProvider` you write has to keep;
 [examples/CustomProvider](examples/CustomProvider/README.md) is one, over a prompt-injection
 classifier behind a Text Embeddings Inference server, with its own tests.
+
+[examples/SupportTicketForm](examples/SupportTicketForm) is a minimal API whose validator asks two
+policies about a support ticket, and the evaluation CLI carries `support-ticket.jsonl`, fifty
+synthetic tickets for the example's category rule, to measure that rule with `compare`.
+[docs/classification.md](docs/classification.md) shows a Choice rule picking a label outside any
+agent, on Core alone.
 
 ## 0.1.0-alpha.1 - 2026-09-24
 
