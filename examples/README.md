@@ -235,7 +235,7 @@ each one got:
     <each failure's message>
 ```
 
-A failure's message says the field was flagged by the named policy, not that it is wrong.
+A semantic rule's message says the field was flagged by the named policy, not that it is wrong.
 
 E runs both policies in Enforce so that the form shows what a verdict does to a ticket. In Shadow the
 effective verdict is always `Allow`, so the validator would never fail and every ticket would be
@@ -281,8 +281,9 @@ and a message naming the rung the rule does not have.
 `compare` measures each binding as if the policy held only that one, and prints:
 
 - **The rows**: how many the dataset, the recording and the filters hold, and how many the
-  thresholds are chosen on (`tune`) and reported on (`test`). Every table is on the test rows, and
-  the `ambiguous` rows stay out of every rate. `n/a` means there was nothing to divide by.
+  thresholds are chosen on (`tune`) and reported on (`test`). Every table is on the test rows. The
+  escalate rates leave the `ambiguous` rows out; `abstention` and `failure` divide by every test
+  row, though an ambiguous row never counts as either. `n/a` means there was nothing to divide by.
 - **`escalate on split 'test'`**, one line per binding. `threshold` is the escalate threshold the
   binding settled on for the goal, in its own evidence: a score for `local`, a probability for
   `jev`, so the two do not compare. The rates read a verdict of `Escalate` against the labels, with
