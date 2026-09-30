@@ -305,8 +305,8 @@ public sealed class EvalRunner
     {
         try
         {
-            // Only an unavailable answer is asked again: it is what a rate limit or an overloaded server gives, and
-            // what a run's own parallelism sets off. A timeout is not, since the call may have been slow rather than
+            // Only an unavailable answer is asked again: it is what a rate limit, an overloaded server or one that
+            // cannot be reached gives, and what a run's own parallelism sets off. A timeout is not, since the call may have been slow rather than
             // refused. The slot stays taken through the wait, so a provider shedding load is not handed another
             // row's calls meanwhile.
             ProviderResult result = await CallAsync(type, providerName, request, runToken).ConfigureAwait(false);

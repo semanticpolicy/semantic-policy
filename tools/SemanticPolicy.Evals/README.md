@@ -51,7 +51,7 @@ A recording holds row ids and answers, never an input or a label. The tool depen
 | margin, gate | The margin is how far the top answer leads the runner-up. Below the binding's gate, the next binding is asked; after the last one, the rule abstains. |
 | tune, test | Two parts of the dataset. Thresholds are chosen on tune and checked on test, so the rows they were chosen on cannot flatter them. |
 
-## The provider
+## Providers
 
 A binding's `providerId` names a provider, and `run` builds only the providers its policy binds, so
 a policy that leaves one out needs neither its key nor its server. `report`, `sweep` and `compare`
@@ -226,9 +226,9 @@ among them (recall 0.711) and one safe input (precision 0.970); of the other 13 
 and 4 were allowed. The intervals under the table are the rates these rows are consistent with (see
 [How far to trust a rate](#how-far-to-trust-a-rate)). One row was left undecided by both providers,
 and the six rows labelled `ambiguous` are counted apart. In the replay, `local` decides first and
-passes the rows whose margin is below its gate to `jev`. The smoke rows are clear-cut on purpose, so these numbers show that the
-pieces fit together, not how a rule does on real traffic, and the policy's thresholds are
-illustrations, not a recommendation.
+passes the rows whose margin is below its gate to `jev`. The smoke rows are clear-cut on purpose, so
+these numbers show that the pieces fit together, not how a rule does on real traffic, and the
+policy's thresholds are illustrations, not a recommendation.
 
 ## The dataset
 
@@ -389,11 +389,12 @@ same report as [`report`](#report).
   gate and still find each answer it needs.
 - Every rule is recorded; `--rule` picks the one reported. Only the rows that pass `--where` are
   sent, `ambiguous` and `abstain` rows included.
-- A call answered `unavailable`, which is what a rate limit or an overloaded server gives, is made
-  again, up to `--retries` times. The wait before retry k is drawn evenly between half and the whole
-  of 1 s · 2^(k−1), and is never more than 30 s. While it waits, the call keeps its place among the
-  `--parallel` calls, so a provider shedding load is not sent another row meanwhile. Each call gets
-  its own `--timeout`.
+- A call answered `unavailable` is made again, up to `--retries` times. A rate limit, an overloaded
+  server and a server that cannot be reached all answer it, so a server that is not running is asked
+  again too; `--retries 0` shows that sooner. The wait before retry k is drawn evenly between half
+  and the whole of 1 s · 2^(k−1), and is never more than 30 s. While it waits, the call keeps its
+  place among the `--parallel` calls, so a provider shedding load is not sent another row meanwhile.
+  Each call gets its own `--timeout`.
 - Every other failure is recorded as its kind, such as `timeout`, and is not retried: a slow call
   was not refused. The recorded answer is the last call's, and the recording notes how many calls
   came after the first.
@@ -407,11 +408,11 @@ same report as [`report`](#report).
 | `--timeout <seconds>` | How long one call may take before it is recorded as a `timeout`; 30 by default. |
 | `--retries <n>` | How many times a call answered `unavailable` is made again; 2 by default, 0 for none. |
 | `--resume <recording>` | Finish that recording instead of starting a new one; see below. |
-| `--providers <file>` | The providers `run` may call, from a [providers file](#the-provider), in place of `local` and `jev`. |
+| `--providers <file>` | The providers `run` may call, from a [providers file](#providers), in place of `local` and `jev`. |
 | `--require <requirement>` | A rate the report must reach, such as `max-failure-rate=0.02`; repeatable. When one fails, `run` still records every row and prints the report, then exits with code 2; see [Gating a pipeline](#gating-a-pipeline). |
 
 A binding's `providerId` is a registration name: `local` or `jev`, or with `--providers` a name in
-the file (see [The provider](#the-provider)). A policy that binds a name nothing registers stops
+the file (see [Providers](#providers)). A policy that binds a name nothing registers stops
 `run` before the first call with exit code 1, and the message lists the names that are registered.
 
 `--resume` finishes a recording a run left short: stopped with Ctrl+C, or holding answers that were
@@ -767,13 +768,16 @@ In a GitHub Actions job, with the policy, dataset and recording at paths of your
 - uses: actions/setup-dotnet@v4
   with:
     dotnet-version: '10.0.x'
-- run: dotnet tool install --global SemanticPolicy.Evals --prerelease
+- run: dotnet tool install --global SemanticPolicy.Evals --version 0.1.0-alpha.2
 - run: >-
     semantic-policy report --policy policies/support.policy.json
     --dataset evals/support.jsonl --recording evals/support.recording.jsonl
     --require deny.min-precision=0.95 --require max-abstain=0.05
     --out evals-result.json
 ```
+
+The version is pinned, so only a change in the repository can change what the step measures, not a
+newer release of the tool.
 
 A threshold, gate, binding order or mode may change under the same recording; that is what the check
 is for. A change to the dataset or to the rule's question makes the recording no longer fit, and

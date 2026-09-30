@@ -375,11 +375,11 @@ semantic-policy sweep --policy policy.json --dataset dataset.jsonl --recording r
 
 `run` calls the providers its policy binds: Jev through OpenRouter, which needs `OPENROUTER_API_KEY`
 and sends every dataset input to that third party, and a Von server on your machine
-([Local setup][local-setup]), or with `--providers <file>` the providers a file names. It makes a
-call a rate limit refused again, and `--resume` finishes a run that was cut short. The package
-carries the example and smoke datasets and a recorded run of each smoke set, and
-`semantic-policy samples <dir>` writes them out, so the other three commands work right after the
-install, without a key or a server. `report` and `run` also take `--require`, such as
+([Local setup][local-setup]), or with `--providers <file>` the providers a file names. A call
+answered `unavailable`, as a rate limit or an unreachable server answers it, is made again, and
+`--resume` finishes a run that was cut short. The package carries the example and smoke datasets
+and a recorded run of each smoke set, and `semantic-policy samples <dir>` writes them out, so the
+other three commands work right after the install, without a key or a server. `report` and `run` also take `--require`, such as
 `deny.min-precision=0.95`, and exit with code 2 when the report misses it, so a build that replays a
 committed recording fails when a policy change makes the rule worse. [Its README][evals-readme]
 explains the dataset format, the five commands and how to read their output.
