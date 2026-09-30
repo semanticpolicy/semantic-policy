@@ -156,10 +156,11 @@ Every number a result carries is evidence of a declared kind
 - `Unknown` for a number whose meaning the provider does not define.
 
 Never report a score as a probability because a probability threshold reads better. Every value is a
-finite number: NaN passes no threshold, so a rule would read it as allowed, and an answer that
-carries one, or a number too large for a double, is `Malformed`. Report one entry per kind, since a
-threshold reads only the first. A provider with no numbers returns an empty evidence list, never a
-placeholder entry ([ADR 0011](adr/0011-absence-of-evidence-is-an-empty-list.md)).
+finite number: when the model hands you NaN, an infinity or a number too large for a double, the
+answer is `Malformed`. The evaluator reads such a value in the evidence a rule reads as `Malformed`
+too, since NaN passes no threshold and would otherwise read as allowed. Report one entry per kind,
+since a threshold reads only the first. A provider with no numbers returns an empty evidence list,
+never a placeholder entry ([ADR 0011](adr/0011-absence-of-evidence-is-an-empty-list.md)).
 
 A Boolean answer's evidence is keyed `true` and `false`. `Probability` evidence may carry one side,
 and the evaluator completes it as 1 − p. Any other kind has no complement, so it carries both keys, or

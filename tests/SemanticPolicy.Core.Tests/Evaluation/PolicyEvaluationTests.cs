@@ -435,6 +435,41 @@ public sealed class PolicyEvaluationTests
                     calibrated,
                     Answer(new BooleanValue(true), Of(EvidenceKind.Score, ("true", 0.8)))
                 },
+                {
+                    "NaN score evidence",
+                    score,
+                    Answer(new BooleanValue(true), Of(EvidenceKind.Score, ("true", double.NaN), ("false", double.NaN)))
+                },
+                {
+                    "NaN on the other answer only",
+                    score,
+                    Answer(new BooleanValue(true), Of(EvidenceKind.Score, ("true", 2.0), ("false", double.NaN)))
+                },
+                {
+                    "positive infinity on the flagged answer",
+                    probability,
+                    Answer(new BooleanValue(true), Probability(("true", double.PositiveInfinity), ("false", 0.1)))
+                },
+                {
+                    "negative infinity on the flagged answer",
+                    probability,
+                    Answer(new BooleanValue(false), Probability(("true", double.NegativeInfinity), ("false", 0.9)))
+                },
+                {
+                    "NaN one-sided probability",
+                    probability,
+                    Answer(new BooleanValue(true), Probability(("true", double.NaN)))
+                },
+                {
+                    "NaN under a gate",
+                    gatedChoice,
+                    Answer(new ChoiceValue("allow"), Probability(("allow", double.NaN), ("deny", 0.1)))
+                },
+                {
+                    "NaN at a calibrated point",
+                    calibrated,
+                    Answer(new BooleanValue(true), Of(EvidenceKind.Score, ("true", double.NaN), ("false", 0.2)))
+                },
             };
         }
     }
