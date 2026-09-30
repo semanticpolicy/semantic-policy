@@ -40,8 +40,12 @@ belongs here.
   records provider answers once and replays them through Core.
   [0018](0018-evaluation-tool-reads-providers-from-a-file.md) narrows it: `run` can name its
   providers in a file whose entries are the adapters' own options.
+  [0020](0020-evaluation-tool-retries-resumes-and-gates-a-build.md) extends it: the recording and
+  the result gain only optional members and stay `v0`.
 - [0014](0014-evaluation-tool-records-live-once-and-ci-replays.md) — The evaluation tool calls a
   provider once, commits what it recorded, and CI only replays it.
+  [0020](0020-evaluation-tool-retries-resumes-and-gates-a-build.md) extends it: a committed
+  recording may hold a retried attempt, never a resumption.
 - [0015](0015-self-hosted-models-through-one-system-one-client.md) — Self-hosted decision models
   are reached through one System One client, and TypeSafe's Jev is a preset on it.
   [0017](0017-protocol-v0-servers-over-one-http-binding.md) narrows it: the status table and the
@@ -55,6 +59,9 @@ belongs here.
 - [0019](0019-calibration-is-data-on-a-boolean-operating-point.md) — A calibration is data on a
   Boolean operating point: the step function applies it before the thresholds, and it adds evidence
   beside the untouched result.
+- [0020](0020-evaluation-tool-retries-resumes-and-gates-a-build.md) — The evaluation tool calls an
+  `unavailable` answer again, resumes a run cut short, puts a Wilson interval on every proportion,
+  and gates a build on the exact value.
 
 ## Format
 
