@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using SemanticPolicy.Providers.Http;
 using SemanticPolicy.Providers.SystemOne;
 using SemanticPolicy.Providers.TypeSafe;
 
@@ -21,8 +22,10 @@ public static class ProvidersFile
     private const string _options = "options";
     private const string _keyVariable = "apiKeyVariable";
 
+    // Listed in a refusal in this order, so kept alphabetical.
     private static readonly Dictionary<string, Type> _kinds = new(StringComparer.Ordinal)
     {
+        ["http"] = typeof(HttpProviderOptions),
         ["systemone"] = typeof(SystemOneOptions),
         ["typesafe-jev"] = typeof(TypeSafeJevOptions),
     };
@@ -204,6 +207,14 @@ public static class ProvidersFile
         string name = where.Name;
         switch (bound)
         {
+            // A key is optional here, as it is for System One: an unset variable sends no Authorization header.
+            case HttpProviderOptions http:
+                return builder => builder.AddHttpProvider(name, configured =>
+                {
+                    CopySettable(http, configured);
+                    configured.Timeout = Providers.PastAnyRunTimeout;
+                    configured.Id = name;
+                });
             case SystemOneOptions systemOne:
                 return builder => builder.AddSystemOne(name, configured =>
                 {

@@ -63,19 +63,21 @@ public sealed partial class ToolReadmeTests
             target => target.StartsWith("https://", StringComparison.Ordinal) || target.StartsWith('#'));
     }
 
-    // The sample is the file a user copies first, so it is loaded as written: every entry registered under its name,
-    // with no key in the environment and no server running, since registering builds nothing.
-    [Fact]
-    public async Task Readme_Sample_Providers_File_Loads()
+    // Each sample is a file a user copies, so it is loaded as written: every entry registered under its name, with no
+    // key in the environment and no server running, since registering builds nothing. The first is the built-in pair.
+    [Theory]
+    [InlineData(0, "local", "jev")]
+    [InlineData(1, "classifier")]
+    public async Task Readme_Sample_Providers_File_Loads(int sample, params string[] names)
     {
-        Match sample = JsonBlock().Match(Section(await ReadmeAsync(), "## Providers"));
-        sample.Success.Should().BeTrue("'## Providers' carries a sample providers file");
-        using TempFile file = TempFile.Write(sample.Groups["json"].Value, ".json");
+        MatchCollection samples = JsonBlock().Matches(Section(await ReadmeAsync(), "## Providers"));
+        samples.Count.Should().BeGreaterThan(sample, "'## Providers' carries sample providers file {0}", sample + 1);
+        using TempFile file = TempFile.Write(samples[sample].Groups["json"].Value, ".json");
         NameRecordingBuilder builder = new();
 
         ProvidersFile.Read(file.Path)(builder);
 
-        builder.Names.Should().Equal("local", "jev");
+        builder.Names.Should().Equal(names);
     }
 
     private static Task<string> ReadmeAsync() =>

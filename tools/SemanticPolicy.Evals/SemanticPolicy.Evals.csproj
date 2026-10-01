@@ -7,9 +7,9 @@
     <PackageTags>$(PackageTags);evaluation;cli;dotnet-tool</PackageTags>
   </PropertyGroup>
 
-  <!-- Packed as a dotnet tool: one framework-dependent package that carries Core, SystemOne and TypeSafe as assemblies
-       beside its own, with their .pdb files, and declares no NuGet dependency. That leaves the symbol package
-       Directory.Build.props asks of every project nothing to carry, so the tool has none. -->
+  <!-- Packed as a dotnet tool: one framework-dependent package that carries Core, Http, SystemOne and TypeSafe as
+       assemblies beside its own, with their .pdb files, and declares no NuGet dependency. That leaves the symbol
+       package Directory.Build.props asks of every project nothing to carry, so the tool has none. -->
   <PropertyGroup>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>semantic-policy</ToolCommandName>
@@ -36,6 +36,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
+    <ProjectReference Include="..\..\src\SemanticPolicy.Providers.Http\SemanticPolicy.Providers.Http.csproj" />
     <ProjectReference Include="..\..\src\SemanticPolicy.Providers.SystemOne\SemanticPolicy.Providers.SystemOne.csproj" />
     <ProjectReference Include="..\..\src\SemanticPolicy.Providers.TypeSafe\SemanticPolicy.Providers.TypeSafe.csproj" />
   </ItemGroup>
