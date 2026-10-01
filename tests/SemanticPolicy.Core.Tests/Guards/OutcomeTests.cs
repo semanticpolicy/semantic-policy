@@ -1,4 +1,4 @@
-namespace SemanticPolicy.AgentFramework.Tests.Guards;
+namespace SemanticPolicy.Core.Tests.Guards;
 
 public sealed class OutcomeTests
 {

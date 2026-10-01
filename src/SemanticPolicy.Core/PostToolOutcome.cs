@@ -4,7 +4,7 @@ namespace SemanticPolicy;
 /// What the application decided to do with a tool's result after reading the policy's verdict about
 /// it. The verdict a handler reads is probabilistic — a provider's estimate about the result,
 /// thresholded by the policy — and not an authorization, so the decision is the handler's: the
-/// adapter applies what it returns and decides nothing itself. Made with <see cref="Proceed"/>,
+/// integration applies what it returns and decides nothing itself. Made with <see cref="Proceed"/>,
 /// <see cref="Replace"/> or <see cref="Stop"/> and never changed afterwards.
 /// </summary>
 public sealed record PostToolOutcome

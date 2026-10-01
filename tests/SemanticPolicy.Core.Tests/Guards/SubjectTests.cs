@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace SemanticPolicy.AgentFramework.Tests.Guards;
+namespace SemanticPolicy.Core.Tests.Guards;
 
 public sealed class SubjectTests
 {
@@ -51,6 +51,41 @@ public sealed class SubjectTests
         result.Value.Should().BeOfType<JsonElement>()
             .Which.GetProperty("k").GetString().Should().Be("text-marker");
     }
+
+    [Theory]
+    [InlineData("user,assistant,user", "text-1\n\ntext-3")]
+    [InlineData("assistant,tool", "")]
+    public void User_Request_Is_Every_User_Message_In_Order_And_Empty_Without_One(string roles, string expected)
+    {
+        ConversationMessage[] conversation = [.. roles.Split(',').Select((role, index) => new ConversationMessage(role, $"text-{index + 1}"))];
+
+        ToolCall call = new("search", null, Json("{}"), conversation, "call_context");
+
+        call.UserRequest.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("blank name")]
+    [InlineData("blank correlation id")]
+    [InlineData("blank role")]
+    [InlineData("null messages")]
+    [InlineData("undefined arguments")]
+    public void Subjects_Reject_A_Missing_Identity(string @case)
+    {
+        Action construct = @case switch
+        {
+            "blank name" => () => new ToolCall(" ", null, Json("{}"), [User("text-1")], "call_context"),
+            "blank correlation id" => () => new ModelInput([User("text-1")], ""),
+            "blank role" => () => new ConversationMessage("", "text-1"),
+            "null messages" => () => new ModelInput(null!, "run_context"),
+            "undefined arguments" => () => new ToolCall("search", null, default, [User("text-1")], "call_context"),
+            _ => throw new ArgumentOutOfRangeException(nameof(@case)),
+        };
+
+        construct.Should().Throw<ArgumentException>().Which.Message.Should().NotContain("text-1");
+    }
+
+    private static ConversationMessage User(string text) => new("user", text);
 
     private static ToolCall Call() =>
         new("search", null, Json("""{"k":"text-marker"}"""), [new ConversationMessage("user", "text-marker")], "call_1");

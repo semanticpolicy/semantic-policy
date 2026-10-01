@@ -10,15 +10,29 @@ API.
 
 ## Unreleased
 
-A Choice rule's verdict names the option the provider picked, and the evaluation CLI can call any
-server that speaks protocol v0.
+A Choice rule's verdict names the option the provider picked, the guard layer's subjects, outcomes
+and handlers move into `SemanticPolicy.Core` with a public default context on each subject, and the
+evaluation CLI can call any server that speaks protocol v0.
 
 - **`SemanticPolicy.Core`.** `RuleVerdict` gains `ChosenOption`, the key of the option the deciding
   answer picked on a Choice rule, and `DecidingAttempt`, the attempt at `DecidingBinding`, whose
   result holds that answer and the evidence the provider returned with it. Both are null when no
   answer decided the rule, because the gate abstained or the failure behaviour set the verdict, and
   `ChosenOption` is null on a Boolean or Score rule. Both are read from `Attempts`, so the
-  constructor, `Deconstruct` and the serialized verdict are as before.
+  constructor, `Deconstruct` and the serialized verdict are as before. `ConversationMessage`,
+  `ModelInput`, `ToolCall`, `ToolResult`, `PreModelOutcome`, `PreToolOutcome` and `PostToolOutcome`
+  with their three `…Kind` enums, and the handlers `PreModelHandler`, `PreToolHandler` and
+  `PostToolHandler`, move here from `SemanticPolicy.AgentFramework`, unchanged and in the same
+  namespace, `SemanticPolicy`; Core gains no dependency. `ModelInput`, `ToolCall` and `ToolResult`
+  gain `ToSemanticContext()`, the context the bundled integrations send when no context delegate is
+  given: `input` for a model input, `user_request`, `tool` and `arguments` for a call, and
+  `user_request`, `tool` and `result` for a result, each under the subject's correlation id. An
+  application that calls `IPolicyEvaluator` itself can send the same parts.
+- **`SemanticPolicy.AgentFramework`.** The subject, outcome and handler types above now come from
+  `SemanticPolicy.Core`, in the same namespace, and the package still brings them through its
+  dependency on Core, so source that uses them compiles unchanged. There are no type forwards: an
+  assembly compiled against 0.1.0-alpha.2 that uses one of them has to be rebuilt. The package's own
+  API is unchanged.
 - **`SemanticPolicy.Evals`.** The providers file `run --providers` reads gains the `http` kind: an
   entry whose `options` are `SemanticPolicy.Providers.Http`'s `HttpProviderOptions` registers that
   provider, so a protocol v0 server can be evaluated and compared beside System One servers and Jev.

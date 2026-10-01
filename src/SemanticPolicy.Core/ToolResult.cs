@@ -30,11 +30,36 @@ public sealed record ToolResult(ToolCall Call, object? Value)
         : Value;
 
     /// <summary>
+    /// The context the bundled integrations send for this result when no context delegate is given, in
+    /// this order and under the call's <see cref="ToolCall.CorrelationId"/>: <c>user_request</c> and
+    /// <c>tool</c>, as the call's own context carries them, and <c>result</c>. A string result is a text
+    /// part, so a text-only provider reads it as it is; a <see cref="JsonElement"/> is a JSON part as it
+    /// is; anything else, <see langword="null"/> included, is serialized with
+    /// <see cref="JsonSerializerOptions.Web"/>, camel-cased, so a dataset row can carry it. The call's
+    /// arguments are not in it.
+    /// </summary>
+    /// <remarks>
+    /// The part names are the keys a dataset row for the post-tool point carries, so a policy measured
+    /// on such a dataset reads the same shape at run time.
+    /// </remarks>
+    /// <returns>The result's default context.</returns>
+    public SemanticContext ToSemanticContext() =>
+        new([Call.UserRequestPart(), Call.ToolPart(), ResultPart()], Call.CorrelationId);
+
+    /// <summary>
     /// The result's shape and nothing it carries: the call it answers and the kind of value it holds,
     /// never the value. A result that lands in a log line, an exception message or an assertion
     /// failure is safe to print.
     /// </summary>
     public override string ToString() => $"ToolResult {{ Call = {Call}, Value = {Kind(Value)} }}";
+
+    private ContextPart ResultPart() =>
+        Value switch
+        {
+            string text => ContextPart.Text("result", text),
+            JsonElement element => ContextPart.Json("result", element),
+            _ => ContextPart.Json("result", JsonSerializer.SerializeToElement(Value, JsonSerializerOptions.Web)),
+        };
 
     // The JSON kind for an element, "null" for nothing, the runtime type's name for anything else.
     private static string Kind(object? value) =>

@@ -5,7 +5,7 @@ namespace SemanticPolicy;
 /// <summary>
 /// The application's decision about a tool call, made after the policy has judged it and before the
 /// tool runs. The verdict is a semantic signal, probabilistic by nature, and not an authorization:
-/// what to do on a Deny, a Warn or an Abstain is this delegate's, in every mode. The adapter applies
+/// what to do on a Deny, a Warn or an Abstain is this delegate's, in every mode. The integration applies
 /// the outcome as returned and never reads the verdict itself, so a handler that acts on
 /// <see cref="PolicyVerdict.Effective"/> and reports <see cref="PolicyVerdict.Evaluated"/> behaves the
 /// same in Shadow and in Enforce.
