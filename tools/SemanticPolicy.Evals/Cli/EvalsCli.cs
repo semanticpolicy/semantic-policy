@@ -28,6 +28,7 @@ public static class EvalsCli
         root.Subcommands.Add(SamplesVerb.Build(writers));
         root.Subcommands.Add(RunCommand.Create(writers, configureProviders));
         root.Subcommands.Add(ReportCommand.Create(writers));
+        root.Subcommands.Add(CalibrateVerb.Build(writers));
         root.Subcommands.Add(SweepVerb.Build(writers));
         root.Subcommands.Add(CompareVerb.Build(writers));
         root.SetAction(_ => WithoutVerb(root, writers));

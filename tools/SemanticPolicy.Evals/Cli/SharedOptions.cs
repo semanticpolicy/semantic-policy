@@ -91,6 +91,16 @@ public static class SharedOptions
         Description = "Read the recording even though the dataset's digest differs from the recorded one.",
     };
 
+    /// <summary>
+    /// <c>--provider &lt;name&gt;</c>: the one binding a verb tunes or fits; only <c>sweep</c> and <c>calibrate</c>
+    /// take it.
+    /// </summary>
+    public static Option<string?> Provider { get; } = new("--provider")
+    {
+        Description = "The binding to sweep or calibrate, by provider name; required when the policy has more than one.",
+        HelpName = "name",
+    };
+
     /// <summary><c>--warn &lt;constraint&gt;</c>: repeatable; what the warn threshold must achieve.</summary>
     public static Option<string[]> Warn { get; } = RungConstraintOption("--warn", "warn");
 

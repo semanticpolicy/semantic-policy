@@ -9,7 +9,8 @@ namespace SemanticPolicy.Evals.Output;
 /// bin is a bar over its width up to its observed frequency, with a point at its mean prediction; a calibrated
 /// provider's points lie on the dashed diagonal. Every bin's row count stands above the plot, an empty bin's 0
 /// included, so a bar drawn from one row reads as one row. Hovering a bar or a point shows its numbers. The
-/// same calibration always gives the same bytes, whatever the machine or its culture.
+/// same calibration always gives the same bytes, whatever the machine or its culture. Two calibrations of one
+/// operating point, before and after a fitted map, are drawn as two series over one plot instead.
 /// </summary>
 public static class ReliabilityDiagram
 {
@@ -23,6 +24,7 @@ public static class ReliabilityDiagram
 
     private const string _bar = "#9ecae1";
     private const string _point = "#08519c";
+    private const string _before = "#e6550d";
     private const string _diagonal = "#737373";
     private const string _grid = "#e6e6e6";
     private const string _axis = "#333333";
@@ -39,23 +41,14 @@ public static class ReliabilityDiagram
     public static string Render(Calibration calibration)
     {
         ArgumentNullException.ThrowIfNull(calibration);
-        if (!calibration.Applicable)
-        {
-            throw new ArgumentException("A calibration that does not apply has no bins to draw.", nameof(calibration));
-        }
-
-        string title = $"Reliability diagram, n = {Count(calibration.Rows)}";
-        StringBuilder svg = new();
-        Line(svg, $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{N(_width)}\" height=\"{N(_height)}\" "
-            + $"viewBox=\"0 0 {N(_width)} {N(_height)}\" font-family=\"sans-serif\" font-size=\"12\">");
-        Line(svg, $"<title>{title}</title>");
-        Line(svg, "<desc>Ten equal-width bins of the predicted probability. Each bar rises to the bin's observed "
+        Require(calibration, nameof(calibration));
+        StringBuilder svg = Open(
+            $"Reliability diagram, n = {Count(calibration.Rows)}",
+            "<desc>Ten equal-width bins of the predicted probability. Each bar rises to the bin's observed "
             + "frequency, its point sits at the bin's mean prediction, and a calibrated provider's points lie on "
             + "the dashed diagonal. The row count of every bin is above the plot.</desc>");
-        Line(svg, $"<rect width=\"{N(_width)}\" height=\"{N(_height)}\" fill=\"#ffffff\"/>");
-        Line(svg, $"<text x=\"{N(_width / 2)}\" y=\"28\" text-anchor=\"middle\" font-size=\"15\">{title}</text>");
         Grid(svg, calibration.Bins);
-        Counts(svg, calibration.Bins);
+        Counts(svg, calibration.Bins, "rows", _top - 10, _diagonal);
         foreach ((ReliabilityBin bin, double _, double observed) in Filled(calibration.Bins))
         {
             Line(svg, $"<rect class=\"bar\" x=\"{X(bin.Lower)}\" y=\"{Y(observed)}\" "
@@ -63,19 +56,45 @@ public static class ReliabilityDiagram
                 + $"fill=\"{_bar}\" stroke=\"#ffffff\"><title>{Tooltip(bin)}</title></rect>");
         }
 
-        Line(svg, $"<line class=\"diagonal\" x1=\"{X(0)}\" y1=\"{Y(0)}\" x2=\"{X(1)}\" y2=\"{Y(1)}\" "
-            + $"stroke=\"{_diagonal}\" stroke-dasharray=\"4 4\"/>");
+        Diagonal(svg);
         foreach ((ReliabilityBin bin, double mean, double observed) in Filled(calibration.Bins))
         {
             Line(svg, $"<circle class=\"point\" cx=\"{X(mean)}\" cy=\"{Y(observed)}\" r=\"4\" "
                 + $"fill=\"{_point}\" stroke=\"#ffffff\"><title>{Tooltip(bin)}</title></circle>");
         }
 
-        Line(svg, $"<rect class=\"plot\" x=\"{X(0)}\" y=\"{Y(1)}\" width=\"{N(_size)}\" height=\"{N(_size)}\" "
-            + $"fill=\"none\" stroke=\"{_axis}\"/>");
-        Axes(svg);
-        Legend(svg);
-        Line(svg, "</svg>");
+        Close(svg, Legend);
+        return svg.ToString();
+    }
+
+    /// <summary>
+    /// Draws one operating point's calibration before and after a fitted map, measured on the same rows, as two
+    /// series over one plot: each non-empty bin is a point at its mean prediction and observed frequency, joined in
+    /// bin order, and both rows of counts stand above the plot. No bars are drawn, since two sets would hide each
+    /// other.
+    /// </summary>
+    /// <param name="before">The calibration of the operating point as it stood; it must apply.</param>
+    /// <param name="after">The calibration of the calibrated operating point; it must apply.</param>
+    /// <returns>The SVG document, with <c>\n</c> line endings.</returns>
+    /// <exception cref="ArgumentException">Either calibration does not apply, so it has no bins to draw.</exception>
+    public static string Render(Calibration before, Calibration after)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(after);
+        Require(before, nameof(before));
+        Require(after, nameof(after));
+        StringBuilder svg = Open(
+            $"Reliability diagram before and after calibration, n = {Count(after.Rows)}",
+            "<desc>Ten equal-width bins of the predicted probability, before and after calibration, on the same "
+            + "rows. Each point sits at a bin's mean prediction and observed frequency, a calibrated provider's "
+            + "points lie on the dashed diagonal, and both rows of bin counts are above the plot.</desc>");
+        Grid(svg, after.Bins);
+        Counts(svg, before.Bins, "before", _top - 26, _before);
+        Counts(svg, after.Bins, "after", _top - 10, _point);
+        Diagonal(svg);
+        Series(svg, before.Bins, "before", _before);
+        Series(svg, after.Bins, "after", _point);
+        Close(svg, OverlayLegend);
         return svg.ToString();
     }
 
@@ -89,7 +108,23 @@ public static class ReliabilityDiagram
         ArgumentNullException.ThrowIfNull(path);
 
         // Drawn first: a diagram that cannot be drawn must not leave an empty file behind.
-        string svg = Render(calibration);
+        Save(path, Render(calibration));
+    }
+
+    /// <summary>Writes the diagram of a calibration before and after a fitted map, replacing a file already there.</summary>
+    /// <param name="path">Where the file goes.</param>
+    /// <param name="before">The calibration of the operating point as it stood; it must apply.</param>
+    /// <param name="after">The calibration of the calibrated operating point; it must apply.</param>
+    /// <exception cref="ArgumentException">Either calibration does not apply, so it has no bins to draw.</exception>
+    /// <exception cref="EvalsException">The file cannot be written; the message names the path.</exception>
+    public static void Write(string path, Calibration before, Calibration after)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        Save(path, Render(before, after));
+    }
+
+    private static void Save(string path, string svg)
+    {
         try
         {
             File.WriteAllText(path, svg, _utf8);
@@ -98,6 +133,55 @@ public static class ReliabilityDiagram
         {
             throw new EvalsException($"Diagram '{path}' cannot be written: {e.Message}");
         }
+    }
+
+    private static void Require(Calibration calibration, string name)
+    {
+        if (!calibration.Applicable)
+        {
+            throw new ArgumentException("A calibration that does not apply has no bins to draw.", name);
+        }
+    }
+
+    private static StringBuilder Open(string title, string desc)
+    {
+        StringBuilder svg = new();
+        Line(svg, $"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{N(_width)}\" height=\"{N(_height)}\" "
+            + $"viewBox=\"0 0 {N(_width)} {N(_height)}\" font-family=\"sans-serif\" font-size=\"12\">");
+        Line(svg, $"<title>{title}</title>");
+        Line(svg, desc);
+        Line(svg, $"<rect width=\"{N(_width)}\" height=\"{N(_height)}\" fill=\"#ffffff\"/>");
+        Line(svg, $"<text x=\"{N(_width / 2)}\" y=\"28\" text-anchor=\"middle\" font-size=\"15\">{title}</text>");
+        return svg;
+    }
+
+    private static void Close(StringBuilder svg, Action<StringBuilder> legend)
+    {
+        Line(svg, $"<rect class=\"plot\" x=\"{X(0)}\" y=\"{Y(1)}\" width=\"{N(_size)}\" height=\"{N(_size)}\" "
+            + $"fill=\"none\" stroke=\"{_axis}\"/>");
+        Axes(svg);
+        legend(svg);
+        Line(svg, "</svg>");
+    }
+
+    private static void Diagonal(StringBuilder svg) =>
+        Line(svg, $"<line class=\"diagonal\" x1=\"{X(0)}\" y1=\"{Y(0)}\" x2=\"{X(1)}\" y2=\"{Y(1)}\" "
+            + $"stroke=\"{_diagonal}\" stroke-dasharray=\"4 4\"/>");
+
+    // One calibration's points joined in bin order, so the eye can follow each series where the two cross.
+    private static void Series(StringBuilder svg, IReadOnlyList<ReliabilityBin> bins, string name, string color)
+    {
+        Line(svg, $"<g class=\"series {name}\">");
+        (ReliabilityBin Bin, double Mean, double Observed)[] filled = [.. Filled(bins)];
+        string points = string.Join(" ", filled.Select(bin => $"{X(bin.Mean)},{Y(bin.Observed)}"));
+        Line(svg, $"<polyline points=\"{points}\" fill=\"none\" stroke=\"{color}\" stroke-width=\"1.5\"/>");
+        foreach ((ReliabilityBin bin, double mean, double observed) in filled)
+        {
+            Line(svg, $"<circle class=\"point\" cx=\"{X(mean)}\" cy=\"{Y(observed)}\" r=\"4\" "
+                + $"fill=\"{color}\" stroke=\"#ffffff\"><title>{name}: {Tooltip(bin)}</title></circle>");
+        }
+
+        Line(svg, "</g>");
     }
 
     // A line at every inner bin edge, so the ten bins can be told apart where they are empty, and one at every
@@ -115,10 +199,10 @@ public static class ReliabilityDiagram
         }
     }
 
-    private static void Counts(StringBuilder svg, IReadOnlyList<ReliabilityBin> bins)
+    private static void Counts(StringBuilder svg, IReadOnlyList<ReliabilityBin> bins, string label, double top, string color)
     {
-        string y = N(_top - 10);
-        Line(svg, $"<text x=\"{N(_left - 8)}\" y=\"{y}\" text-anchor=\"end\" fill=\"{_diagonal}\">rows</text>");
+        string y = N(top);
+        Line(svg, $"<text x=\"{N(_left - 8)}\" y=\"{y}\" text-anchor=\"end\" fill=\"{color}\">{label}</text>");
         foreach (ReliabilityBin bin in bins)
         {
             Line(svg, $"<text class=\"count\" x=\"{X((bin.Lower + bin.Upper) / 2)}\" y=\"{y}\" "
@@ -149,6 +233,18 @@ public static class ReliabilityDiagram
         Line(svg, $"<line x1=\"{N(_left + 256)}\" y1=\"{N(y - 4)}\" x2=\"{N(_left + 280)}\" y2=\"{N(y - 4)}\" "
             + $"stroke=\"{_diagonal}\" stroke-dasharray=\"4 4\"/>");
         Line(svg, $"<text x=\"{N(_left + 286)}\" y=\"{N(y)}\">calibrated</text>");
+    }
+
+    private static void OverlayLegend(StringBuilder svg)
+    {
+        double y = _top + _size + 66;
+        Line(svg, $"<circle cx=\"{N(_left + 4)}\" cy=\"{N(y - 4)}\" r=\"4\" fill=\"{_before}\"/>");
+        Line(svg, $"<text x=\"{N(_left + 14)}\" y=\"{N(y)}\">before calibration</text>");
+        Line(svg, $"<circle cx=\"{N(_left + 144)}\" cy=\"{N(y - 4)}\" r=\"4\" fill=\"{_point}\"/>");
+        Line(svg, $"<text x=\"{N(_left + 154)}\" y=\"{N(y)}\">after calibration</text>");
+        Line(svg, $"<line x1=\"{N(_left + 276)}\" y1=\"{N(y - 4)}\" x2=\"{N(_left + 300)}\" y2=\"{N(y - 4)}\" "
+            + $"stroke=\"{_diagonal}\" stroke-dasharray=\"4 4\"/>");
+        Line(svg, $"<text x=\"{N(_left + 306)}\" y=\"{N(y)}\">calibrated</text>");
     }
 
     // The bins with rows in them, which are the only ones with a mean prediction and an observed frequency.
