@@ -581,10 +581,14 @@ A goal (`<constraint>` in `--help`) is one of these, with `v` from 0 to 1:
   0.05 grid, which is never recommended.
 - At a calibrated operating point the thresholds read a probability, so the candidates are the
   probabilities the calibration gives the values the binding returned, with the 0.05 grid, and only
-  those values are recommended. The map keeps the order of rows, so the sweep recommends the
+  those values are recommended. The map never reverses two rows, so the sweep recommends the
   calibrated image of what it picks for the same binding uncalibrated, with the same test-row rates,
-  as long as neither curve is thinned: up to 80 distinct values on the tune rows. Past that, the grid
-  takes places that the uncalibrated curve gives to values, and the two can part.
+  while two things hold. Neither curve is thinned: up to 80 distinct values on the tune rows; past
+  that, the grid takes places that the uncalibrated curve gives to values. And no two values the
+  binding returned get the same probability, which the map does not promise: under `logOdds` every
+  value closer than 1e-6 to 0 or 1 is read at that distance, and a steep map rounds the
+  probabilities of high values to exactly 1. Values merged that way are one candidate, so a cut the
+  uncalibrated curve makes between them has no calibrated twin; evaluation cannot make it either.
 - The gate of a calibrated operating point is swept on the margin of the provider's own evidence,
   the calibration's source kind, and recommended on that kind, as a policy requires.
 - A curve holds at most 101 candidates, and so does a gate curve besides its no-gate point. Past
@@ -667,8 +671,8 @@ under the same goals and prints one table on the test rows. `--recording` and `-
 Each binding is swept in passes until its picks settle, as in `sweep`, and its test-row numbers are
 read at the point it settles on. If any binding cannot meet its goals or does not settle, `compare`
 still prints everything and exits with code 2. A calibrated binding is swept as in `sweep`, on the
-calibrated scale with its gate on the provider's own margin, so within the limit named there it
-reports the test-row numbers the same binding gets uncalibrated.
+calibrated scale with its gate on the provider's own margin, so while the two conditions named there
+hold it reports the test-row numbers the same binding gets uncalibrated.
 
 Step 4 of the quick start, shortened:
 
