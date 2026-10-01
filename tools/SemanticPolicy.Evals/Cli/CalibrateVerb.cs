@@ -12,8 +12,8 @@ using SemanticPolicy.Protocol;
 namespace SemanticPolicy.Evals.Cli;
 
 // `calibrate`: fits a Platt map for one binding of a Boolean rule on the tune rows of a recording and writes a new
-// policy that carries it, with every threshold moved so that each recorded row keeps its verdict. It calls no
-// provider and never rewrites the policy it read.
+// policy that carries it, with every threshold moved so that each recorded row keeps its verdict, and no policy where
+// one would not. It calls no provider and never rewrites the policy it read.
 internal static class CalibrateVerb
 {
     private static readonly Option<string> _outPolicy = new("--out-policy")
@@ -53,6 +53,11 @@ internal static class CalibrateVerb
     {
         string outPolicy = parse.GetValue(_outPolicy)!;
         string policyPath = parse.GetValue(SharedOptions.Policy)!;
+        if (string.IsNullOrWhiteSpace(outPolicy))
+        {
+            throw new EvalsException("--out-policy names no file; give the file to write the calibrated policy to.");
+        }
+
         if (SamePath(outPolicy, policyPath))
         {
             throw new EvalsException(
@@ -133,6 +138,7 @@ internal static class CalibrateVerb
         }
 
         IReadOnlyList<EvaluatedRow> after = replayed.Set.Evaluate(Alone(written, written.Bindings[bindingIndex], calibrated));
+        RefuseChangedVerdicts(before, after, binding.ProviderId);
         CalibrateSection section = new(
             binding.ProviderId,
             rule.Id,
@@ -202,6 +208,38 @@ internal static class CalibrateVerb
                     }),
             ],
         };
+
+    // Moving each threshold through the map keeps every verdict only where the map tells the values on either side of
+    // a threshold apart. Under log-odds it cannot near 0 and 1: the clamp gives every value there one input, so a
+    // threshold at 1.0, or one a re-fit takes back above the old map's top, gets the probability of rows below it. No
+    // map separates such rows, so the replays at the binding alone are compared row by row and the fit is refused.
+    private static void RefuseChangedVerdicts(
+        IReadOnlyList<EvaluatedRow> before,
+        IReadOnlyList<EvaluatedRow> after,
+        string providerId)
+    {
+        const int shown = 5;
+        string[] changed =
+        [
+            .. before.Zip(after)
+                .Where(pair => pair.First.Verdict.Verdict != pair.Second.Verdict.Verdict)
+                .Select(pair => $"'{pair.First.Row.Id}' {Names.Camel(pair.First.Verdict.Verdict)} → "
+                    + Names.Camel(pair.Second.Verdict.Verdict)),
+        ];
+        if (changed.Length == 0)
+        {
+            return;
+        }
+
+        string rows = string.Join(", ", changed.Take(shown))
+            + (changed.Length > shown ? $" and {changed.Length - shown} more" : string.Empty);
+        throw new EvalsException(
+            $"The calibrated policy changes the verdict of binding '{providerId}' on "
+            + $"{(changed.Length == 1 ? "1 recorded row" : $"{changed.Length} recorded rows")} ({rows}), so it is not "
+            + "written: a threshold sits where the map gives rows on both sides of it one probability, within the "
+            + "log-odds clamp near 0 or 1, or above the top of the calibration being replaced. Move that threshold to "
+            + "a value the provider's evidence reaches, and calibrate again.");
+    }
 
     private static Calibration Measure(IReadOnlyList<EvaluatedRow> replayed, IReadOnlyList<DatasetRow> test, Rule rule)
     {

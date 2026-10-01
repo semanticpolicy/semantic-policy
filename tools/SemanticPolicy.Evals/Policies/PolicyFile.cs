@@ -89,7 +89,7 @@ public static class PolicyFile
         {
             File.WriteAllText(path, json + "\n", _utf8);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
             throw new EvalsException($"Policy file '{path}' cannot be written: {e.Message}");
         }

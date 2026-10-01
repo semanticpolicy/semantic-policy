@@ -488,9 +488,10 @@ semantic-policy calibrate --policy $P --dataset $D --recording $R --provider loc
   score, x is the value as it is.
 - **What the new policy holds.** The input policy whole, with only the calibrated operating point
   changed: the calibration, and each threshold moved to the probability the map gives the value it
-  stood at, so every recorded row keeps its verdict. The gate is copied unchanged, because it reads
-  the provider's own margin, which calibration does not change. The file is indented JSON, and the
-  same inputs write the same bytes.
+  stood at, so every recorded row keeps its verdict. That is checked: the binding is replayed alone
+  before and after, and a row whose verdict would change stops the fit. The gate is copied
+  unchanged, because it reads the provider's own margin, which calibration does not change. The file
+  is indented JSON, and the same inputs write the same bytes.
 - **What it was fitted on.** The calibration's `provenance` records the model most fitting rows
   name, the `sha256:` digest of the `--dataset` file, or of the `--tune` file, the tune split's
   name when the split comes from `metadata.split`, and the flagged and other row counts. It holds no
@@ -511,8 +512,13 @@ semantic-policy calibrate --policy $P --dataset $D --recording $R --provider loc
 - **What it refuses.** It exits with code 1, names the cause and writes no file when the rule is not
   a Boolean rule, the operating point reads `margin` or `unknown` evidence, there are too few
   fitting rows, the fitted slope is not a finite number greater than zero (the evidence ranks
-  flagged rows below the others), `--out-policy` is the `--policy` file, or the policy has several
-  bindings and no `--provider`.
+  flagged rows below the others), the calibrated policy would change a recorded row's verdict,
+  `--out-policy` is empty or is the `--policy` file, or the policy has several bindings and no
+  `--provider`. A verdict changes when a threshold sits where the map gives the rows on its two sides
+  one probability: within the log-odds clamp, which holds every value within 10⁻⁶ of 0 or 1 to one
+  input, as a probability threshold of 1.0 does, or, when calibrating again, above the top of the old
+  map, where it never fired. The message names the rows; move that threshold to a value the
+  provider's evidence reaches.
 
 ### `sweep`
 

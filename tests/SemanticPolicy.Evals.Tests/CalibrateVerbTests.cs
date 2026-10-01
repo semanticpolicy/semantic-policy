@@ -268,7 +268,8 @@ public sealed class CalibrateVerbTests
     }
 
     public static TheoryData<string> Refusals { get; } =
-        new("choice-rule", "score-rule", "margin", "unknown", "anti-ranked", "same-file", "two-bindings");
+        new("choice-rule", "score-rule", "margin", "unknown", "anti-ranked", "same-file", "empty-out", "two-bindings",
+            "threshold-in-clamp", "refit-above-old-top");
 
     [Theory]
     [MemberData(nameof(Refusals))]
@@ -296,6 +297,24 @@ public sealed class CalibrateVerbTests
                     Both(EvidenceKind.Score, row.Value, 1 - row.Value)))],
                 "slope"),
             "same-file" => new(Single(Point(EvidenceKind.Score, 0.5, 0.8)), [.. scores], "--out-policy"),
+            "empty-out" => new(Single(Point(EvidenceKind.Score, 0.5, 0.8)), [.. scores], "--out-policy names no file"),
+
+            // Deny at 1.0 and a row just below it: the log-odds clamp gives both one probability, so the row would deny.
+            "threshold-in-clamp" => new(
+                Single(Point(EvidenceKind.Probability, 0.6, 1.0)),
+                [
+                    .. Overlapping().Select(row => Row(row.Label, null, Both(EvidenceKind.Probability, row.Value, 1 - row.Value))),
+                    Row("true", null, Both(EvidenceKind.Probability, 0.9999995, 0.0000005)),
+                ],
+                "'r30' warn → deny"),
+
+            // The old map tops out near 0.8, so its deny at 0.9 never fired; taken back, it lands in the clamp, where
+            // the new map puts the row at 1.0, which only warned.
+            "refit-above-old-top" => new(
+                Single(Calibrated(new EvidenceCalibration(
+                    CalibrationMethod.Platt, EvidenceKind.Score, CalibrationTransform.LogOdds, 0.1, 0))),
+                [.. scores],
+                "'r14' warn → deny"),
             "two-bindings" => new(
                 new Policy(
                     "guard",
@@ -314,7 +333,12 @@ public sealed class CalibrateVerbTests
             _ => throw new ArgumentOutOfRangeException(nameof(refusal)),
         };
         using CliFixture fixture = await CliFixture.CreateAsync(test.Policy, test.Rows);
-        string written = refusal == "same-file" ? fixture.PolicyPath : OutPolicy(fixture);
+        string written = refusal switch
+        {
+            "same-file" => fixture.PolicyPath,
+            "empty-out" => string.Empty,
+            _ => OutPolicy(fixture),
+        };
         byte[] policyBytes = await File.ReadAllBytesAsync(fixture.PolicyPath, TestContext.Current.CancellationToken);
 
         CliRun run = await fixture.RunAsync("calibrate", "--out-policy", written);
