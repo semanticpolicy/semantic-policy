@@ -14,6 +14,15 @@
     <ProjectReference Include="..\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
   </ItemGroup>
 
+  <!-- The guard machinery every integration shares, compiled in as internal types rather than
+       published as an API of its own. -->
+  <ItemGroup>
+    <Compile Include="..\Shared\Guards\InterventionPoint.cs" Link="Shared\Guards\InterventionPoint.cs" />
+    <Compile Include="..\Shared\Guards\GuardSubject.cs" Link="Shared\Guards\GuardSubject.cs" />
+    <Compile Include="..\Shared\Guards\PolicyGuard.cs" Link="Shared\Guards\PolicyGuard.cs" />
+    <Compile Include="..\Shared\Guards\ToolInvocationGuards.cs" Link="Shared\Guards\ToolInvocationGuards.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="SemanticPolicy.AgentFramework.Tests" />
   </ItemGroup>

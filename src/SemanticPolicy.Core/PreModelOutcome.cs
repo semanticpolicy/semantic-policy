@@ -3,7 +3,7 @@ namespace SemanticPolicy;
 /// <summary>
 /// What the application decided to do with a run after reading the policy's verdict about its input.
 /// The verdict a handler reads is probabilistic — a provider's estimate about the text, thresholded by
-/// the policy — and not an authorization, so the decision is the handler's: the adapter applies what
+/// the policy — and not an authorization, so the decision is the handler's: the integration applies what
 /// it returns and decides nothing itself. Made with <see cref="Proceed"/> or <see cref="Stop"/> and
 /// never changed afterwards.
 /// </summary>

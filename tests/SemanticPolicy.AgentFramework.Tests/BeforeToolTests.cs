@@ -142,7 +142,7 @@ public sealed class BeforeToolTests
     [Fact]
     public void Adapter_Assembly_Declares_No_Activity_Source_Or_Meter()
     {
-        Assembly adapter = typeof(ModelInput).Assembly;
+        Assembly adapter = typeof(SemanticPolicyAIAgentBuilderExtensions).Assembly;
         const BindingFlags statics = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;
 
         IEnumerable<string> declared =

@@ -3,7 +3,7 @@ namespace SemanticPolicy;
 /// <summary>
 /// What the application decided to do with a tool call after reading the policy's verdict about it.
 /// The verdict a handler reads is probabilistic — a provider's estimate about the call, thresholded
-/// by the policy — and not an authorization, so the decision is the handler's: the adapter applies
+/// by the policy — and not an authorization, so the decision is the handler's: the integration applies
 /// what it returns and decides nothing itself. A refused call is one the application declined on that
 /// estimate, not one shown to be harmful. Made with <see cref="Proceed"/>, <see cref="Refuse"/> or
 /// <see cref="Stop"/> and never changed afterwards.

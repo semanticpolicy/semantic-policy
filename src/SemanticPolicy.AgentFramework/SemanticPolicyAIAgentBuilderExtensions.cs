@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using SemanticPolicy;
 using SemanticPolicy.AgentFramework;
+using SemanticPolicy.Guards;
 
 namespace Microsoft.Agents.AI;
 

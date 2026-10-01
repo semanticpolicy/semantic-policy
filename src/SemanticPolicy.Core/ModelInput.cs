@@ -27,6 +27,15 @@ public sealed record ModelInput(IReadOnlyList<ConversationMessage> Messages, str
     public string Text => ConversationMessage.Join(Messages, role: null);
 
     /// <summary>
+    /// The context the bundled integrations send for this input when no context delegate is given:
+    /// one text part, <c>input</c>, holding <see cref="Text"/>, under <see cref="CorrelationId"/>. The
+    /// part's name is the key a dataset row for the pre-model point carries, so a policy measured on
+    /// such a dataset reads the same shape at run time.
+    /// </summary>
+    /// <returns>The input's default context.</returns>
+    public SemanticContext ToSemanticContext() => new([ContextPart.Text("input", Text)], CorrelationId);
+
+    /// <summary>
     /// The input's shape and nothing it carries: how many messages it has and the id they are judged
     /// under, never their text. An input that lands in a log line, an exception message or an
     /// assertion failure is safe to print.
