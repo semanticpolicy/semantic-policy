@@ -2,18 +2,19 @@
 
 Notable changes to the packages `SemanticPolicy.Core`, `SemanticPolicy.Providers.SystemOne` (from
 0.1.0-alpha.2), `SemanticPolicy.Providers.Http` (from 0.1.0-alpha.2),
-`SemanticPolicy.Providers.TypeSafe`, `SemanticPolicy.AgentFramework`,
-`SemanticPolicy.FluentValidation` (from 0.1.0-alpha.2) and `SemanticPolicy.Evals` (from
-0.1.0-alpha.2), which share one version. Versions follow
+`SemanticPolicy.Providers.TypeSafe`, `SemanticPolicy.Extensions.AI` (from 0.1.0-alpha.3),
+`SemanticPolicy.AgentFramework`, `SemanticPolicy.FluentValidation` (from 0.1.0-alpha.2) and
+`SemanticPolicy.Evals` (from 0.1.0-alpha.2), which share one version. Versions follow
 [Semantic Versioning](https://semver.org/); while the major version is 0, any release can change the
 API.
 
 ## Unreleased
 
 A Choice rule's verdict names the option the provider picked, the guard layer's subjects, outcomes
-and handlers move into `SemanticPolicy.Core` with a public default context on each subject, the
-evaluation CLI can call any server that speaks protocol v0, and `semantic-policy calibrate` fits a
-calibration into a new policy that `report`, `sweep` and `compare` read.
+and handlers move into `SemanticPolicy.Core` with a public default context on each subject, a new
+package puts the tool guards on any Microsoft.Extensions.AI chat client, the evaluation CLI can call
+any server that speaks protocol v0, and `semantic-policy calibrate` fits a calibration into a new
+policy that `report`, `sweep` and `compare` read.
 
 - **`SemanticPolicy.Core`.** `RuleVerdict` gains `ChosenOption`, the key of the option the deciding
   answer picked on a Choice rule, and `DecidingAttempt`, the attempt at `DecidingBinding`, whose
@@ -29,11 +30,23 @@ calibration into a new policy that `report`, `sweep` and `compare` read.
   given: `input` for a model input, `user_request`, `tool` and `arguments` for a call, and
   `user_request`, `tool` and `result` for a result, each under the subject's correlation id. An
   application that calls `IPolicyEvaluator` itself can send the same parts.
+- **`SemanticPolicy.Extensions.AI`.** New package: `UseSemanticPolicyBeforeTool` and
+  `UseSemanticPolicyAfterTool` on `ChatClientBuilder` put the two tool points on the function-calling
+  loop of any `IChatClient`, with the same handlers and outcomes as the Agent Framework package, a
+  policy given by id or with its evaluator, and an optional context delegate. The calls go before
+  `UseFunctionInvocation()`; each guard wraps the loop's `FunctionInvoker` when the pipeline is
+  built, the guards run in the order written and outside an invoker the application sets in
+  `UseFunctionInvocation(configure: …)`, and a guard with no function-invoking client below it, an
+  id no registered policy carries, or a container without an evaluator fails at `Build`. The verdict
+  is awaited in every mode. `FunctionInvocationContext.ToToolCall()` reads the call a guard sees, so
+  an application can evaluate it itself. There is no pre-model point. The package depends on
+  `Microsoft.Extensions.AI` (MIT).
 - **`SemanticPolicy.AgentFramework`.** The subject, outcome and handler types above now come from
   `SemanticPolicy.Core`, in the same namespace, and the package still brings them through its
   dependency on Core, so source that uses them compiles unchanged. There are no type forwards: an
-  assembly compiled against 0.1.0-alpha.2 that uses one of them has to be rebuilt. The package's own
-  API is unchanged.
+  assembly compiled against 0.1.0-alpha.2 that uses one of them has to be rebuilt. The package now
+  builds on `SemanticPolicy.Extensions.AI` and brings it as a dependency, and ships its own README on
+  nuget.org instead of the repository's. The package's own API is unchanged.
 - **`SemanticPolicy.Evals`.** The providers file `run --providers` reads gains the `http` kind: an
   entry whose `options` are `SemanticPolicy.Providers.Http`'s `HttpProviderOptions` registers that
   provider, so a protocol v0 server can be evaluated and compared beside System One servers and Jev.

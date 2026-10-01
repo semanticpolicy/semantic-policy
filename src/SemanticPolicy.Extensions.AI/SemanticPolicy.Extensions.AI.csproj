@@ -1,25 +1,23 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>Microsoft Agent Framework integration: pre-model, pre-tool and post-tool policy checks.</Description>
-    <PackageTags>$(PackageTags);microsoft-agent-framework;agent-framework</PackageTags>
+    <Description>Microsoft.Extensions.AI integration: pre-tool and post-tool policy checks on any IChatClient that runs a function-calling loop.</Description>
+    <PackageTags>$(PackageTags);microsoft-extensions-ai;ichatclient;function-calling</PackageTags>
   </PropertyGroup>
 
   <!-- The package's README is its own, in place of the repository's that Directory.Build.props packs:
-       nuget.org shows it to people who build agents, and it explains this package alone. -->
+       nuget.org shows it to people wiring a chat client, and it explains this package alone. -->
   <ItemGroup>
     <None Remove="$(MSBuildThisFileDirectory)..\..\README.md" />
     <None Update="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Agents.AI" />
     <PackageReference Include="Microsoft.Extensions.AI" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
-    <ProjectReference Include="..\SemanticPolicy.Extensions.AI\SemanticPolicy.Extensions.AI.csproj" />
   </ItemGroup>
 
   <!-- The guard machinery every integration shares, compiled in as internal types rather than
@@ -32,7 +30,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <InternalsVisibleTo Include="SemanticPolicy.AgentFramework.Tests" />
+    <InternalsVisibleTo Include="SemanticPolicy.Extensions.AI.Tests" />
   </ItemGroup>
 
 </Project>

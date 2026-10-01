@@ -11,8 +11,10 @@ makes those decisions testable. Alpha: `src/SemanticPolicy.Core/`,
 `src/SemanticPolicy.Providers.TypeSafe/` and `src/SemanticPolicy.AgentFramework/` are implemented and
 tested. `src/SemanticPolicy.Providers.SystemOne/`, the provider for any System One server and the
 base TypeSafe is built on, and `src/SemanticPolicy.Providers.Http/`, the client for any protocol v0
-server, are implemented and tested too, and so is `src/SemanticPolicy.FluentValidation/`, which puts
-semantic rules on a FluentValidation validator. The five demos under `examples/` run on Jev: four
+server, are implemented and tested too, and so are `src/SemanticPolicy.FluentValidation/`, which puts
+semantic rules on a FluentValidation validator, and `src/SemanticPolicy.Extensions.AI/`, which puts the
+two tool guards on any Microsoft.Extensions.AI chat client and which the Agent Framework package is
+built on. The five demos under `examples/` run on Jev: four
 around an agent, and `examples/SupportTicketForm/`, a support form's validator with no agent.
 `docs/classification.md` shows a Choice rule picking a label on Core alone.
 `examples/CustomProvider/` is a provider of your own, over a local classifier and with its own
@@ -30,13 +32,15 @@ src/SemanticPolicy.Core/                    policies, rules, verdicts, decision 
 src/SemanticPolicy.Providers.SystemOne/     decision provider for any System One server, such as Von
 src/SemanticPolicy.Providers.TypeSafe/      hosted decision provider, built on SystemOne
 src/SemanticPolicy.Providers.Http/          decision provider for any protocol v0 server
-src/SemanticPolicy.AgentFramework/          Microsoft Agent Framework integration
+src/SemanticPolicy.Extensions.AI/           Microsoft.Extensions.AI integration: tool guards on any IChatClient
+src/SemanticPolicy.AgentFramework/          Microsoft Agent Framework integration, built on Extensions.AI
 src/SemanticPolicy.FluentValidation/        FluentValidation integration: semantic rules on validators
 tools/SemanticPolicy.Evals/                 evaluation CLI
 examples/                                   demos on Jev: PromptInjectionGuard, ToolIntentGuard, ToolResultGuard, AgentRouter, SupportTicketForm
 examples/CustomProvider/                    a provider of your own over a local classifier, and its tests
 tests/SemanticPolicy.Core.Tests/            unit tests
 tests/SemanticPolicy.Providers.ContractTests/  the suite every provider must pass
+tests/SemanticPolicy.Extensions.AI.Tests/   the chat-client guards' tests, on a scripted model and provider
 tests/SemanticPolicy.AgentFramework.Tests/  the adapter's tests, on a scripted model and provider
 tests/SemanticPolicy.FluentValidation.Tests/  the integration's tests, on a scripted provider
 tests/SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, on a scripted provider
@@ -61,6 +65,7 @@ Run the narrowest command that reads what you changed. All three must pass befor
 | anything under `src/`, `tools/`, `examples/`, `tests/` | `dotnet build` |
 | `src/SemanticPolicy.Core/**` | `dotnet test tests/SemanticPolicy.Core.Tests/SemanticPolicy.Core.Tests.csproj` |
 | `src/SemanticPolicy.Providers.**`, `src/Shared/ProviderHttp*.cs` | `dotnet test tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj` |
+| `src/SemanticPolicy.Extensions.AI/**`, `src/Shared/Guards/**` | `dotnet test tests/SemanticPolicy.Extensions.AI.Tests/SemanticPolicy.Extensions.AI.Tests.csproj` |
 | `src/SemanticPolicy.AgentFramework/**`, `src/Shared/Guards/**` | `dotnet test tests/SemanticPolicy.AgentFramework.Tests/SemanticPolicy.AgentFramework.Tests.csproj` |
 | `src/SemanticPolicy.FluentValidation/**` | `dotnet test tests/SemanticPolicy.FluentValidation.Tests/SemanticPolicy.FluentValidation.Tests.csproj` |
 | `tools/SemanticPolicy.Evals/**` | `dotnet test tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj` |
