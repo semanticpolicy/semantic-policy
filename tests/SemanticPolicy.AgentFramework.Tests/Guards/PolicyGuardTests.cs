@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using SemanticPolicy.AgentFramework.Tests.Support;
 using SemanticPolicy.Evaluation;
+using SemanticPolicy.Guards;
 using SemanticPolicy.Providers;
 
 namespace SemanticPolicy.AgentFramework.Tests.Guards;
@@ -102,6 +103,27 @@ public sealed class PolicyGuardTests
         traced.Should().ContainSingle().Which.OperationName.Should().Be("semanticpolicy.evaluate");
     }
 
+    [Theory]
+    [InlineData("pre-model")]
+    [InlineData("pre-tool")]
+    [InlineData("post-tool")]
+    public async Task Without_An_Override_The_Provider_Receives_The_Subjects_Own_Context(string point)
+    {
+        ModelInput input = new([new("user", "text-user")], "run_default");
+        ToolCall call = Call("call_default");
+        ToolResult result = new(call, "text-result");
+
+        (JsonElement seen, SemanticContext expected) = point switch
+        {
+            "pre-model" => (await ContextSeen(GuardSubject.PreModel, input, PreModelOutcome.Proceed), input.ToSemanticContext()),
+            "pre-tool" => (await ContextSeen(GuardSubject.PreTool, call, PreToolOutcome.Proceed), call.ToSemanticContext()),
+            "post-tool" => (await ContextSeen(GuardSubject.PostTool, result, PostToolOutcome.Proceed), result.ToSemanticContext()),
+            _ => throw new ArgumentOutOfRangeException(nameof(point)),
+        };
+
+        seen.GetRawText().Should().Be(expected.ToJson().GetRawText());
+    }
+
     [Fact]
     public async Task Cancelling_The_Token_Ends_The_Guard_Without_A_Verdict()
     {
@@ -159,6 +181,24 @@ public sealed class PolicyGuardTests
         {
             return [.. stopped.Where(activity => activity.GetTagItem("semanticpolicy.correlation_id") as string == correlationId)];
         }
+    }
+
+    // The context the provider saw for one evaluation of the subject through the guard's evaluate half.
+    private static async Task<JsonElement> ContextSeen<TSubject, TOutcome>(
+        GuardSubject<TSubject> at,
+        TSubject subject,
+        TOutcome outcome)
+    {
+        ScriptedDecisionProvider provider = new ScriptedDecisionProvider().Returns(ScriptedDecisionProvider.Boolean(true, 0.95));
+        PolicyGuard<TSubject, TOutcome> guard = new(
+            at,
+            Evaluator(provider, PolicyMode.Enforce),
+            "p",
+            (_, _, _) => ValueTask.FromResult(outcome));
+
+        await guard.EvaluateAsync(subject, CancellationToken.None);
+
+        return provider.Requests.Should().ContainSingle().Which.Context;
     }
 
     private static ValueTask<PreToolOutcome> Proceed(ToolCall call, PolicyVerdict verdict, CancellationToken cancellationToken) =>

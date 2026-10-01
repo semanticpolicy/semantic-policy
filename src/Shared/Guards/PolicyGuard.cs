@@ -1,6 +1,6 @@
 using SemanticPolicy.Evaluation;
 
-namespace SemanticPolicy.AgentFramework;
+namespace SemanticPolicy.Guards;
 
 /// <summary>
 /// One policy at one intervention point, in two halves: <see cref="EvaluateAsync"/> builds the
@@ -10,6 +10,10 @@ namespace SemanticPolicy.AgentFramework;
 /// verdict and reports no telemetry of its own: the evaluator's activity is the one trace, tied to
 /// the subject through the context's correlation id.
 /// </summary>
+/// <remarks>
+/// Compiled into each integration package as a linked file rather than shipped as a public type, so the
+/// integrations share one implementation without an API of their own to version.
+/// </remarks>
 /// <typeparam name="TSubject">What the point judges.</typeparam>
 /// <typeparam name="TOutcome">What the handler decides.</typeparam>
 internal sealed class PolicyGuard<TSubject, TOutcome>
