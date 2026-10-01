@@ -81,7 +81,14 @@ function that client calls to run a tool. A guard with no function-invoking clie
 after `UseFunctionInvocation()`, or on a pipeline without one — fails at `Build` with an
 `InvalidOperationException`, rather than leaving every call unchecked.
 
-The guards run in the order their calls are written:
+The guards nest in the order their calls are written, outside the application's invoker.
+Before-tool handlers run from first to last; after-tool handlers run from last to first, each
+reading the result returned by the stages nested inside it. With two after-tool guards, the second
+one checks the tool's result first, and the first one checks what the second returned, including any
+replacement. Put a validator before a replacing after-tool guard in the builder if it must check the
+replacement.
+
+For example, the handlers in this pipeline run in the numbered order:
 
 ```csharp
 IChatClient guarded = new ChatClientBuilder(chatClient)
@@ -101,7 +108,8 @@ the tool never run, and its message is the call's result.
 
 All the guards run outside `FunctionInvokingChatClient.FunctionInvoker`. If your application sets
 one, set it in `UseFunctionInvocation(configure: …)`, as above: the before-tool guards then run ahead
-of it, and the after-tool guards check what it returned. Without one, the tool's own function runs.
+of it, and the innermost after-tool guard checks what it returned; outer after-tool guards check the
+result returned by their nested stages. Without an application invoker, the tool's own function runs.
 
 **Never assign `FunctionInvoker` after `Build`.** The guards wrap the invoker that is there when the
 pipeline is built; one assigned afterwards replaces them, and every call then runs unchecked, with no

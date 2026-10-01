@@ -38,8 +38,10 @@ public static class SemanticPolicyChatClientBuilderExtensions
     /// a missing registration fails there and not on the first call.
     /// </para>
     /// <para>
-    /// Guards run in the order their calls are written, all of them outside the application's own
-    /// invoker. Set that invoker in <c>UseFunctionInvocation(configure: …)</c>, never on the built
+    /// Guards nest in the order their calls are written, outside the application's own invoker.
+    /// Before-tool handlers run from first to last; after-tool handlers run from last to first, each
+    /// reading the result returned by the stages nested inside it. Set the application's invoker in
+    /// <c>UseFunctionInvocation(configure: …)</c>, never on the built
     /// client: one assigned after the build replaces the guards, and every call then runs unchecked,
     /// with no error.
     /// </para>
@@ -89,8 +91,10 @@ public static class SemanticPolicyChatClientBuilderExtensions
     /// fails.
     /// </para>
     /// <para>
-    /// Guards run in the order their calls are written, all of them outside the application's own
-    /// invoker. Set that invoker in <c>UseFunctionInvocation(configure: …)</c>, never on the built
+    /// Guards nest in the order their calls are written, outside the application's own invoker.
+    /// Before-tool handlers run from first to last; after-tool handlers run from last to first, each
+    /// reading the result returned by the stages nested inside it. Set the application's invoker in
+    /// <c>UseFunctionInvocation(configure: …)</c>, never on the built
     /// client: one assigned after the build replaces the guards, and every call then runs unchecked,
     /// with no error.
     /// </para>
@@ -139,8 +143,9 @@ public static class SemanticPolicyChatClientBuilderExtensions
     /// a missing registration fails there and not on the first call.
     /// </para>
     /// <para>
-    /// Guards run in the order their calls are written, all of them outside the application's own
-    /// invoker, so this one checks what that invoker returned. Set that invoker in
+    /// Guards nest in the order their calls are written, outside the application's own invoker.
+    /// Before-tool handlers run from first to last; after-tool handlers run from last to first, each
+    /// reading the result returned by the stages nested inside it. Set the application's invoker in
     /// <c>UseFunctionInvocation(configure: …)</c>, never on the built client: one assigned after the
     /// build replaces the guards, and every call then runs unchecked, with no error.
     /// </para>
@@ -188,8 +193,9 @@ public static class SemanticPolicyChatClientBuilderExtensions
     /// fails.
     /// </para>
     /// <para>
-    /// Guards run in the order their calls are written, all of them outside the application's own
-    /// invoker, so this one checks what that invoker returned. Set that invoker in
+    /// Guards nest in the order their calls are written, outside the application's own invoker.
+    /// Before-tool handlers run from first to last; after-tool handlers run from last to first, each
+    /// reading the result returned by the stages nested inside it. Set the application's invoker in
     /// <c>UseFunctionInvocation(configure: …)</c>, never on the built client: one assigned after the
     /// build replaces the guards, and every call then runs unchecked, with no error.
     /// </para>
@@ -225,7 +231,8 @@ public static class SemanticPolicyChatClientBuilderExtensions
     // Runs inside the builder's factory, so at Build. Factories run from the last added to the first,
     // which means the function-invoking client below has been built and configured by now, and every
     // guard written after this one has already wrapped its invoker: wrapping what is there keeps the
-    // guards in the order written and the application's own invoker innermost.
+    // guards nested in the order written and the application's own invoker innermost. Before handlers
+    // evaluate on the way in, first to last; after handlers evaluate on the way out, last to first.
     private static IChatClient Wrap<TSubject, TOutcome>(
         IChatClient inner,
         string method,

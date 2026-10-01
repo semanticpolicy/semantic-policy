@@ -366,7 +366,9 @@ IChatClient guarded = new ChatClientBuilder(chatClient)
     .Build(serviceProvider);
 ```
 
-The guards run in the order they are written, outside any `FunctionInvoker` the application sets in
+The guards nest in the order they are written: before-tool handlers run first to last, after-tool
+handlers last to first, each reading the result returned by its nested stages. They sit outside any
+`FunctionInvoker` the application sets in
 `UseFunctionInvocation(configure: …)`, and await the verdict in every mode. There is no pre-model
 point: a chat client receives the whole history on every call, so there is no one input to judge.
 [The package's README][chat-client-readme] covers where the calls go, an invoker of your own,
