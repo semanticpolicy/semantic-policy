@@ -1,6 +1,11 @@
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using SemanticPolicy.Evals.Cli;
+using SemanticPolicy.Evals.Counting;
 using SemanticPolicy.Evals.Datasets;
+using SemanticPolicy.Evals.Metrics;
 using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Evals.Replay;
 using SemanticPolicy.Protocol;
@@ -152,6 +157,58 @@ public sealed class ExampleDatasetsTests
         await ReplayCommittedRecordingAsync("support-router", 80);
     }
 
+    // The calibrated example is calibrate's output, never an edit, so a fresh run on the committed files writes it
+    // again. Parsed rather than byte for byte: the slope, the intercept and the converted thresholds go through the C
+    // runtime's exp and log, whose last digits may differ between the machine that wrote the file and the one
+    // running this, and a round-trip double prints that difference.
+    [Fact]
+    public async Task Committed_Calibrated_Smoke_Policy_Is_What_Calibrate_Writes_From_The_Committed_Recording()
+    {
+        string smoke = Path.Combine(RepositoryRoot(), "tools", "SemanticPolicy.Evals", "datasets", "smoke");
+        string committed = Path.Combine(smoke, "prompt-injection.calibrated.policy.json");
+        using TempFile written = TempFile.Write("", ".json");
+
+        CliRun run = await CliFixture.InvokeAsync(
+        [
+            "calibrate",
+            "--policy", Path.Combine(smoke, "prompt-injection.policy.json"),
+            "--dataset", Path.Combine(smoke, "prompt-injection.smoke.jsonl"),
+            "--recording", Path.Combine(smoke, "prompt-injection.recording.jsonl"),
+            "--provider", "local",
+            "--out-policy", written.Path,
+        ]);
+
+        run.ExitCode.Should().Be(ExitCodes.Success, run.Error);
+        File.Exists(committed).Should().BeTrue("calibrate's output on the committed smoke files is committed beside them");
+        SameUpToComputedDigits(
+            JsonNode.Parse(await File.ReadAllTextAsync(committed, TestContext.Current.CancellationToken)),
+            JsonNode.Parse(await File.ReadAllTextAsync(written.Path, TestContext.Current.CancellationToken)),
+            "$",
+            member: null);
+    }
+
+    // The calibrated example replays like the policy it was written from and decides every row as that policy does:
+    // the map moved the numbers local's thresholds compare, not which rows they flag.
+    [Fact]
+    public async Task Committed_Calibrated_Smoke_Policy_Replays_And_Gives_Every_Row_The_Smoke_Policys_Verdict()
+    {
+        (LoadedInputs calibrated, ReplaySet replay) =
+            await ReplayCommittedRecordingAsync("prompt-injection", 100, "prompt-injection.calibrated.policy.json");
+        (_, ReplaySet original) = await ReplayCommittedRecordingAsync("prompt-injection", 100);
+
+        ProviderBinding local = calibrated.Policy.Bindings.Single(binding => binding.ProviderId == "local");
+        local.OperatingPoints.Should().ContainSingle().Which.Calibration.Should().NotBeNull();
+        calibrated.Policy.Bindings.Where(binding => binding.ProviderId != "local")
+            .SelectMany(binding => binding.OperatingPoints)
+            .Should().OnlyContain(point => point.Calibration == null);
+        EvaluatedRow[] alone = [.. replay.Evaluate(calibrated.Policy with { Bindings = [local] })];
+        alone.Should().OnlyContain(row => row.Verdict.Attempts.Single().CalibratedEvidence != null);
+        Calibration.Compute([.. alone.Select(row => RowCounting.Classify(row, calibrated.Rule))], calibrated.Rule)
+            .Applicable.Should().BeTrue("local's thresholds read the calibrated probability, which is what is measured");
+        replay.Evaluate().Select(row => (row.Row.Id, row.Verdict.Verdict))
+            .Should().Equal(original.Evaluate().Select(row => (row.Row.Id, row.Verdict.Verdict)));
+    }
+
     // Replays with report, which calls no provider, so it passes with no key and no server. The header must name
     // every bound provider with the model the README quotes, and every row must have an answer from each binding
     // that the library still accepts on replay: a row the local server or Jev failed on, or a success read as
@@ -159,10 +216,13 @@ public sealed class ExampleDatasetsTests
     // replayed alone, because under the whole chain a malformed answer moves on to the next binding and no count
     // shows it. The header must list no resumption: a committed recording is made in one run and never rewritten,
     // and a resumed one would replay like any other, so nothing else would notice it.
-    private static async Task ReplayCommittedRecordingAsync(string set, int rowCount)
+    private static async Task<(LoadedInputs Inputs, ReplaySet Replay)> ReplayCommittedRecordingAsync(
+        string set,
+        int rowCount,
+        string? policyFile = null)
     {
         string smoke = Path.Combine(RepositoryRoot(), "tools", "SemanticPolicy.Evals", "datasets", "smoke");
-        string policy = Path.Combine(smoke, $"{set}.policy.json");
+        string policy = Path.Combine(smoke, policyFile ?? $"{set}.policy.json");
         string dataset = Path.Combine(smoke, $"{set}.smoke.jsonl");
         string recordingPath = Path.Combine(smoke, $"{set}.recording.jsonl");
 
@@ -186,6 +246,42 @@ public sealed class ExampleDatasetsTests
             replay.Evaluate(loaded.Policy with { Bindings = [binding] })
                 .Select(row => row.Verdict.Attempts.Single().EffectiveOutcome.Status)
                 .Should().NotContain(OutcomeStatus.Failure, "no row may have failed on {0}", binding.ProviderId);
+        }
+
+        return (loaded, replay);
+    }
+
+    // Every member equal in name, order and value, except the three whose values go through exp and log: those agree
+    // within a relative 1e-9, far above a last-digit difference and far below any change in the fit.
+    private static void SameUpToComputedDigits(JsonNode? expected, JsonNode? actual, string path, string? member)
+    {
+        switch (expected)
+        {
+            case JsonObject members:
+                JsonObject actualMembers = actual.Should().BeOfType<JsonObject>(path).Subject;
+                actualMembers.Select(entry => entry.Key).Should().Equal(members.Select(entry => entry.Key), path);
+                foreach ((string name, JsonNode? value) in members)
+                {
+                    SameUpToComputedDigits(value, actualMembers[name], $"{path}.{name}", name);
+                }
+
+                break;
+            case JsonArray items:
+                JsonArray actualItems = actual.Should().BeOfType<JsonArray>(path).Subject;
+                actualItems.Should().HaveCount(items.Count, path);
+                for (int index = 0; index < items.Count; index++)
+                {
+                    SameUpToComputedDigits(items[index], actualItems[index], $"{path}[{index}]", member: null);
+                }
+
+                break;
+            case JsonValue value when member is "slope" or "intercept" or "atOrAbove":
+                double wanted = value.GetValue<double>();
+                actual!.GetValue<double>().Should().BeApproximately(wanted, 1e-9 * Math.Abs(wanted), path);
+                break;
+            default:
+                (actual?.ToJsonString()).Should().Be(expected?.ToJsonString(), path);
+                break;
         }
     }
 
@@ -211,6 +307,7 @@ public sealed class ExampleDatasetsTests
 
         // Any long run of token characters, for a key of no known shape. Not applied to a recording: it carries no
         // input by design, and its header holds each dataset's SHA-256 and a tool version ending in a commit hash.
+        // A calibrated policy names the dataset it was fitted on by the same SHA-256, so that one value is left out.
         Regex longToken = new(@"(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{40,}");
 
         // By extension: on a case-insensitive file system this folder is also the one that holds the dataset
@@ -225,16 +322,79 @@ public sealed class ExampleDatasetsTests
         foreach (string file in files)
         {
             string text = File.ReadAllText(file);
-            Regex[] patterns = file.EndsWith(".recording.jsonl", StringComparison.Ordinal)
-                ? forbidden
-                : [.. forbidden, longToken];
-            foreach (Regex pattern in patterns)
+            List<(Regex Pattern, string Text)> scans = [.. forbidden.Select(pattern => (pattern, text))];
+            if (!file.EndsWith(".recording.jsonl", StringComparison.Ordinal))
             {
-                Match match = pattern.Match(text);
+                scans.Add((longToken, Path.GetExtension(file) == ".json" ? WithoutDatasetDigest(text) : text));
+            }
+
+            foreach ((Regex pattern, string scanned) in scans)
+            {
+                Match match = pattern.Match(scanned);
                 match.Success.Should().BeFalse(
                     $"'{Path.GetRelativePath(datasets, file)}' holds '{match.Value}', which matches {pattern}");
             }
         }
+    }
+
+    // The exemption is the one value and nothing that merely looks like it: the same digest under another member,
+    // or a string member that happens to be called provenance, is still a long token.
+    [Fact]
+    public void Key_Scan_Leaves_Out_Only_The_Dataset_Digest_Of_A_Calibrations_Provenance()
+    {
+        string digest = new('a', 64);
+        string json = $$$"""
+            {"calibration":{"provenance":{"model":"m","datasetDigest":"{{{digest}}}"}},
+             "datasetDigest":"{{{digest}}}","other":{"provenance":"{{{digest}}}"},"list":[{"datasetDigest":"{{{digest}}}"}]}
+            """;
+
+        string scanned = WithoutDatasetDigest(json);
+
+        scanned.Should().HaveLength(json.Length);
+        Regex.Matches(scanned, digest).Should().HaveCount(3);
+        scanned.Should().Contain("\"datasetDigest\":\"" + new string(' ', 64) + "\"}}");
+    }
+
+    // The file with the value of provenance.datasetDigest blanked to spaces, byte for byte in place, so a match
+    // elsewhere still points at its own text. Read as JSON rather than matched as text, so only that member counts.
+    private static string WithoutDatasetDigest(string json)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(json);
+        List<(int Start, int Length)> digests = [];
+        Stack<string?> parents = new();
+        string? member = null;
+        Utf8JsonReader reader = new(bytes);
+        while (reader.Read())
+        {
+            switch (reader.TokenType)
+            {
+                case JsonTokenType.StartObject or JsonTokenType.StartArray:
+                    parents.Push(member);
+                    member = null;
+                    break;
+                case JsonTokenType.EndObject or JsonTokenType.EndArray:
+                    parents.Pop();
+                    member = null;
+                    break;
+                case JsonTokenType.PropertyName:
+                    member = reader.GetString();
+                    break;
+                case JsonTokenType.String when member == "datasetDigest" && parents.Peek() == "provenance":
+                    digests.Add(((int)reader.TokenStartIndex + 1, reader.ValueSpan.Length));
+                    member = null;
+                    break;
+                default:
+                    member = null;
+                    break;
+            }
+        }
+
+        foreach ((int start, int length) in digests)
+        {
+            bytes.AsSpan(start, length).Fill((byte)' ');
+        }
+
+        return Encoding.UTF8.GetString(bytes);
     }
 
     internal static string RepositoryRoot()

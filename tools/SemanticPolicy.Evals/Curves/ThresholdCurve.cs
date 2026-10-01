@@ -25,7 +25,8 @@ public static class ThresholdCurve
     /// <summary>
     /// Computes one curve per rung of the swept rule's ladder. A curve has at most 101 points: past that, half the
     /// places go to values reported on flagged rows and half to the others, each spread evenly by rank with its lowest
-    /// and highest, and on probability evidence the 0.05 grid stays whole and counts toward the 101.
+    /// and highest, and on probability evidence the 0.05 grid stays whole and counts toward the 101. At a calibrated
+    /// point the candidates are the calibrated probabilities of the recorded values, with the grid.
     /// </summary>
     /// <param name="set">The replay set, loaded on the rule to sweep.</param>
     /// <param name="policy">The policy the sweep varies; every binding of it is kept.</param>
@@ -51,8 +52,7 @@ public static class ThresholdCurve
         ProviderBinding binding = policy.Bindings[bindingIndex];
         RuleOperatingPoint point = OperatingPoint(binding, rule);
         HashSet<string> selected = new(rows.Select(row => row.Id), StringComparer.Ordinal);
-        List<(double Threshold, bool Observed)> candidates =
-            Candidates(set, binding.ProviderId, rule, point.Thresholds[0].Kind, selected);
+        List<(double Threshold, bool Observed)> candidates = Candidates(set, binding.ProviderId, rule, point, selected);
 
         List<RungCurve> curves = new(rule.Ladder.Count);
         foreach (Verdict rung in rule.Ladder)
@@ -83,7 +83,9 @@ public static class ThresholdCurve
     /// <param name="bindingIndex">The binding in <paramref name="policy"/> whose threshold is set.</param>
     /// <param name="rows">The rows to score; the replay is filtered to them.</param>
     /// <param name="rung">The ladder rung to cut.</param>
-    /// <param name="threshold">The threshold, on the binding's declared evidence kind.</param>
+    /// <param name="threshold">
+    /// The threshold, on the scale the binding's thresholds read: the calibrated probability at a calibrated point.
+    /// </param>
     /// <exception cref="ArgumentException">
     /// As for <see cref="Compute"/>, or the rule's ladder has no such rung.
     /// </exception>
@@ -110,8 +112,7 @@ public static class ThresholdCurve
         ProviderBinding binding = policy.Bindings[bindingIndex];
         RuleOperatingPoint point = OperatingPoint(binding, rule);
         HashSet<string> selected = new(rows.Select(row => row.Id), StringComparer.Ordinal);
-        (SortedSet<double> onFlagged, SortedSet<double> onOthers) =
-            Observed(set, binding.ProviderId, rule, point.Thresholds[0].Kind, selected);
+        (SortedSet<double> onFlagged, SortedSet<double> onOthers) = Observed(set, binding.ProviderId, rule, point, selected);
         bool observed = onFlagged.Contains(threshold) || onOthers.Contains(threshold);
         return Point(set, policy, rule with { Ladder = [rung] }, bindingIndex, threshold, observed, selected);
     }
@@ -155,11 +156,11 @@ public static class ThresholdCurve
         ReplaySet set,
         string providerId,
         BooleanRule rule,
-        EvidenceKind kind,
+        RuleOperatingPoint point,
         HashSet<string> selected)
     {
-        (SortedSet<double> onFlagged, SortedSet<double> onOthers) = Observed(set, providerId, rule, kind, selected);
-        if (kind != EvidenceKind.Probability)
+        (SortedSet<double> onFlagged, SortedSet<double> onOthers) = Observed(set, providerId, rule, point, selected);
+        if (point.Thresholds[0].Kind != EvidenceKind.Probability)
         {
             // A score or a logit is on the provider's own scale, where a fixed grid is an arbitrary set of
             // numbers; only values some attempt actually reported say anything there.
@@ -246,14 +247,20 @@ public static class ThresholdCurve
 
     // Split by the row's label, read as the confusion matrix reads it: the flagged answer is the positive class, and
     // every other row, a row outside the matrix included, is among the others.
+    //
+    // At a calibrated point the thresholds compare the probability the calibration makes of its source kind's value,
+    // so that value is read and the candidate is the library's own map of it: the same call evaluation makes, so a
+    // policy carrying the candidate cuts exactly at the row it came from.
     private static (SortedSet<double> OnFlagged, SortedSet<double> OnOthers) Observed(
         ReplaySet set,
         string providerId,
         BooleanRule rule,
-        EvidenceKind kind,
+        RuleOperatingPoint point,
         HashSet<string> selected)
     {
         string flagged = rule.FlaggedAnswer ? "true" : "false";
+        EvidenceCalibration? calibration = point.Calibration;
+        EvidenceKind kind = calibration?.SourceKind ?? point.Thresholds[0].Kind;
         SortedSet<double> onFlagged = [];
         SortedSet<double> onOthers = [];
         foreach (ReplayRow row in set.Rows)
@@ -264,7 +271,7 @@ public static class ThresholdCurve
                 continue;
             }
 
-            // The kind the operating point declares and no other: a result may carry several, and a number
+            // The kind the operating point reads and no other: a result may carry several, and a number
             // on one scale is not a candidate cut on another. A stored result can come back with no list,
             // a null entry or a null Values; each reads as no evidence, as it does in the step function.
             Evidence? entry = result.Evidence?.FirstOrDefault(candidate =>
@@ -272,7 +279,8 @@ public static class ThresholdCurve
             if (entry is not null
                 && EvidenceMath.WithBooleanComplement(entry).Values.TryGetValue(flagged, out double value))
             {
-                (string.Equals(row.Row.Label.Answer, flagged, StringComparison.Ordinal) ? onFlagged : onOthers).Add(value);
+                (string.Equals(row.Row.Label.Answer, flagged, StringComparison.Ordinal) ? onFlagged : onOthers)
+                    .Add(calibration is null ? value : calibration.Apply(value));
             }
         }
 
