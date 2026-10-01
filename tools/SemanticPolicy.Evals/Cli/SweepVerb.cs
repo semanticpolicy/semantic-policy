@@ -13,12 +13,6 @@ namespace SemanticPolicy.Evals.Cli;
 /// </summary>
 public static class SweepVerb
 {
-    private static readonly Option<string?> _provider = new("--provider")
-    {
-        Description = "The binding to sweep, by provider name; required when the policy has more than one.",
-        HelpName = "name",
-    };
-
     /// <summary>Builds the verb.</summary>
     /// <param name="io">Where it writes.</param>
     public static Command Build(CliIo io)
@@ -35,7 +29,7 @@ public static class SweepVerb
         command.Options.Add(SharedOptions.Recording);
         command.Options.Add(SharedOptions.Force);
         command.Options.Add(SharedOptions.Out);
-        command.Options.Add(_provider);
+        command.Options.Add(SharedOptions.Provider);
         foreach (Option option in SharedOptions.ConstraintOptions)
         {
             command.Options.Add(option);
@@ -51,7 +45,7 @@ public static class SweepVerb
         IReadOnlyList<RungConstraint> rungConstraints = ReplayedInputs.RungConstraints(parse);
         IReadOnlyList<GateConstraint> gateConstraints = ReplayedInputs.GateConstraints(parse);
         ReplayedInputs replayed = ReplayedInputs.Load(parse);
-        int bindingIndex = replayed.BindingIndex(parse.GetValue(_provider));
+        int bindingIndex = replayed.BindingIndex(parse.GetValue(SharedOptions.Provider), "sweep");
         SweepSection section = OperatingPointSweep.Run(
             replayed.Set,
             replayed.Inputs.Policy,

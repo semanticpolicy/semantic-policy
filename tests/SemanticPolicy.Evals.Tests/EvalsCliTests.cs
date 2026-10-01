@@ -46,7 +46,7 @@ public sealed class EvalsCliTests
         int start = Array.IndexOf(lines, "Commands:") + 1;
         int end = Array.FindIndex(lines, start, string.IsNullOrWhiteSpace);
         lines[start..(end < 0 ? lines.Length : end)].Select(line => line.Trim().Split(' ')[0]).Should()
-            .Equal("samples", "run", "report", "sweep", "compare");
+            .Equal("samples", "run", "report", "calibrate", "sweep", "compare");
     }
 
     // The root, as no verb, and every verb the tool registers.

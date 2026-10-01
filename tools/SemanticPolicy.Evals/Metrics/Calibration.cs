@@ -21,10 +21,12 @@ public sealed record ReliabilityBin(
     double? ObservedFrequency);
 
 /// <summary>
-/// How far a provider's probabilities are from the frequencies they claim. Calibration is measured here
-/// and applied nowhere: nothing in this tool rewrites a provider's numbers. It needs evidence that says it
-/// is a probability, so a rule decided on a score or a logit gets a first-class "not applicable" naming
-/// what was found instead, rather than a number computed off a scale that does not carry one.
+/// How far a provider's probabilities are from the frequencies they claim. <c>report</c> measures it at the
+/// policy as written, and <c>calibrate</c> measures it before and after the map it fits into a new policy; neither
+/// rewrites what a provider returned. It needs evidence that says it is a probability, so a rule decided on a
+/// score or a logit gets a first-class "not applicable" naming what was found instead, rather than a number
+/// computed off a scale that does not carry one. At a calibrated operating point the deciding evidence is the
+/// calibrated probability, and that is what is measured.
 /// </summary>
 /// <param name="Applicable">Whether any row carried a probability to measure.</param>
 /// <param name="KindsFound">The evidence kinds of the rows that were left out, named for the report.</param>
