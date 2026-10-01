@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.Extensions.AI;
 
 namespace SemanticPolicy.Guards;
@@ -33,7 +32,7 @@ internal static class ToolInvocationGuards
         PolicyGuard<ToolCall, PreToolOutcome> guard,
         CancellationToken cancellationToken)
     {
-        (_, PreToolOutcome outcome) = await guard.GuardAsync(Call(context), cancellationToken).ConfigureAwait(false);
+        (_, PreToolOutcome outcome) = await guard.GuardAsync(context.ToToolCall(), cancellationToken).ConfigureAwait(false);
         return outcome.Kind switch
         {
             // A refusal is the tool's result and nothing more: the model sees it and is free to
@@ -62,7 +61,7 @@ internal static class ToolInvocationGuards
         CancellationToken cancellationToken)
     {
         object? value = await next(context, cancellationToken).ConfigureAwait(false);
-        ToolResult result = new(Call(context), value);
+        ToolResult result = new(context.ToToolCall(), value);
         (_, PostToolOutcome outcome) = await guard.GuardAsync(result, cancellationToken).ConfigureAwait(false);
         return outcome.Kind switch
         {
@@ -71,17 +70,6 @@ internal static class ToolInvocationGuards
             _ => value,
         };
     }
-
-    // The call as the model proposed it. The arguments are serialized with the same options the
-    // function-calling loop binds them with, so a policy reads the JSON the model produced rather than
-    // the CLR objects the loop happened to bind it to.
-    private static ToolCall Call(FunctionInvocationContext context) =>
-        new(
-            context.Function.Name,
-            context.Function.Description,
-            JsonSerializer.SerializeToElement(context.Arguments, AIJsonUtilities.DefaultOptions),
-            [.. context.Messages.Select(message => new ConversationMessage(message.Role.Value, message.Text))],
-            context.CallContent.CallId);
 
     // Ending the loop is a property on the context, not a return value, so the message still has to be
     // returned as the call's result for the model to see it in the response.
