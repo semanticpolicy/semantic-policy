@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace SemanticPolicy;
 
@@ -52,6 +53,38 @@ public sealed record ToolCall(
     /// over turns, which is why the last user message alone is not enough.
     /// </summary>
     public string UserRequest => ConversationMessage.Join(Conversation, "user");
+
+    /// <summary>
+    /// The context the bundled integrations send for this call when no context delegate is given, in
+    /// this order and under <see cref="CorrelationId"/>: <c>user_request</c>, a text part holding
+    /// <see cref="UserRequest"/>; <c>tool</c>, a JSON object with the tool's <c>name</c> and, only when
+    /// it has one, its <c>description</c>; and <c>arguments</c>, a JSON part holding
+    /// <see cref="Arguments"/>.
+    /// </summary>
+    /// <remarks>
+    /// Only what the call is about goes in, never the whole conversation, because a provider's accuracy
+    /// drops with context that has nothing to do with the question. The part names are the keys a
+    /// dataset row for the pre-tool point carries, so a policy measured on such a dataset reads the same
+    /// shape at run time.
+    /// </remarks>
+    /// <returns>The call's default context.</returns>
+    public SemanticContext ToSemanticContext() =>
+        new([UserRequestPart(), ToolPart(), ContextPart.Json("arguments", Arguments)], CorrelationId);
+
+    /// <summary>The <c>user_request</c> part every default context of a tool point opens with.</summary>
+    internal ContextPart UserRequestPart() => ContextPart.Text("user_request", UserRequest);
+
+    /// <summary>The <c>tool</c> part: the name and, only when there is one, the description.</summary>
+    internal ContextPart ToolPart()
+    {
+        JsonObject tool = new() { ["name"] = Name };
+        if (!string.IsNullOrEmpty(Description))
+        {
+            tool["description"] = Description;
+        }
+
+        return ContextPart.Json("tool", JsonSerializer.SerializeToElement(tool));
+    }
 
     /// <summary>
     /// The call's shape and nothing it carries: the tool's name, the JSON kind of its arguments, how

@@ -26,7 +26,7 @@ can gate a build on required rates.
 ## Layout
 
 ```
-src/SemanticPolicy.Core/                    policies, rules, verdicts, decision requests and results
+src/SemanticPolicy.Core/                    policies, rules, verdicts, decision requests and results; the guard layer's subjects, outcomes and handlers
 src/SemanticPolicy.Providers.SystemOne/     decision provider for any System One server, such as Von
 src/SemanticPolicy.Providers.TypeSafe/      hosted decision provider, built on SystemOne
 src/SemanticPolicy.Providers.Http/          decision provider for any protocol v0 server
@@ -60,8 +60,8 @@ Run the narrowest command that reads what you changed. All three must pass befor
 |---|---|
 | anything under `src/`, `tools/`, `examples/`, `tests/` | `dotnet build` |
 | `src/SemanticPolicy.Core/**` | `dotnet test tests/SemanticPolicy.Core.Tests/SemanticPolicy.Core.Tests.csproj` |
-| `src/SemanticPolicy.Providers.**`, `src/Shared/**` | `dotnet test tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj` |
-| `src/SemanticPolicy.AgentFramework/**` | `dotnet test tests/SemanticPolicy.AgentFramework.Tests/SemanticPolicy.AgentFramework.Tests.csproj` |
+| `src/SemanticPolicy.Providers.**`, `src/Shared/ProviderHttp*.cs` | `dotnet test tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj` |
+| `src/SemanticPolicy.AgentFramework/**`, `src/Shared/Guards/**` | `dotnet test tests/SemanticPolicy.AgentFramework.Tests/SemanticPolicy.AgentFramework.Tests.csproj` |
 | `src/SemanticPolicy.FluentValidation/**` | `dotnet test tests/SemanticPolicy.FluentValidation.Tests/SemanticPolicy.FluentValidation.Tests.csproj` |
 | `tools/SemanticPolicy.Evals/**` | `dotnet test tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj` |
 | `examples/CustomProvider/**` | `dotnet test examples/CustomProvider/CustomProvider.Tests/CustomProvider.Tests.csproj` |

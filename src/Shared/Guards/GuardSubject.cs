@@ -1,4 +1,4 @@
-namespace SemanticPolicy.AgentFramework;
+namespace SemanticPolicy.Guards;
 
 /// <summary>
 /// How a guard reads one kind of subject: the point it belongs to, the context the layer builds for
@@ -6,6 +6,10 @@ namespace SemanticPolicy.AgentFramework;
 /// with one of the three instances on <see cref="GuardSubject"/>; they are the layer's whole
 /// knowledge of its subjects.
 /// </summary>
+/// <remarks>
+/// Compiled into each integration package as a linked file rather than shipped as a public type, so the
+/// integrations share one implementation without an API of their own to version.
+/// </remarks>
 /// <typeparam name="TSubject">What the point judges.</typeparam>
 /// <param name="Point">Where in the loop the subject arises.</param>
 /// <param name="DefaultContext">The context the layer builds for the subject.</param>
@@ -20,13 +24,13 @@ internal static class GuardSubject
 {
     /// <summary>The run's input, before the model.</summary>
     public static GuardSubject<ModelInput> PreModel { get; } =
-        new(InterventionPoint.PreModel, GuardContext.PreModel, input => input.CorrelationId);
+        new(InterventionPoint.PreModel, input => input.ToSemanticContext(), input => input.CorrelationId);
 
     /// <summary>A tool call, before the tool.</summary>
     public static GuardSubject<ToolCall> PreTool { get; } =
-        new(InterventionPoint.PreTool, GuardContext.PreTool, call => call.CorrelationId);
+        new(InterventionPoint.PreTool, call => call.ToSemanticContext(), call => call.CorrelationId);
 
     /// <summary>A tool's result, before the model sees it.</summary>
     public static GuardSubject<ToolResult> PostTool { get; } =
-        new(InterventionPoint.PostTool, GuardContext.PostTool, result => result.Call.CorrelationId);
+        new(InterventionPoint.PostTool, result => result.ToSemanticContext(), result => result.Call.CorrelationId);
 }
