@@ -105,18 +105,39 @@ route through OpenRouter spelled out:
 ```
 
 Each name under `providers` is a registration name: what a binding's `providerId` refers to, and the
-provider's name in the recording. `kind` picks one of two adapters, and `options` is that adapter's
-own options class, its properties named in camelCase; letter case does not matter:
+provider's name in the recording. `kind` picks one of three adapters, and `options` is that
+adapter's own options class, its properties named in camelCase; letter case does not matter:
 
 | `kind` | What it calls | `options` |
 |---|---|---|
 | `systemone` | A System One server, such as Von or Laya, on your machine or your network | `baseUrl` and `model`, both required; `path` (`/v1/systemone` by default), `apiKeyVariable`, `allowInsecureHttp` for plain `http` to a host that is not loopback, `evidence` (`score` by default, or `probability` when you know the server is calibrated) and `maxContextLength` |
 | `typesafe-jev` | TypeSafe's Jev model, on TypeSafe's own endpoint or through a gateway such as OpenRouter | `route`, required, with its four properties: `baseUrl`, `path`, `model` and `apiKeyVariable`; TypeSafe's own is `https://api.typesafe.ai`, `/v1/systemone`, `jev-1.13.0` and `TYPESAFE_API_KEY`. `model` beside `route` asks for another model than the route's, and `apiKeyVariable` beside it reads another variable |
+| `http` | Any server that speaks [protocol v0](https://github.com/semanticpolicy/semantic-policy/blob/main/docs/protocol-v0.md), such as a classifier you serve yourself | `baseUrl`, `model`, `types`, `evidence` and `structuredContext`, all required. `types` lists the decision types the server answers, from `boolean`, `choice` and `score`, and is not empty. `evidence` lists the evidence kinds it produces, from `probability`, `score`, `logit`, `margin` and `unknown`; `[]` declares a server that sends none. Both are lists even of one value, `["score"]`: a `systemone` entry's `evidence` is a single value, `"score"`, and that line copied into an `http` entry is refused as a value its property cannot take. `structuredContext` is `true` for a server that reads an object or array context as such, and `false` for one that reads text. `model` is what a result reports when the server's answer names none; it is never sent. Optional: `path` (`/v0/decide` by default), `apiKeyVariable`, `allowInsecureHttp` for plain `http` to a host that is not loopback, and `maxContextLength` |
+
+This one registers a protocol v0 server on your own machine that answers Boolean questions with
+`score` evidence and reads text:
+
+```json
+{
+  "providers": {
+    "classifier": {
+      "kind": "http",
+      "options": {
+        "baseUrl": "http://127.0.0.1:8765",
+        "model": "my-classifier-1",
+        "types": ["boolean"],
+        "evidence": ["score"],
+        "structuredContext": false
+      }
+    }
+  }
+}
+```
 
 A key is named, never written: `apiKeyVariable` names the environment variable that holds it. A
-`systemone` key is optional, and an unset variable sends no `Authorization` header. A `typesafe-jev`
-entry must name a variable, in its `route` or beside it, and `run` stops with exit code 1 when a
-policy binds the entry and the variable is unset.
+`systemone` or `http` key is optional, and an unset variable sends no `Authorization` header. A
+`typesafe-jev` entry must name a variable, in its `route` or beside it, and `run` stops with exit
+code 1 when a policy binds the entry and the variable is unset.
 
 `run` stops with exit code 1 before it builds any provider when the file:
 
@@ -127,7 +148,7 @@ policy binds the entry and the variable is unset.
 - has a property its options class or its route does not have, so a mistyped name cannot fall back
   to its default unseen; gives an entry anything but `kind` and `options`, or the top level anything
   but `providers`; or lacks one of them.
-- names a kind other than `systemone` and `typesafe-jev`, or a provider twice.
+- names a kind other than `http`, `systemone` and `typesafe-jev`, or a provider twice.
 - has a `typesafe-jev` entry with a `route` that names no key variable, bound or not, or puts in
   any `apiKeyVariable` something that is not a variable's name: ASCII letters, digits and
   underscores, not starting with a digit. A key pasted there is refused before any message could
@@ -138,9 +159,10 @@ The message names the file, the provider and the property, and never quotes a va
 a value could be a key pasted in by mistake, and the message lands in terminals and CI logs.
 
 Everything else in `options` is the adapter's to check, and it checks every entry, bound or not. A
-relative `baseUrl`, plain `http` to a host that is not loopback without `allowInsecureHttp`, or a
-`typesafe-jev` entry with no `route` stops `run` with exit code 1 and the adapter's own message,
-naming the provider.
+relative `baseUrl`, plain `http` to a host that is not loopback without `allowInsecureHttp`, a
+`typesafe-jev` entry with no `route`, or an `http` entry that leaves out `types`, `evidence` or
+`structuredContext`, or gives an empty `types`, stops `run` with exit code 1 and the adapter's own
+message, naming the provider.
 
 ## Quick start
 

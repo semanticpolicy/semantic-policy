@@ -10,7 +10,8 @@ API.
 
 ## Unreleased
 
-A Choice rule's verdict names the option the provider picked.
+A Choice rule's verdict names the option the provider picked, and the evaluation CLI can call any
+server that speaks protocol v0.
 
 - **`SemanticPolicy.Core`.** `RuleVerdict` gains `ChosenOption`, the key of the option the deciding
   answer picked on a Choice rule, and `DecidingAttempt`, the attempt at `DecidingBinding`, whose
@@ -18,6 +19,11 @@ A Choice rule's verdict names the option the provider picked.
   answer decided the rule, because the gate abstained or the failure behaviour set the verdict, and
   `ChosenOption` is null on a Boolean or Score rule. Both are read from `Attempts`, so the
   constructor, `Deconstruct` and the serialized verdict are as before.
+- **`SemanticPolicy.Evals`.** The providers file `run --providers` reads gains the `http` kind: an
+  entry whose `options` are `SemanticPolicy.Providers.Http`'s `HttpProviderOptions` registers that
+  provider, so a protocol v0 server can be evaluated and compared beside System One servers and Jev.
+  Its key is optional and named by an environment variable, as a System One key is. The tool package
+  now carries the Http provider's assembly.
 
 ## 0.1.0-alpha.2 - 2026-09-30
 

@@ -56,14 +56,17 @@ public sealed class ProvidersFileTests
     [InlineData("typesafe-jev", "", "apiKey")]
     [InlineData("typesafe-jev", ".route", "apiKey")]
     [InlineData("typesafe-jev", ".route", "Timeout")]
+    [InlineData("http", "", "apiKey")]
     public async Task Providers_File_Refuses_What_The_Tool_Owns_Naming_Only_The_Property(string kind, string within, string property)
     {
         string owned = $"\"{property}\": \"{_marker}\"";
-        string options = kind == "systemone"
-            ? $$"""{ "baseUrl": "http://127.0.0.1:8000", "model": "von-1.2.2", {{owned}} }"""
-            : within == ""
-                ? $$"""{ "route": {{OpenRouterRoute("")}}, {{owned}} }"""
-                : $$"""{ "route": {{OpenRouterRoute(owned + ",")}} }""";
+        string options = (kind, within) switch
+        {
+            ("systemone", _) => $$"""{ "baseUrl": "http://127.0.0.1:8000", "model": "von-1.2.2", {{owned}} }""",
+            ("http", _) => $$"""{ "baseUrl": "http://127.0.0.1:8765", "model": "stub-decider-1", "types": ["boolean"], "evidence": [], "structuredContext": false, {{owned}} }""",
+            (_, "") => $$"""{ "route": {{OpenRouterRoute("")}}, {{owned}} }""",
+            _ => $$"""{ "route": {{OpenRouterRoute(owned + ",")}} }""",
+        };
         using Files files = Files.Create($$"""{ "providers": { "entry": { "kind": "{{kind}}", "options": {{options}} } } }""", bound: "absent");
 
         CliRun run = await InvokeAsync(files.RunArgs());
@@ -77,6 +80,7 @@ public sealed class ProvidersFileTests
     [Theory]
     [InlineData("an option the class lacks", "options.baseUrll is not a property of SystemOneOptions.")]
     [InlineData("a route property the route lacks", "options.route.region is not a property of TypeSafeJevRoute.")]
+    [InlineData("an option the http class lacks", "options.headers is not a property of HttpProviderOptions.")]
     [InlineData("an option given twice", "options.MODEL is given twice.")]
     [InlineData("a value of the wrong type", "options.maxContextLength holds a value")]
     [InlineData("entry property kinds", "provider 'von': 'kinds' is not an entry property")]
@@ -84,7 +88,9 @@ public sealed class ProvidersFileTests
     [InlineData("no options", "provider 'von': the entry has no 'options'")]
     [InlineData("no providers", "has no top-level 'providers' object.")]
     [InlineData("a second top-level property", "top-level property 'version' is not known")]
-    [InlineData("an unknown kind", "provider 'von': 'kind' names a kind that is not known; known kinds: systemone, typesafe-jev.")]
+    [InlineData("an unknown kind", "provider 'von': 'kind' names a kind that is not known; known kinds: http, systemone, typesafe-jev.")]
+    [InlineData("a decision type the protocol lacks", "provider 'v0': options.types[0] holds a value")]
+    [InlineData("an evidence kind given as a number", "provider 'v0': options.evidence[1] holds a value")]
     [InlineData("a name given twice", "provider 'von' is given twice.")]
     [InlineData("truncated JSON", "is not valid JSON at line 2, byte ")]
     [InlineData("no such file", "cannot be read")]
@@ -95,6 +101,7 @@ public sealed class ProvidersFileTests
         {
             "an option the class lacks" => Holding($$"""{ "von": { "kind": "systemone", "options": { "baseUrll": "{{_marker}}", "model": "von-1.2.2" } } }"""),
             "a route property the route lacks" => Holding($$"""{ "jev": { "kind": "typesafe-jev", "options": { "route": {{OpenRouterRoute($"\"region\": \"{_marker}\",")}} } } }"""),
+            "an option the http class lacks" => Holding($$"""{ "v0": { "kind": "http", "options": { "baseUrl": "http://127.0.0.1:8765", "model": "stub-decider-1", "headers": "{{_marker}}" } } }"""),
             "an option given twice" => Holding($$"""{ "von": { "kind": "systemone", "options": { "baseUrl": "http://127.0.0.1:8000", "model": "{{_marker}}", "MODEL": "von-1.2.2" } } }"""),
             "a value of the wrong type" => Holding($$"""{ "von": { "kind": "systemone", "options": { "baseUrl": "http://127.0.0.1:8000", "model": "von-1.2.2", "maxContextLength": "{{_marker}}" } } }"""),
             "entry property kinds" => Holding($$"""{ "von": { "kinds": "{{_marker}}", "kind": "systemone", "options": { "model": "von-1.2.2" } } }"""),
@@ -103,6 +110,8 @@ public sealed class ProvidersFileTests
             "no providers" => "{ }",
             "a second top-level property" => $$"""{ "providers": { "von": {{_von}} }, "version": "{{_marker}}" }""",
             "an unknown kind" => Holding($$"""{ "von": { "kind": "{{_marker}}", "options": { "model": "von-1.2.2" } } }"""),
+            "a decision type the protocol lacks" => Holding($$"""{ "v0": { "kind": "http", "options": { "baseUrl": "http://127.0.0.1:8765", "model": "stub-decider-1", "types": ["{{_marker}}"], "evidence": [], "structuredContext": false } } }"""),
+            "an evidence kind given as a number" => Holding($$"""{ "v0": { "kind": "http", "options": { "baseUrl": "http://127.0.0.1:8765", "model": "{{_marker}}", "types": ["boolean"], "evidence": ["score", 1], "structuredContext": false } } }"""),
             "a name given twice" => Holding($$"""{ "von": {{_von}}, "von": {{_von}} }"""),
             "truncated JSON" => $$"""{ "providers":{{"\n"}}{ "von": { "kind": "systemone", "options": { "model": "{{_marker}}""",
             "no such file" => Holding($$"""{ "von": {{_von}} }"""),
@@ -123,14 +132,16 @@ public sealed class ProvidersFileTests
         File.Exists(files.RecordingPath).Should().BeFalse();
     }
 
-    // Every entry is registered, bound or not: the first three are left unbound, so a registration skipped for them
-    // would end the run as an unregistered binding instead. The last is bound, because only a bound Jev provider reads
-    // its key.
+    // Every entry is registered, bound or not: all but the bound Jev entry are left unbound, so a registration skipped
+    // for them would end the run as an unregistered binding instead. That one is bound, because only a bound Jev
+    // provider reads its key.
     [Theory]
     [InlineData("a relative baseUrl", "provider 'von': The BaseUrl is not an absolute URI.")]
     [InlineData("plain http to a remote host", "provider 'von': The BaseUrl must use https")]
     [InlineData("a Jev entry with no route", "provider 'jev': The route is absent.")]
     [InlineData("a bound Jev entry whose key variable is unset", "provider 'jev': the environment variable ")]
+    [InlineData("an http entry that declares no decision types", "provider 'v0': The decision types the server answers are not declared.")]
+    [InlineData("an http entry whose decision types are empty", "provider 'v0': The declared decision types are empty.")]
     public async Task Providers_File_Adapter_Failure_Is_A_Usage_Error_Naming_The_Provider(string defect, string expected)
     {
         string unset = TestVariable();
@@ -140,6 +151,8 @@ public sealed class ProvidersFileTests
             "plain http to a remote host" => ("""{ "von": { "kind": "systemone", "options": { "baseUrl": "http://10.0.0.5", "model": "von-1.2.2" } } }""", "absent"),
             "a Jev entry with no route" => ("""{ "jev": { "kind": "typesafe-jev", "options": { "model": "typesafe/jev-1.13", "apiKeyVariable": "SEMANTICPOLICY_TEST_UNSET_KEY" } } }""", "absent"),
             "a bound Jev entry whose key variable is unset" => ($$"""{ "jev": { "kind": "typesafe-jev", "options": { "route": {{OpenRouterRoute("", unset)}} } } }""", "jev"),
+            "an http entry that declares no decision types" => ("""{ "v0": { "kind": "http", "options": { "baseUrl": "http://127.0.0.1:8765", "model": "stub-decider-1", "evidence": [], "structuredContext": false } } }""", "absent"),
+            "an http entry whose decision types are empty" => ("""{ "v0": { "kind": "http", "options": { "baseUrl": "http://127.0.0.1:8765", "model": "stub-decider-1", "types": [], "evidence": [], "structuredContext": false } } }""", "absent"),
             _ => throw new ArgumentOutOfRangeException(nameof(defect)),
         };
         using Files files = Files.Create(Holding(providers), bound);
@@ -156,6 +169,8 @@ public sealed class ProvidersFileTests
     [InlineData("systemone", true)]
     [InlineData("systemone", false)]
     [InlineData("typesafe-jev", true)]
+    [InlineData("http", true)]
+    [InlineData("http", false)]
     public async Task Providers_File_Entry_Reaches_The_Adapter_Request(string kind, bool keySet)
     {
         string variable = TestVariable();
@@ -166,10 +181,27 @@ public sealed class ProvidersFileTests
                 Environment.SetEnvironmentVariable(variable, "test-key-not-a-credential");
             }
 
-            // Jev on OpenRouter's route with the model overridden; System One on a path of its own, keyed optionally.
-            string options = kind == "systemone"
-                ? $$"""{ "baseUrl": "https://von.example", "path": "/v2/decide", "model": "von-1.2.2", "apiKeyVariable": "{{variable}}" }"""
-                : $$"""{ "route": {{OpenRouterRoute("", variable)}}, "model": "typesafe/jev-override" }""";
+            // Jev on OpenRouter's route with the model overridden; System One on a path of its own, keyed optionally; a
+            // protocol v0 server on the default path, keyed optionally, which is sent no model and answers with none.
+            (string options, string uri, string model, bool modelSent) = kind switch
+            {
+                "systemone" => (
+                    $$"""{ "baseUrl": "https://von.example", "path": "/v2/decide", "model": "von-1.2.2", "apiKeyVariable": "{{variable}}" }""",
+                    "https://von.example/v2/decide",
+                    "von-1.2.2",
+                    true),
+                "typesafe-jev" => (
+                    $$"""{ "route": {{OpenRouterRoute("", variable)}}, "model": "typesafe/jev-override" }""",
+                    "https://openrouter.ai/api/v1/systemone",
+                    "typesafe/jev-override",
+                    true),
+                "http" => (
+                    $$"""{ "baseUrl": "https://decide.example", "model": "stub-decider-1", "types": ["boolean"], "evidence": ["score"], "structuredContext": false, "apiKeyVariable": "{{variable}}" }""",
+                    "https://decide.example/v0/decide",
+                    "stub-decider-1",
+                    false),
+                _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+            };
             using TempFile file = TempFile.Write(Holding($$"""{ "entry": { "kind": "{{kind}}", "options": {{options}} } }"""), ".json");
             Action<ISemanticPolicyBuilder> fromFile = ProvidersFile.Read(file.Path);
             AnsweringHandler handler = new();
@@ -186,9 +218,11 @@ public sealed class ProvidersFileTests
                 TestContext.Current.CancellationToken);
 
             result.Provider.Id.Should().Be("entry");
+            result.Provider.Model.Should().Be(model);
             result.Outcome.Should().Be(ProviderOutcome.Success);
-            handler.Uri.Should().Be(kind == "systemone" ? "https://von.example/v2/decide" : "https://openrouter.ai/api/v1/systemone");
-            handler.Model.Should().Be(kind == "systemone" ? "von-1.2.2" : "typesafe/jev-override");
+            handler.Method.Should().Be(HttpMethod.Post);
+            handler.Uri.Should().Be(uri);
+            handler.Model.Should().Be(modelSent ? model : null);
             handler.Authorization.Should().Be(keySet ? "Bearer test-key-not-a-credential" : null);
         }
         finally
@@ -270,10 +304,13 @@ public sealed class ProvidersFileTests
         return new CliRun(exit, output.ToString(), error.ToString());
     }
 
-    // Stands in for the server behind a named client: answers every request with one Boolean answer on the System One
-    // wire and keeps what the last request carried, so no test reaches a real endpoint.
+    // Stands in for the server behind a named client: answers every request with one Boolean answer, on the protocol v0
+    // wire to a v0 request and on the System One wire to any other, and keeps what the last request carried, so no
+    // test reaches a real endpoint. The v0 answer names no model, as a server may leave it out.
     private sealed class AnsweringHandler : HttpMessageHandler
     {
+        public HttpMethod? Method { get; private set; }
+
         public string? Uri { get; private set; }
 
         public string? Model { get; private set; }
@@ -282,13 +319,18 @@ public sealed class ProvidersFileTests
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            Method = request.Method;
             Uri = request.RequestUri?.AbsoluteUri;
             Authorization = request.Headers.Authorization?.ToString();
             using JsonDocument body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
-            Model = body.RootElement.GetProperty("model").GetString();
+            Model = body.RootElement.TryGetProperty("model", out JsonElement model) ? model.GetString() : null;
+            bool v0 = body.RootElement.TryGetProperty("protocol", out JsonElement protocol) && protocol.ValueEquals(ProtocolVersion.V0);
+            string answer = v0
+                ? """{"protocol":"semanticpolicy/v0","type":"boolean","outcome":{"status":"success"},"value":true,"evidence":[{"kind":"score","values":{"true":0.91,"false":0.09}}],"provider":{"id":"stub","latencyMs":3}}"""
+                : """{"answers":{"decision":{"type":"noul","noul":0.91}}}""";
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("""{"answers":{"decision":{"type":"noul","noul":0.91}}}""", Encoding.UTF8, "application/json"),
+                Content = new StringContent(answer, Encoding.UTF8, "application/json"),
             };
         }
     }
