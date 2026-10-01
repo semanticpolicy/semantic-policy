@@ -28,9 +28,9 @@ measures them.
 2. `run` asks every provider in your **policy** about every example and saves the answers in a
    **recording**. It is the only step that calls a provider, so the only one that costs time and
    money.
-3. `report`, `sweep` and `compare` replay the recording through the library's own evaluation step.
-   Change a threshold in the policy file and you see what the library would decide, in seconds and
-   for free.
+3. `report`, `calibrate`, `sweep` and `compare` replay the recording through the library's own
+   evaluation step. Change a threshold in the policy file and you see what the library would decide,
+   in seconds and for free.
 4. With `--require`, `report` and `run` exit with code 2 when a rate misses what you require, so a
    build that replays a committed recording fails when a policy change makes the rule worse.
 
@@ -54,8 +54,8 @@ A recording holds row ids and answers, never an input or a label. The tool depen
 ## Providers
 
 A binding's `providerId` names a provider, and `run` builds only the providers its policy binds, so
-a policy that leaves one out needs neither its key nor its server. `report`, `sweep` and `compare`
-read a recording and call nothing, so they need no key and no server.
+a policy that leaves one out needs neither its key nor its server. `report`, `calibrate`, `sweep`
+and `compare` read a recording and call nothing, so they need no key and no server.
 
 Without `--providers`, the tool registers two:
 
@@ -152,7 +152,7 @@ dotnet tool install --global SemanticPolicy.Evals --prerelease
 
 The package carries the example and smoke datasets, and the smoke set comes with a recording of one
 `run` of its policy through both providers, a local Von server and Jev. `samples` writes them out, so
-the three commands that read a recording work right after the install, with no key, no server and at
+the four commands that read a recording work right after the install, with no key, no server and at
 no cost. From an empty directory:
 
 ```bash
@@ -335,8 +335,8 @@ Thresholds are chosen on one set of rows and checked on another. Mark the split 
   `metadata.split`, and no id may be in both.
 
 The tool never splits a dataset for you. Without a split, `sweep` and `compare` choose and check on
-the same rows, and each recommendation says **"chosen and reported on the same data (no split)"**.
-Read those numbers as optimistic.
+the same rows, and `calibrate` fits and checks on them; each says **"chosen and reported on the same
+data (no split)"**. Read those numbers as optimistic.
 
 `report` chooses nothing, so it reports on every row; add `--where metadata.split=test` for the test
 rows alone. `--where metadata.<key>=<value>` keeps the rows with that metadata value (a number
@@ -452,6 +452,73 @@ The test rows only, with `$P`, `$D` and `$R` as in the quick start:
 ```bash
 semantic-policy report --policy $P --dataset $D --recording $R --where metadata.split=test
 ```
+
+### `calibrate`
+
+Fits a calibration for one binding of a Boolean rule on the tune rows of a recording, and writes a
+new policy that carries it. The calibrated binding's thresholds then read a probability, and that
+probability is an estimate fitted on labelled data: it can be wrong on inputs unlike them. It calls
+no provider and never rewrites the policy it read.
+
+```bash
+semantic-policy calibrate --policy $P --dataset $D --recording $R --provider local --out-policy calibrated.policy.json
+```
+
+| Option | Meaning |
+|---|---|
+| `--policy <file>`, `--dataset <file>`, `--tune <file>`, `--test <file>`, `--tune-split <name>`, `--test-split <name>`, `--where metadata.<key>=<value>`, `--rule <id>` | As for the [other commands](#options-of-run-report-sweep-and-compare). The rule must be a Boolean rule. |
+| `--recording <file>`, `--force` | As in `report`. |
+| `--out <file>` | Also write the result as [JSON](#the-json-result), with a `calibrate` section. |
+| `--provider <name>` | The binding to calibrate; required when the policy has more than one. |
+| `--out-policy <file>` | Required. Where to write the calibrated policy. It may not be the `--policy` file. |
+| `--diagram <file>` | Also draw the reliability diagram as SVG. When the operating point already read a probability, the diagram shows before and after calibration as two series over one plot; otherwise it shows after alone, and standard error says *"before not drawn:"* and why. |
+
+- **The rows it fits on.** The tune rows labelled with an answer whose recorded attempt at the
+  binding succeeded. `ambiguous` and `abstain` rows, and rows the binding failed on, are left out.
+  The result is reported on the test rows. Without a split, the map is fitted and reported on the
+  same rows, and the output says **"chosen and reported on the same data (no split)"**; read the
+  numbers after calibration as optimistic then.
+- **At least 10 of each.** Fewer than 10 flagged or 10 other fitting rows stops it with exit code 1,
+  naming both counts. A map fitted on fewer says more about those rows than about the provider.
+- **The method.** Platt scaling: the calibrated probability is 1 / (1 + exp(−(slope · x + intercept))),
+  fitted by maximum likelihood on Platt's smoothed targets, (N₊ + 1) / (N₊ + 2) for a flagged row
+  and 1 / (N₋ + 2) for the others, so the slope stays finite even when the tune rows separate
+  perfectly. x is the log-odds of the flagged answer's value for probability evidence, and for a
+  score whose fitting values and thresholds all lie between 0 and 1. For a logit, and for any other
+  score, x is the value as it is.
+- **What the new policy holds.** The input policy whole, with only the calibrated operating point
+  changed: the calibration, and each threshold moved to the probability the map gives the value it
+  stood at, so every recorded row keeps its verdict. That is checked: the binding is replayed alone
+  before and after, and a row whose verdict would change stops the fit. The gate is copied
+  unchanged, because it reads the provider's own margin, which calibration does not change. The file
+  is indented JSON, and the same inputs write the same bytes.
+- **What it was fitted on.** The calibration's `provenance` records the model most fitting rows
+  name, the `sha256:` digest of the `--dataset` file, or of the `--tune` file, the tune split's
+  name when the split comes from `metadata.split`, and the flagged and other row counts. It holds no
+  timestamp. The library marks every attempt whose result names another model.
+- **Calibrating again.** On an operating point that already carries a calibration, the new one
+  replaces it. The fit reads the provider's own value, and each threshold is taken back through the
+  old map to the provider's scale and then through the new one.
+- **Before and after.** The output prints the slope and intercept in full, the transform, the
+  fitting row counts, the model and how many fitting rows name another, and which rows the map was
+  fitted and reported on. ECE, Brier and the ten bins on the test rows are printed after
+  calibration, as in [Reading the report](#reading-the-report), and before it when the operating
+  point already read a probability: probability evidence, or a calibration being replaced. Before a
+  first calibration of a score or a logit it reads *"before calibration: not applicable:"* and why.
+  Both are measured at the binding alone, with no gate.
+- **It does not fix discrimination.** The map keeps the binding's order of rows, so it flags the
+  same rows and leaves the binding's ROC-AUC as it was. It makes a 0.8 come true about eight times
+  in ten; a provider that cannot tell flagged rows from the others still cannot.
+- **What it refuses.** It exits with code 1, names the cause and writes no file when the rule is not
+  a Boolean rule, the operating point reads `margin` or `unknown` evidence, there are too few
+  fitting rows, the fitted slope is not a finite number greater than zero (the evidence ranks
+  flagged rows below the others), the calibrated policy would change a recorded row's verdict,
+  `--out-policy` is empty or is the `--policy` file, or the policy has several bindings and no
+  `--provider`. A verdict changes when a threshold sits where the map gives the rows on its two sides
+  one probability: within the log-odds clamp, which holds every value within 10⁻⁶ of 0 or 1 to one
+  input, as a probability threshold of 1.0 does, or, when calibrating again, above the top of the old
+  map, where it never fired. The message names the rows; move that threshold to a value the
+  provider's evidence reaches.
 
 ### `sweep`
 
@@ -904,7 +971,7 @@ Replaying checks that the recording still fits:
 | Code | Meaning |
 |---|---|
 | 0 | Done. A conflict in `sweep` still exits 0, because each recommendation met its goals. |
-| 1 | A usage or data error: a bad option, an unreadable file, a bad row, label or split, a recording that does not fit, a provider that is not registered, a key that is not set, a file `samples` would overwrite. The message names the file, the line or the id, never a row's input. |
+| 1 | A usage or data error: a bad option, an unreadable file, a bad row, label or split, a recording that does not fit, a provider that is not registered, a key that is not set, a file `samples` would overwrite, an operating point `calibrate` refuses to fit. The message names the file, the line or the id, never a row's input. |
 | 2 | A goal the tool was asked to meet and could not: no threshold or gate meets it, the passes of `sweep` or `compare` do not settle, or a `--require` of `report` or `run` fails. Everything is still printed, and `--out` is written. |
 
 ## The JSON result
@@ -943,6 +1010,10 @@ recording, shortened:
   and `picked`, the two sets of picks the sweep ended between, in the policy file's shape. The
   curves and recommendations are always the last pass's.
 - **`compare`**: one entry per binding in `bindings`, and `feasible`.
+- **`calibrate`**: the calibrated `provider` and `rule`, the `sourceKind` and `transform`, the
+  fitted `slope` and `intercept`, `flaggedRows` and `otherRows`, the `model` and `otherModelRows`,
+  the split wording, and the calibration section `before` and `after`, measured on the test rows.
+  `before` reads `"applicable": false` when the operating point read no probability.
 
 A rate's 95% Wilson interval sits beside it as `<rate>Interval`, such as
 `"precisionInterval": { "lower": 0.847, "upper": 0.995 }`: `accuracyInterval`, `precisionInterval`,

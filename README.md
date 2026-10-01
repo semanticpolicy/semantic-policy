@@ -416,8 +416,8 @@ long a check takes.
 `semantic-policy`, the evaluation CLI, tells you how well a rule works on examples you labelled
 yourself: how often it flags safe inputs, how often it misses bad ones, and which thresholds meet a
 goal such as "deny must be right 95% of the time". `run` asks the providers once and saves their
-answers; `report`, `sweep` and `compare` replay them without calling anything. The numbers hold for
-that dataset only.
+answers; `report`, `calibrate`, `sweep` and `compare` replay them without calling anything. The
+numbers hold for that dataset only.
 
 ```bash
 dotnet tool install --global SemanticPolicy.Evals --prerelease  # from 0.1.0-alpha.2
@@ -431,10 +431,10 @@ and sends every dataset input to that third party, and a Von server on your mach
 answered `unavailable`, as a rate limit or an unreachable server answers it, is made again, and
 `--resume` finishes a run that was cut short. The package carries the example and smoke datasets
 and a recorded run of each smoke set, and `semantic-policy samples <dir>` writes them out, so the
-other three commands work right after the install, without a key or a server. `report` and `run` also take `--require`, such as
+other four commands work right after the install, without a key or a server. `report` and `run` also take `--require`, such as
 `deny.min-precision=0.95`, and exit with code 2 when the report misses it, so a build that replays a
 committed recording fails when a policy change makes the rule worse. [Its README][evals-readme]
-explains the dataset format, the five commands and how to read their output.
+explains the dataset format, the six commands and how to read their output.
 
 ## Layout
 

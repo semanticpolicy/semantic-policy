@@ -218,7 +218,7 @@ public static class SweepRenderer
     private static bool Constrained(SweepSection section) =>
         section.Rungs.Any(rung => rung.Recommendation.Swept) || section.Gate?.Recommendation.Swept == true;
 
-    private static void WriteRows(TextWriter writer, RowSelection rows)
+    internal static void WriteRows(TextWriter writer, RowSelection rows)
     {
         string filters = rows.Filters.Count == 0 ? string.Empty : $" ({string.Join(", ", rows.Filters)})";
         writer.WriteLine(
