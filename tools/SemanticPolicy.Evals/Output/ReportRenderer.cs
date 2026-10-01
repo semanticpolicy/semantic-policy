@@ -45,7 +45,7 @@ public static class ReportRenderer
         }
 
         DiscriminationSection(report, result.DecisionType, output);
-        CalibrationSection(report.Calibration, result.DecisionType, output);
+        CalibrationSection("calibration", report.Calibration, result.DecisionType, output);
         Providers(report.Providers, output);
         output.WriteLine();
         output.WriteLine("notes");
@@ -214,12 +214,13 @@ public static class ReportRenderer
         output.WriteLine("Failed and abstained rows are excluded from ROC-AUC and PR-AUC.");
     }
 
-    private static void CalibrationSection(Calibration calibration, DecisionType type, TextWriter output)
+    // The section under a name of its own, so a verb that measures two calibrations can print both.
+    internal static void CalibrationSection(string name, Calibration calibration, DecisionType type, TextWriter output)
     {
         output.WriteLine();
         if (!calibration.Applicable)
         {
-            output.WriteLine($"calibration: not applicable: {NotApplicableReason(calibration, type)}");
+            output.WriteLine($"{name}: not applicable: {NotApplicableReason(calibration, type)}");
             return;
         }
 
@@ -234,7 +235,7 @@ public static class ReportRenderer
         }
 
         output.WriteLine(
-            $"calibration: ECE {Rate(calibration.Ece)}, Brier {Rate(calibration.Brier)}, n {Count(calibration.Rows)}");
+            $"{name}: ECE {Rate(calibration.Ece)}, Brier {Rate(calibration.Brier)}, n {Count(calibration.Rows)}");
         table.Write(output);
         if (calibration.KindsFound.Count > 0)
         {

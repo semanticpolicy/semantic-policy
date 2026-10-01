@@ -40,8 +40,8 @@ internal sealed record ReplayedInputs(
         if (tune.Length == 0)
         {
             throw new EvalsException(
-                $"Recording '{recordingPath}' holds none of the rows to choose on ({wording.ChosenOn}), so there is "
-                + "nothing to sweep. Record those rows first, or select rows the recording has.");
+                $"Recording '{recordingPath}' holds none of the rows to choose or fit on ({wording.ChosenOn}), so "
+                + "there is nothing to sweep or fit. Record those rows first, or select rows the recording has.");
         }
 
         return new ReplayedInputs(inputs, set, recordedRows, tune, test, wording, recording.TornLine);
@@ -59,8 +59,9 @@ internal sealed record ReplayedInputs(
             TornLine);
 
     // The binding --provider names; with no --provider, the only one. A policy with several bindings has no
-    // binding a sweep could take by default, since the order of a chain says nothing about which to tune.
-    public int BindingIndex(string? provider)
+    // binding a sweep or a fit could take by default, since the order of a chain says nothing about which to
+    // tune. The verb is the word the message asks the user to pick a binding for.
+    public int BindingIndex(string? provider, string verb)
     {
         IReadOnlyList<ProviderBinding> bindings = Inputs.Policy.Bindings;
         if (provider is null)
@@ -68,7 +69,7 @@ internal sealed record ReplayedInputs(
             return bindings.Count == 1
                 ? 0
                 : throw new EvalsException(
-                    $"Policy '{Inputs.Policy.Id}' binds {List(bindings)}; name the one to sweep with --provider <name>.");
+                    $"Policy '{Inputs.Policy.Id}' binds {List(bindings)}; name the one to {verb} with --provider <name>.");
         }
 
         return IndexOf(provider);
@@ -99,7 +100,11 @@ internal sealed record ReplayedInputs(
     public static IReadOnlyList<GateConstraint> GateConstraints(ParseResult parse) =>
         [.. (parse.GetValue(SharedOptions.Gate) ?? []).Select(GateConstraint.Parse)];
 
-    public EvalsResult Result(string verb, SweepSection? sweep = null, CompareSection? compare = null) =>
+    public EvalsResult Result(
+        string verb,
+        SweepSection? sweep = null,
+        CompareSection? compare = null,
+        CalibrateSection? calibrate = null) =>
         new(
             EvalsResult.FormatV0,
             verb,
@@ -112,7 +117,8 @@ internal sealed record ReplayedInputs(
             Rows(),
             Report: null,
             Sweep: sweep,
-            Compare: compare);
+            Compare: compare,
+            Calibrate: calibrate);
 
     private static SplitWording Describe(SplitSource source, InputSelection selection, int tune, int test) => source switch
     {

@@ -27,6 +27,10 @@ namespace SemanticPolicy.Evals.Results;
 /// Each <c>--require</c> of <c>report</c> or <c>run</c>, judged on <paramref name="Report"/>, in the order given;
 /// <see langword="null"/> when none was given, so a result without them has no such member.
 /// </param>
+/// <param name="Calibrate">
+/// What <c>calibrate</c> fitted for the calibrated binding and how it measured before and after; <see langword="null"/>
+/// from any other verb.
+/// </param>
 public sealed record EvalsResult(
     string Format,
     string Verb,
@@ -41,7 +45,8 @@ public sealed record EvalsResult(
     string? RecordingPath = null,
     SweepSection? Sweep = null,
     CompareSection? Compare = null,
-    IReadOnlyList<RequirementResult>? Requirements = null)
+    IReadOnlyList<RequirementResult>? Requirements = null,
+    CalibrateSection? Calibrate = null)
 {
     /// <summary>The format of a result file this tool writes.</summary>
     public const string FormatV0 = "semanticpolicy/evals-result/v0";
