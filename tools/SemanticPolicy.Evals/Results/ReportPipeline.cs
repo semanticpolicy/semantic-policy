@@ -18,7 +18,8 @@ public static class ReportPipeline
     /// Replays every selected row at the policy file's own thresholds and gates, buckets it, and measures the
     /// selected rule. The discrimination curves sweep the first binding's threshold with every other binding
     /// at its file numbers; the provider table reads every recorded attempt of the rule, including those of
-    /// bindings the cascade never reached, because the run made them.
+    /// bindings the cascade never reached, because the run made them. When a binding's operating point carries a
+    /// calibration, the rows the library marked as answered by a model other than the calibration's are counted.
     /// </summary>
     /// <param name="verb">The verb the result is written for.</param>
     /// <param name="inputs">The policy, rule and rows the verb loaded.</param>
@@ -62,6 +63,17 @@ public static class ReportPipeline
                 break;
         }
 
+        (string Provider, EvidenceCalibration Calibration)[] calibrated =
+        [
+            .. inputs.Policy.Bindings.SelectMany(binding => binding.OperatingPoints
+                .Where(point => string.Equals(point.RuleId, rule.Id, StringComparison.Ordinal))
+                .Where(point => point.Calibration is not null)
+                .Select(point => (binding.ProviderId, point.Calibration!))),
+        ];
+        int? mismatched = calibrated.Length == 0
+            ? null
+            : outcomes.Count(outcome => outcome.Row.Verdict.Attempts.Any(attempt => attempt.CalibrationModelMismatch));
+
         ReportSection report = new(
             OutcomeCounts.Compute(outcomes),
             Verdicts.Distribution(outcomes),
@@ -72,8 +84,9 @@ public static class ReportPipeline
             ProviderStats.Compute(set.Rows.SelectMany(row =>
                 row.AttemptsByProvider.Select(attempt =>
                     (attempt.Key, attempt.Value, row.RetriesByProvider.GetValueOrDefault(attempt.Key))))),
-            Notes(inputs, recording, force),
-            swept);
+            Notes(inputs, recording, force, mismatched, calibrated),
+            swept,
+            mismatched);
 
         return new EvalsResult(
             EvalsResult.FormatV0,
@@ -117,7 +130,12 @@ public static class ReportPipeline
             recording.TornLine);
     }
 
-    private static List<string> Notes(LoadedInputs inputs, Recording recording, bool force)
+    private static List<string> Notes(
+        LoadedInputs inputs,
+        Recording recording,
+        bool force,
+        int? mismatched,
+        IEnumerable<(string Provider, EvidenceCalibration Calibration)> calibrated)
     {
         List<string> notes =
         [
@@ -142,6 +160,18 @@ public static class ReportPipeline
         {
             notes.Add("A dataset's digest differs from the recorded one. The results were matched to rows by id under "
                 + "--force and may be about different content.");
+        }
+
+        // The library marks a row only when both its result and the calibration name a model, so a count above zero
+        // always has a model to name.
+        if (mismatched is { } count && count > 0)
+        {
+            string models = string.Join(", ", calibrated
+                .Where(entry => entry.Calibration.Provenance?.Model is not null)
+                .Select(entry => $"{entry.Calibration.Provenance!.Model} on '{entry.Provider}'"));
+            notes.Add($"{count} {(count == 1 ? "row was" : "rows were")} answered by a model other than the one the "
+                + $"calibration was fitted on ({models}). A map fitted on one model's answers may not fit another's; "
+                + "calibrate again on a recording of the model now answering.");
         }
 
         return notes;

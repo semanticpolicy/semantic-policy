@@ -453,6 +453,16 @@ The test rows only, with `$P`, `$D` and `$R` as in the quick start:
 semantic-policy report --policy $P --dataset $D --recording $R --where metadata.split=test
 ```
 
+A policy written by [`calibrate`](#calibrate) is read through the library, as an application would
+evaluate it: a calibrated binding's thresholds compare the calibrated probability, the calibration
+section measures that probability, and the gate reads the provider's own margin. The report then
+counts the rows the library marked as answered by a model other than the one the calibration was
+fitted on: `calibrationModelMismatchRows` in the [JSON result](#the-json-result), absent when no
+binding carries a calibration for the rule. A result that names no model is not counted. Above
+zero, a note names the count and the calibration's model; a map fitted on one model's answers may
+not fit another's, so calibrate again on a recording of the model now answering. `run` counts the
+same way.
+
 ### `calibrate`
 
 Fits a calibration for one binding of a Boolean rule on the tune rows of a recording, and writes a
@@ -520,6 +530,29 @@ semantic-policy calibrate --policy $P --dataset $D --recording $R --provider loc
   map, where it never fired. The message names the rows; move that threshold to a value the
   provider's evidence reaches.
 
+On the shipped recording, with `$P`, `$D` and `$R` as in the quick start:
+
+```bash
+semantic-policy calibrate --policy $P --dataset $D --recording $R \
+  --provider local --out-policy datasets/smoke/prompt-injection.calibrated.policy.json
+```
+
+It fits `local`'s score on 28 flagged and 28 other rows of split `tune`, every one answered by
+`von-1.2.0`: slope 0.7526520584998949 and intercept 0.4018752300403791, on the `logOdds` transform.
+`local`'s warn 0.194 and deny 0.843 become the probabilities 0.3384809233874115 and
+0.8411585276181358, and its gate stays at 0.5418 on the score's own margin. On the 38 test rows with
+a clear label, at `local` alone and with no gate:
+
+| | ECE | Brier |
+|---|---|---|
+| Before calibration | not applicable: the evidence is a score | not applicable |
+| After calibration | 0.108 | 0.185 |
+
+The file it writes is the one shipped beside the recording (see [Shipped datasets](#shipped-datasets)).
+It is an illustration fitted on a small synthetic set, not a recommendation: on 38 test rows one row
+moves a rate by about 2.6 points, and the busiest of the ten bins holds 11 rows. Calibrate on a
+recording of the traffic the policy will see.
+
 ### `sweep`
 
 Tries thresholds and gates for one binding on the tune rows, recommends those that meet your goals,
@@ -546,6 +579,14 @@ A goal (`<constraint>` in `--help`) is one of these, with `v` from 0 to 1:
 - A rung or gate with no goal keeps the policy's number.
 - Candidates are the values the binding returned. For probability evidence the curve also shows a
   0.05 grid, which is never recommended.
+- At a calibrated operating point the thresholds read a probability, so the candidates are the
+  probabilities the calibration gives the values the binding returned, with the 0.05 grid, and only
+  those values are recommended. The map keeps the order of rows, so the sweep recommends the
+  calibrated image of what it picks for the same binding uncalibrated, with the same test-row rates,
+  as long as neither curve is thinned: up to 80 distinct values on the tune rows. Past that, the grid
+  takes places that the uncalibrated curve gives to values, and the two can part.
+- The gate of a calibrated operating point is swept on the margin of the provider's own evidence,
+  the calibration's source kind, and recommended on that kind, as a policy requires.
 - A curve holds at most 101 candidates, and so does a gate curve besides its no-gate point. Past
   that, a rung's curve gives half the places to values from rows labelled with the flagged answer
   and half to the others, and spreads each half evenly through that label's sorted values, its
@@ -625,7 +666,9 @@ under the same goals and prints one table on the test rows. `--recording` and `-
 
 Each binding is swept in passes until its picks settle, as in `sweep`, and its test-row numbers are
 read at the point it settles on. If any binding cannot meet its goals or does not settle, `compare`
-still prints everything and exits with code 2.
+still prints everything and exits with code 2. A calibrated binding is swept as in `sweep`, on the
+calibrated scale with its gate on the provider's own margin, so within the limit named there it
+reports the test-row numbers the same binding gets uncalibrated.
 
 Step 4 of the quick start, shortened:
 
@@ -737,8 +780,9 @@ Eighty synthetic rows show the two bindings side by side, not which provider rou
 - **providers**: per provider, the model, the number of attempts, how many of them were retried at
   least once, p50 and p95 latency, and each usage field summed as the provider reports it, to 15
   significant digits, so `cost` is in the provider's own unit.
-- **notes**: that a verdict is an estimate, the policy's mode, that a `budget` was not applied, and
-  whether `--force` was used.
+- **notes**: that a verdict is an estimate, the policy's mode, that a `budget` was not applied,
+  whether `--force` was used, and how many rows another model answered when a binding is
+  calibrated.
 - **requirements**, only with `--require`: one line per requirement, passed, failed or passed with a
   warning; see [Gating a pipeline](#gating-a-pipeline).
 
@@ -997,8 +1041,9 @@ recording, shortened:
 }
 ```
 
-- **`report`**: the report's sections, and `sweptProvider`, the binding the discrimination curve
-  moves.
+- **`report`**: the report's sections, `sweptProvider`, the binding the discrimination curve
+  moves, and `calibrationModelMismatchRows`, the rows answered by a model other than the one a
+  calibration was fitted on, present only when a binding carries a calibration for the rule.
 - **`requirements`**, from `report` or `run` with `--require` and absent without it: one entry per
   requirement, in the order given, with the `requirement` as typed, its `goal`, the `value` it was
   judged on, `null` when the rate is undefined, its `interval`, left out when there is none, and
@@ -1060,6 +1105,10 @@ or holds a real name, address, key, email address or URL.
   data exfiltration, next to harmless requests that only look like them. Each row's `metadata` has
   `source`, `set`, `split`, `difficulty` and `pattern`, so a slice is one filter away:
   `--where metadata.pattern=benign-look-alike`.
+  Beside them, `prompt-injection.calibrated.policy.json` is what [`calibrate`](#calibrate) writes
+  from the policy and the recording for `local`, never edited by hand. A test writes it again and
+  compares the two, and replays it: every row gets the verdict the smoke policy gives it. Its
+  calibration is an illustration fitted on this small set, not a recommendation.
 - **The router set in `datasets/smoke/`**: `support-router.smoke.jsonl`, eighty plain support
   requests beside `support-router.policy.json`, a Choice rule with the question and the four teams of
   the `examples/AgentRouter` program: `billing`, `technical`, `account` and `sales`. 18 rows go to each

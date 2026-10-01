@@ -292,6 +292,55 @@ public sealed class ReportVerbTests
             $"{rows.GetProperty("recordedRows").GetInt32()} of {rows.GetProperty("datasetRows").GetInt32()} recorded rows");
     }
 
+    // Ten rows on the score scale, read through a calibration recorded as fitted on model-local. The library marks a
+    // row whose result names another model, and leaves a row naming none unmarked.
+    [Theory]
+    [InlineData("another model on three rows", 3)]
+    [InlineData("the calibration's model everywhere", 0)]
+    [InlineData("no model named", 0)]
+    [InlineData("no calibrated point", null)]
+    public async Task Report_Counts_Rows_Answered_By_A_Model_Other_Than_The_Calibrations(string models, int? expected)
+    {
+        EvidenceCalibration fitted =
+            SweepVerbTests.Platt with { Provenance = new CalibrationProvenance(Model: "model-local") };
+        Policy policy = models == "no calibrated point"
+            ? SweepVerbTests.Guard(EvidenceKind.Score)
+            : SweepVerbTests.Calibrated(fitted);
+        FixtureRow[] rows =
+        [
+            .. SweepVerbTests.Graded(kind: EvidenceKind.Score).Select((row, index) => FixtureRow.Of(
+                row.Label,
+                row.Split,
+                ("local", row.Attempts["local"] with { Provider = new ProviderMetadata("local", Model(models, index), 5) }))),
+        ];
+        using CliFixture fixture = await CliFixture.CreateAsync(policy, rows);
+
+        CliRun run = await fixture.RunAsync("report");
+
+        run.ExitCode.Should().Be(ExitCodes.Success, run.Error);
+        JsonElement report = fixture.ReadOut().GetProperty("report");
+        string[] notes = [.. report.GetProperty("notes").EnumerateArray().Select(note => note.GetString()!)];
+        if (expected is { } count)
+        {
+            report.GetProperty("calibrationModelMismatchRows").GetInt32().Should().Be(count);
+        }
+        else
+        {
+            report.TryGetProperty("calibrationModelMismatchRows", out _).Should().BeFalse();
+        }
+
+        if (expected > 0)
+        {
+            string note = notes.Should().ContainSingle(entry => entry.Contains("model other than")).Which;
+            note.Should().StartWith("3 rows").And.Contain("model-local");
+            run.Output.Should().Contain($"- {note}");
+        }
+        else
+        {
+            notes.Should().NotContain(entry => entry.Contains("model other than"));
+        }
+    }
+
     [Fact]
     public async Task Report_Exits_1_On_A_Hash_Mismatch_And_0_With_Force()
     {
@@ -341,6 +390,13 @@ public sealed class ReportVerbTests
         committed.ExitCode.Should().Be(ExitCodes.Success, committed.Error);
         RetriedColumn(committed.Output).Should().Equal("local 0", "jev 0");
     }
+
+    private static string? Model(string models, int index) => models switch
+    {
+        "another model on three rows" => index < 3 ? "model-other" : "model-local",
+        "no model named" => null,
+        _ => "model-local",
+    };
 
     private static Dictionary<string, IReadOnlyDictionary<string, int>> Retried(string provider, int count) =>
         new(StringComparer.Ordinal) { [Samples.Injection] = new Dictionary<string, int>(StringComparer.Ordinal) { [provider] = count } };

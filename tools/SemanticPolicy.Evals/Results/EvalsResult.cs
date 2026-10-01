@@ -94,6 +94,11 @@ public sealed record RowSelection(
 /// The binding whose threshold the discrimination curves move, by provider name; every other binding stays
 /// at its file thresholds. <see langword="null"/> when there is no discrimination section.
 /// </param>
+/// <param name="CalibrationModelMismatchRows">
+/// The rows with an attempt the library marked as answered by a model other than the one its operating point's
+/// calibration was fitted on; a result that names no model is never marked. <see langword="null"/> when no binding
+/// carries a calibration for the rule, so the report of an uncalibrated policy has no such member.
+/// </param>
 public sealed record ReportSection(
     OutcomeCounts Outcomes,
     IReadOnlyDictionary<string, int> Verdicts,
@@ -103,7 +108,8 @@ public sealed record ReportSection(
     Calibration Calibration,
     IReadOnlyList<ProviderStats> Providers,
     IReadOnlyList<string> Notes,
-    string? SweptProvider = null);
+    string? SweptProvider = null,
+    int? CalibrationModelMismatchRows = null);
 
 /// <summary>One rung's discrimination, paired with the rung it was measured on.</summary>
 /// <param name="Rung">The ladder rung.</param>

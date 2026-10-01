@@ -18,6 +18,10 @@ public sealed class SweepVerbTests
     private static readonly string[] _labels =
         ["false", "false", "false", "true", "false", "true", "false", "true", "true", "true"];
 
+    // A map that moves every score, so a calibrated point's numbers differ from its raw twin's everywhere.
+    internal static readonly EvidenceCalibration Platt =
+        new(CalibrationMethod.Platt, EvidenceKind.Score, CalibrationTransform.LogOdds, 1.5, 0.25);
+
     [Fact]
     public async Task An_Infeasible_Constraint_Reports_The_Nearest_Point_And_Exits_2_Still_Writing_Out()
     {
@@ -218,6 +222,33 @@ public sealed class SweepVerbTests
         onScore.Output.Should().NotMatchRegex(@"(?m)^ *\S+ +grid ");
     }
 
+    // On the graded rows warn picks 0.55, 0.75 and 0.35 under these goals. The map is increasing, so the calibrated
+    // point cuts the same rows at the image of each, on tune and on test alike.
+    [Theory]
+    [InlineData("min-recall=0.8")]
+    [InlineData("max-fpr=0")]
+    [InlineData("min-precision=0.7")]
+    public async Task Sweep_On_A_Calibrated_Point_Recommends_The_Calibrated_Image_Of_The_Raw_Recommendation(string goal)
+    {
+        FixtureRow[] rows = [.. Graded("tune", EvidenceKind.Score), .. TestSplit(EvidenceKind.Score)];
+        using CliFixture raw = await CliFixture.CreateAsync(Guard(EvidenceKind.Score), rows);
+        using CliFixture calibrated = await CliFixture.CreateAsync(Calibrated(Platt), rows);
+
+        CliRun onRaw = await raw.RunAsync("sweep", "--warn", goal);
+        CliRun onCalibrated = await calibrated.RunAsync("sweep", "--warn", goal);
+
+        onRaw.ExitCode.Should().Be(ExitCodes.Success, onRaw.Error);
+        onCalibrated.ExitCode.Should().Be(ExitCodes.Success, onCalibrated.Error);
+        JsonElement rawWarn = Rung(raw.ReadOut().GetProperty("sweep"), "warn");
+        JsonElement calibratedWarn = Rung(calibrated.ReadOut().GetProperty("sweep"), "warn");
+        double threshold = rawWarn.GetProperty("recommendation").GetProperty("threshold").GetDouble();
+        calibratedWarn.GetProperty("recommendation").GetProperty("threshold").GetDouble()
+            .Should().Be(Platt.Apply(threshold));
+        Counts(calibratedWarn.GetProperty("recommendation").GetProperty("chosen"))
+            .Should().Equal(Counts(rawWarn.GetProperty("recommendation").GetProperty("chosen")));
+        Counts(calibratedWarn.GetProperty("test")).Should().Equal(Counts(rawWarn.GetProperty("test")));
+    }
+
     [Theory]
     [InlineData(new[] { "max-abstain=0.3" }, 0.5)]
     [InlineData(new[] { "min-accuracy=0.9" }, 0.75)]
@@ -246,6 +277,36 @@ public sealed class SweepVerbTests
         JsonElement gate = fixture.ReadOut().GetProperty("sweep").GetProperty("gate");
         gate.GetProperty("curve").GetProperty("points").GetArrayLength().Should().Be(6);
         gate.GetProperty("recommendation").GetProperty("below").GetDouble().Should().Be(expected);
+    }
+
+    // The rows of the gate sweep above, on the score scale: their margins are 0.25, 0.5, 0.75, 0.875 and 1 as the
+    // provider returned them, and max-abstain=0.3 takes 0.5 there. Calibrated, the gate still reads that margin.
+    [Fact]
+    public async Task Sweep_Gate_On_A_Calibrated_Point_Settles_A_Gate_On_The_Source_Kind()
+    {
+        double[] flagged = [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 0.9375, 0.0625, 1.0];
+        string[] labels = ["false", "true", "true", "true", "false", "true", "true", "true", "false", "true"];
+        Policy policy = Calibrated(Platt);
+        using CliFixture fixture = await CliFixture.CreateAsync(
+            policy,
+            [.. flagged.Select((value, index) => Row(labels[index], value, kind: EvidenceKind.Score))]);
+
+        CliRun run = await fixture.RunAsync("sweep", "--gate", "max-abstain=0.3");
+
+        run.ExitCode.Should().Be(ExitCodes.Success, run.Error);
+        JsonElement section = fixture.ReadOut().GetProperty("sweep");
+        section.GetProperty("passes").GetProperty("end").GetString().Should().Be("settled");
+        JsonElement gate = section.GetProperty("gate");
+        gate.GetProperty("kind").GetString().Should().Be("score");
+        double below = gate.GetProperty("recommendation").GetProperty("below").GetDouble();
+        below.Should().Be(0.5);
+        MarginGate swept = new(Enum.Parse<EvidenceKind>(gate.GetProperty("kind").GetString()!, ignoreCase: true), below);
+        ProviderBinding binding = policy.Bindings[0];
+        Policy settled = policy with
+        {
+            Bindings = [binding with { OperatingPoints = [binding.OperatingPoints[0] with { Gate = swept }] }],
+        };
+        settled.Invoking(candidate => candidate.Validate()).Should().NotThrow();
     }
 
     [Fact]
@@ -562,18 +623,34 @@ public sealed class SweepVerbTests
             FailureBehavior.Deny);
     }
 
+    // Guard's ladder on the probabilities the map gives its numbers, read through the map on every binding.
+    internal static Policy Calibrated(EvidenceCalibration calibration, params string[] providers)
+    {
+        BooleanRule rule = Samples.Flagged();
+        PolicyBuilder policy = Policy.Define("guard").Enforce().Rule(rule);
+        foreach (string provider in providers.Length == 0 ? ["local"] : providers)
+        {
+            policy.Using(provider, binding => binding.ForRule(rule.Id, point => point
+                .WarnAboveProbability(calibration.Apply(0.6))
+                .DenyAboveProbability(calibration.Apply(0.9))
+                .Calibrate(calibration)));
+        }
+
+        return policy.OnFailure(FailureBehavior.Deny).Build();
+    }
+
     internal static FixtureRow[] Graded(string? split = null, EvidenceKind kind = EvidenceKind.Probability) =>
         [.. _flagged.Select((value, index) => Row(_labels[index], value, split, kind))];
 
     // Six test rows to follow Graded("tune"), drawn unlike it on purpose.
-    private static FixtureRow[] TestSplit() =>
+    private static FixtureRow[] TestSplit(EvidenceKind kind = EvidenceKind.Probability) =>
     [
-        Row("true", 0.6, "test"),
-        Row("true", 0.5, "test"),
-        Row("false", 0.7, "test"),
-        Row("false", 0.2, "test"),
-        Row("true", 0.9, "test"),
-        Row("true", 0.4, "test"),
+        Row("true", 0.6, "test", kind),
+        Row("true", 0.5, "test", kind),
+        Row("false", 0.7, "test", kind),
+        Row("false", 0.2, "test", kind),
+        Row("true", 0.9, "test", kind),
+        Row("true", 0.4, "test", kind),
     ];
 
     // Warn at a placeholder, deny above every row, no gate: the policy Alternating's rows are swept on.

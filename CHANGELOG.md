@@ -10,7 +10,8 @@ API.
 
 ## Unreleased
 
-A Choice rule's verdict names the option the provider picked.
+A Choice rule's verdict names the option the provider picked, and `semantic-policy calibrate` fits a
+calibration into a new policy that `report`, `sweep` and `compare` read.
 
 - **`SemanticPolicy.Core`.** `RuleVerdict` gains `ChosenOption`, the key of the option the deciding
   answer picked on a Choice rule, and `DecidingAttempt`, the attempt at `DecidingBinding`, whose
@@ -18,6 +19,17 @@ A Choice rule's verdict names the option the provider picked.
   answer decided the rule, because the gate abstained or the failure behaviour set the verdict, and
   `ChosenOption` is null on a Boolean or Score rule. Both are read from `Attempts`, so the
   constructor, `Deconstruct` and the serialized verdict are as before.
+- **`SemanticPolicy.Evals`.** `calibrate` fits Platt scaling to one binding of a Boolean rule on the
+  tune rows of a recording and writes a new policy that carries the calibration, each threshold
+  moved so that every recorded row keeps its verdict. It prints ECE and the Brier score on the test
+  rows before and after, and refuses a fit that would change a verdict. The calibrated probability
+  is an estimate fitted on labelled data and can be wrong on inputs unlike them. `report`, `sweep`
+  and `compare` read a calibrated policy as the library evaluates it: `sweep` and `compare` choose
+  thresholds among the calibrated probabilities and sweep the gate on the provider's own evidence,
+  and `report` and `run` count the rows answered by a model other than the one the calibration was
+  fitted on, as `calibrationModelMismatchRows`. The shipped smoke set gains
+  `prompt-injection.calibrated.policy.json`, written by `calibrate` from its recording, as an
+  illustration.
 
 ## 0.1.0-alpha.2 - 2026-09-30
 
