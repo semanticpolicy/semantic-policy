@@ -268,7 +268,7 @@ public sealed class CalibrateVerbTests
     }
 
     public static TheoryData<string> Refusals { get; } =
-        new("choice-rule", "score-rule", "margin", "unknown", "anti-ranked", "same-file", "empty-out", "two-bindings",
+        new("choice-rule", "score-rule", "margin", "unknown", "anti-ranked", "empty-out", "two-bindings",
             "threshold-in-clamp", "refit-above-old-top");
 
     [Theory]
@@ -296,7 +296,6 @@ public sealed class CalibrateVerbTests
                 [.. Overlapping().Select(row => Row(row.Label == "true" ? "false" : "true", null,
                     Both(EvidenceKind.Score, row.Value, 1 - row.Value)))],
                 "slope"),
-            "same-file" => new(Single(Point(EvidenceKind.Score, 0.5, 0.8)), [.. scores], "--out-policy"),
             "empty-out" => new(Single(Point(EvidenceKind.Score, 0.5, 0.8)), [.. scores], "--out-policy names no file"),
 
             // Deny at 1.0 and a row just below it: the log-odds clamp gives both one probability, so the row would deny.
@@ -333,26 +332,70 @@ public sealed class CalibrateVerbTests
             _ => throw new ArgumentOutOfRangeException(nameof(refusal)),
         };
         using CliFixture fixture = await CliFixture.CreateAsync(test.Policy, test.Rows);
-        string written = refusal switch
-        {
-            "same-file" => fixture.PolicyPath,
-            "empty-out" => string.Empty,
-            _ => OutPolicy(fixture),
-        };
-        byte[] policyBytes = await File.ReadAllBytesAsync(fixture.PolicyPath, TestContext.Current.CancellationToken);
+        string written = refusal == "empty-out" ? string.Empty : OutPolicy(fixture);
 
         CliRun run = await fixture.RunAsync("calibrate", "--out-policy", written);
 
         run.ExitCode.Should().Be(ExitCodes.UsageOrData, run.Output);
         run.Error.Should().Contain(test.Cause);
-        if (refusal == "same-file")
+        File.Exists(written).Should().BeFalse();
+    }
+
+    // Each case points one output at the file of another option, an input or an output named before it.
+    public static TheoryData<string, string> SharedFiles { get; } = new()
+    {
+        { "--out-policy", "--policy" },
+        { "--out", "--policy" },
+        { "--diagram", "--recording" },
+        { "--out", "--dataset" },
+        { "--out", "--out-policy" },
+        { "--diagram", "--out" },
+    };
+
+    [Theory]
+    [MemberData(nameof(SharedFiles))]
+    public async Task Calibrate_Refuses_An_Output_That_Is_An_Input_Or_Another_Output_And_Changes_No_File(
+        string output,
+        string other)
+    {
+        using CliFixture fixture = await CliFixture.CreateAsync(
+            Single(Point(EvidenceKind.Score, 0.5, 0.8)),
+            [.. Overlapping().Select(row => Row(row.Label, null, Both(EvidenceKind.Score, row.Value, 1 - row.Value)))]);
+        string directory = Path.GetDirectoryName(fixture.PolicyPath)!;
+        string[] inputs = [fixture.PolicyPath, fixture.DatasetPath, fixture.RecordingPath];
+        Dictionary<string, string> paths = new(StringComparer.Ordinal)
         {
-            (await File.ReadAllBytesAsync(fixture.PolicyPath, TestContext.Current.CancellationToken)).Should().Equal(policyBytes);
-        }
-        else
+            ["--policy"] = fixture.PolicyPath,
+            ["--dataset"] = fixture.DatasetPath,
+            ["--recording"] = fixture.RecordingPath,
+            ["--out-policy"] = OutPolicy(fixture),
+            ["--out"] = Path.Combine(directory, "result.json"),
+            ["--diagram"] = Path.Combine(directory, "diagram.svg"),
+        };
+        string[] outputs = [paths["--out-policy"], paths["--out"], paths["--diagram"]];
+        paths[output] = paths[other];
+        CancellationToken cancellation = TestContext.Current.CancellationToken;
+        byte[][] before = await Task.WhenAll(inputs.Select(path => File.ReadAllBytesAsync(path, cancellation)));
+
+        CliRun run = await CliFixture.InvokeAsync(
+        [
+            "calibrate",
+            "--policy", paths["--policy"],
+            "--dataset", paths["--dataset"],
+            "--recording", paths["--recording"],
+            "--out-policy", paths["--out-policy"],
+            "--out", paths["--out"],
+            "--diagram", paths["--diagram"],
+        ]);
+
+        run.ExitCode.Should().Be(ExitCodes.UsageOrData, run.Output);
+        run.Error.Should().Contain($"{output} '{paths[output]}' is").And.Contain($"the {other} file");
+        for (int index = 0; index < inputs.Length; index++)
         {
-            File.Exists(written).Should().BeFalse();
+            (await File.ReadAllBytesAsync(inputs[index], cancellation)).Should().Equal(before[index]);
         }
+
+        outputs.Should().OnlyContain(path => !File.Exists(path));
     }
 
     [Theory]

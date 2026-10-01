@@ -30,7 +30,7 @@ internal static class CalibrateRenderer
         ReportRenderer.CalibrationSection("after calibration", section.After, DecisionType.Boolean, writer);
         writer.WriteLine();
         writer.WriteLine("The calibrated probability is an estimate fitted on labelled data; it can be wrong on inputs unlike them.");
-        writer.WriteLine("The map keeps the binding's order of rows, so it flags the same rows and leaves its ROC-AUC as it was.");
+        writer.WriteLine("The map keeps the binding's order of rows, so it flags the same rows and tells them apart no better.");
         writer.WriteLine($"policy written to {policyPath}");
     }
 
