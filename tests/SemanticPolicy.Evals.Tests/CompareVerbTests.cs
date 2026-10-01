@@ -38,6 +38,42 @@ public sealed class CompareVerbTests
         run.Output.Should().MatchRegex(@"(?m)^local +0\.55 ").And.MatchRegex(@"(?m)^hosted +0\.74 ");
     }
 
+    // Two bindings answer every row alike on the score scale, one at raw score thresholds and one through a map,
+    // so compare measures one provider's evidence twice: the map moves the numbers, not which rows are flagged.
+    [Fact]
+    public async Task Compare_Reads_A_Calibrated_Binding_At_The_Test_Metrics_Of_Its_Raw_Twin()
+    {
+        BooleanRule rule = Samples.Flagged();
+        EvidenceCalibration map = SweepVerbTests.Platt;
+        Policy twins = Policy.Define("guard").Enforce().Rule(rule)
+            .Using("raw", binding => binding.ForRule(rule.Id, point => point.WarnAboveScore(0.6).DenyAboveScore(0.9)))
+            .Using("calibrated", binding => binding.ForRule(rule.Id, point => point
+                .WarnAboveProbability(map.Apply(0.6))
+                .DenyAboveProbability(map.Apply(0.9))
+                .Calibrate(map)))
+            .OnFailure(FailureBehavior.Deny)
+            .Build();
+        double[] test = [0.6, 0.5, 0.7, 0.2, 0.9, 0.4];
+        string[] testLabels = ["true", "true", "false", "false", "true", "true"];
+        using CliFixture fixture = await CliFixture.CreateAsync(
+            twins,
+            [
+                .. _local.Select((value, index) => Twin(_labels[index], "tune", value)),
+                .. test.Select((value, index) => Twin(testLabels[index], "test", value)),
+            ]);
+
+        CliRun run = await fixture.RunAsync("compare", "--warn", "min-recall=0.8");
+
+        run.ExitCode.Should().Be(ExitCodes.Success, run.Error);
+        JsonElement[] bindings = Bindings(fixture.ReadOut());
+        JsonElement raw = SweepVerbTests.Rung(bindings[0].GetProperty("sweep"), "warn");
+        JsonElement calibrated = SweepVerbTests.Rung(bindings[1].GetProperty("sweep"), "warn");
+        raw.GetProperty("recommendation").GetProperty("threshold").GetDouble().Should().Be(0.55);
+        calibrated.GetProperty("recommendation").GetProperty("threshold").GetDouble().Should().Be(map.Apply(0.55));
+        SweepVerbTests.Counts(calibrated.GetProperty("test")).Should().Equal(SweepVerbTests.Counts(raw.GetProperty("test")));
+        bindings[1].GetProperty("outcomes").GetRawText().Should().Be(bindings[0].GetProperty("outcomes").GetRawText());
+    }
+
     [Fact]
     public async Task Compare_Filters_Bindings_With_Provider_And_Rejects_An_Unknown_Name()
     {
@@ -253,6 +289,13 @@ public sealed class CompareVerbTests
             ("local", SweepVerbTests.Answer(EvidenceKind.Probability, _local[index])),
             ("hosted", SweepVerbTests.Answer(EvidenceKind.Probability, _hosted[index], "hosted")))),
     ];
+
+    private static FixtureRow Twin(string label, string split, double score) =>
+        FixtureRow.Of(
+            label,
+            split,
+            ("raw", SweepVerbTests.Answer(EvidenceKind.Score, score, "raw")),
+            ("calibrated", SweepVerbTests.Answer(EvidenceKind.Score, score, "calibrated")));
 
     private static JsonElement[] Bindings(JsonElement result) =>
         [.. result.GetProperty("compare").GetProperty("bindings").EnumerateArray()];

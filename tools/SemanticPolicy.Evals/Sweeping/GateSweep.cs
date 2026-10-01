@@ -79,9 +79,9 @@ public sealed record GateRecommendation(
 public static class GateSweep
 {
     /// <summary>
-    /// Computes the gate curve. The margin is read on the operating point's own evidence kind: the thresholds'
-    /// kind for a Boolean rule, the file gate's kind for a Choice or Score rule. The gate is the only thing the
-    /// variants change; thresholds, the other bindings and the failure behaviour stay as the policy has them.
+    /// Computes the gate curve. The margin is read on the operating point's own evidence kind, as
+    /// <see cref="KindOf"/> names it. The gate is the only thing the variants change; thresholds, the other bindings
+    /// and the failure behaviour stay as the policy has them.
     /// </summary>
     /// <param name="set">The replay set, loaded on the rule to sweep.</param>
     /// <param name="policy">The policy the sweep varies.</param>
@@ -217,8 +217,8 @@ public static class GateSweep
     }
 
     /// <summary>
-    /// The evidence kind a gate on this binding is read on: the thresholds' kind for a Boolean rule, the file
-    /// gate's kind for a Choice or Score rule.
+    /// The evidence kind a gate on this binding is read on: for a Boolean rule the calibration's source kind at a
+    /// calibrated point and the thresholds' kind otherwise, for a Choice or Score rule the file gate's kind.
     /// </summary>
     /// <param name="rule">The rule.</param>
     /// <param name="binding">The binding.</param>
@@ -231,8 +231,10 @@ public static class GateSweep
             string.Equals(candidate.RuleId, rule.Id, StringComparison.Ordinal));
         if (rule is BooleanRule)
         {
+            // A calibrated point's thresholds read the calibrated probability, but its gate reads the margin of the
+            // provider's own evidence, which is of the calibration's source kind; a policy refuses a gate on any other.
             return point is { Thresholds: [{ } first, ..] }
-                ? first.Kind
+                ? point.Calibration?.SourceKind ?? first.Kind
                 : throw new ArgumentException(
                     $"Binding '{binding.ProviderId}' carries no thresholds for rule '{rule.Id}'.",
                     nameof(binding));

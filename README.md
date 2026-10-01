@@ -436,6 +436,14 @@ other four commands work right after the install, without a key or a server. `re
 committed recording fails when a policy change makes the rule worse. [Its README][evals-readme]
 explains the dataset format, the six commands and how to read their output.
 
+`calibrate` fits Platt scaling to one binding's answers on your labelled rows and writes a new policy
+whose thresholds read the fitted probability and flag the same rows as before. It changes what the
+number means, not how well the rule tells flagged inputs from the rest. The probability is an
+estimate fitted on those rows and can be wrong on inputs unlike them, and it makes no rule a security
+boundary. Declaring `EvidenceKind.Probability` on the [System One provider][any-system-one-server]
+is a claim nothing checks; `calibrate` gives a fit measured on your data, with its error on the test
+rows printed beside it.
+
 ## Layout
 
 ```
