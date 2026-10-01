@@ -64,8 +64,10 @@ uses no guard.
 A verdict is probabilistic: a rule here **helps detect** a prompt injection or a tool call that does
 not match the request, and **flags** it. A denied verdict is not proof of an attack, and an allowed one
 is not proof of safety. Keep a guard as one layer among authorization, least-privilege tools and a
-person in the loop for anything irreversible — [`SECURITY.md`](../../SECURITY.md) and
-[`docs/THREAT_MODEL.md`](../../docs/THREAT_MODEL.md) say more.
+person in the loop for anything irreversible —
+[`SECURITY.md`](https://github.com/semanticpolicy/semantic-policy/blob/main/SECURITY.md) and
+[`docs/THREAT_MODEL.md`](https://github.com/semanticpolicy/semantic-policy/blob/main/docs/THREAT_MODEL.md)
+say more.
 
 ## The handler
 
@@ -188,8 +190,8 @@ with the context delegate. Each evaluation calls the decision provider once for 
 binding it tries, and the run waits for it; a policy's `Budget`, when set, caps how long that may
 take, and its `OnFailure` says what running out means. In the examples' runs through OpenRouter a
 check took about a third of a second;
-[examples/README.md](../../examples/README.md#how-long-a-check-takes) has the numbers and why yours
-will differ.
+[examples/README.md](https://github.com/semanticpolicy/semantic-policy/blob/main/examples/README.md#how-long-a-check-takes)
+has the numbers and why yours will differ.
 
 ## Telemetry
 

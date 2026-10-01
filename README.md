@@ -81,14 +81,17 @@ dotnet add package SemanticPolicy.Core --prerelease                # policies, r
 dotnet add package SemanticPolicy.Providers.TypeSafe --prerelease  # the TypeSafe Jev provider
 dotnet add package SemanticPolicy.Providers.SystemOne --prerelease # any System One server, from 0.1.0-alpha.2
 dotnet add package SemanticPolicy.Providers.Http --prerelease      # any protocol v0 server, from 0.1.0-alpha.2
+dotnet add package SemanticPolicy.Extensions.AI --prerelease       # for any IChatClient's tool calls, from 0.1.0-alpha.3
 dotnet add package SemanticPolicy.AgentFramework --prerelease      # for a Microsoft Agent Framework agent
 dotnet add package SemanticPolicy.FluentValidation --prerelease    # semantic rules on a validator, from 0.1.0-alpha.2
 ```
 
-The providers, the Agent Framework package and the FluentValidation package all depend on
-`SemanticPolicy.Core`, so any one of them brings it along; the FluentValidation package brings
-FluentValidation too. From `0.1.0-alpha.2`, the TypeSafe provider is built on the System One provider
-and brings it too, at exactly its own version.
+The providers, the Microsoft.Extensions.AI package, the Agent Framework package and the
+FluentValidation package all depend on `SemanticPolicy.Core`, so any one of them brings it along; the
+FluentValidation package brings FluentValidation too. From `0.1.0-alpha.2`, the TypeSafe provider is
+built on the System One provider and brings it too, at exactly its own version. From
+`0.1.0-alpha.3`, the Agent Framework package is built on the Microsoft.Extensions.AI package and
+brings it too.
 
 The evaluation CLI is a dotnet tool whose command is `semantic-policy`, installed for your user
 rather than added to a project; [Evals][evals] shows what it does.
@@ -102,6 +105,7 @@ The snippets on this page assume these `using` directives:
 ```csharp
 using FluentValidation;                         // AbstractValidator, Severity and Semantic
 using Microsoft.Agents.AI;                      // AIAgentBuilder and UseSemanticPolicyAfterTool
+using Microsoft.Extensions.AI;                  // ChatClientBuilder, IChatClient and their tool guards
 using Microsoft.Extensions.DependencyInjection; // ServiceCollection and AddSemanticPolicy
 using SemanticPolicy;                           // Policy, Verdict, the evaluator and handler types
 using SemanticPolicy.Evaluation;                // PolicyVerdict
@@ -311,8 +315,12 @@ A probe asked Von, Laya and kev 30 questions each and compared their answers wit
 with Jev on 7 to 9 of 9 routing questions, but on only 8 to 11 of 21 guard questions. Agreeing with
 Jev is not being right, and 30 questions prove little, but that gap is the one to plan around. Use a
 local model as a router, or as a second voice in Shadow mode beside the provider that enforces, and
-compare the two with the evaluation CLI on your own data. Do not put it in Enforce on a security
-decision.
+compare the two with the evaluation CLI on your own data. Whether to enforce does not depend on where
+the model runs: a policy goes to Enforce only once it has been measured on your own labelled data at
+the threshold it will run with, and on a security decision Enforce may only add friction on top of a
+deterministic check — it never authorizes, and it is never the only thing between an untrusted input
+and a privileged action ([Not a security boundary][not-a-security-boundary]). On guard questions, the
+numbers above say today's local models do not reach that bar.
 
 [Local decision models][local-models] has the rest of the probe: where the three servers come from,
 how fast each answered, how well it ranked the smoke set, and where it stops reading a long context.
@@ -342,6 +350,27 @@ static ValueTask<PostToolOutcome> OnToolResult(
 `Effective` is always `Allow` while a policy runs in Shadow mode, and the evaluated verdict once it
 enforces. [The adapter's README][adapter-readme] covers the three
 points, what each one asks the policy, and every outcome a handler can return.
+
+## Guarding a chat client
+
+`SemanticPolicy.Extensions.AI` puts the two tool points on any `IChatClient` built with
+Microsoft.Extensions.AI, with no Agent Framework: before a tool the model proposed runs, and after
+it returns. The calls go on a `ChatClientBuilder`, before `UseFunctionInvocation()`, and take the
+same handlers as the agent's tool points — the Agent Framework package is built on this one.
+
+```csharp
+// chatClient: any IChatClient, such as one from your model's package; serviceProvider: the container built above.
+IChatClient guarded = new ChatClientBuilder(chatClient)
+    .UseSemanticPolicyAfterTool("tool-guard", OnToolResult) // the handler above, unchanged
+    .UseFunctionInvocation()
+    .Build(serviceProvider);
+```
+
+The guards run in the order they are written, outside any `FunctionInvoker` the application sets in
+`UseFunctionInvocation(configure: …)`, and await the verdict in every mode. There is no pre-model
+point: a chat client receives the whole history on every call, so there is no one input to judge.
+[The package's README][chat-client-readme] covers where the calls go, an invoker of your own,
+functions that need approval, and how to keep a Shadow policy off the critical path.
 
 ## Outside agents
 
@@ -444,7 +473,8 @@ src/
   SemanticPolicy.Providers.SystemOne/   decision provider for any System One server, such as Von
   SemanticPolicy.Providers.TypeSafe/    hosted decision provider — TypeSafe Jev
   SemanticPolicy.Providers.Http/        decision provider for any protocol v0 server
-  SemanticPolicy.AgentFramework/        Microsoft Agent Framework integration
+  SemanticPolicy.Extensions.AI/         Microsoft.Extensions.AI integration — tool guards on any IChatClient
+  SemanticPolicy.AgentFramework/        Microsoft Agent Framework integration, built on the one above
   SemanticPolicy.FluentValidation/      FluentValidation integration — semantic rules on validators
 tools/
   SemanticPolicy.Evals/                 the evaluation CLI — runs on TypeSafe Jev and a local Von
@@ -455,6 +485,7 @@ examples/
 tests/
   SemanticPolicy.Core.Tests/            unit tests
   SemanticPolicy.Providers.ContractTests/  one suite every provider must pass
+  SemanticPolicy.Extensions.AI.Tests/   the chat-client guards' tests, no key needed
   SemanticPolicy.AgentFramework.Tests/  the adapter's tests, no key needed
   SemanticPolicy.FluentValidation.Tests/  the validator integration's tests, no key needed
   SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, no key needed
@@ -494,6 +525,7 @@ Apache-2.0. See [`LICENSE`][licence].
 [adr-0005]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/adr/0005-evaluation-and-threshold-ownership.md
 [security]: https://github.com/semanticpolicy/semantic-policy/blob/main/SECURITY.md
 [threat-model]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/THREAT_MODEL.md
+[not-a-security-boundary]: https://github.com/semanticpolicy/semantic-policy#not-a-security-boundary
 [evals]: https://github.com/semanticpolicy/semantic-policy#evals
 [local-setup]: https://github.com/semanticpolicy/semantic-policy#local-setup
 [any-system-one-server]: https://github.com/semanticpolicy/semantic-policy#any-system-one-server
@@ -505,6 +537,7 @@ Apache-2.0. See [`LICENSE`][licence].
 [system-one-api]: https://docs.typesafe.ai/api
 [von]: https://github.com/wfzyx/von
 [adapter-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/src/SemanticPolicy.AgentFramework/README.md
+[chat-client-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/src/SemanticPolicy.Extensions.AI/README.md
 [fluentvalidation]: https://docs.fluentvalidation.net/
 [fluentvalidation-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/src/SemanticPolicy.FluentValidation/README.md
 [support-ticket-form]: https://github.com/semanticpolicy/semantic-policy/tree/main/examples/SupportTicketForm
