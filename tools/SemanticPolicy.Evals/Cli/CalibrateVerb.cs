@@ -13,12 +13,12 @@ namespace SemanticPolicy.Evals.Cli;
 
 // `calibrate`: fits a Platt map for one binding of a Boolean rule on the tune rows of a recording and writes a new
 // policy that carries it, with every threshold moved so that each recorded row keeps its verdict, and no policy where
-// one would not. It calls no provider and never rewrites the policy it read.
+// one would not. It calls no provider and never rewrites a file it reads.
 internal static class CalibrateVerb
 {
     private static readonly Option<string> _outPolicy = new("--out-policy")
     {
-        Description = "Write the calibrated policy to this file; it must not be the --policy file.",
+        Description = "Write the calibrated policy to this file; it must not be a file calibrate reads.",
         HelpName = "file",
         Required = true,
     };
@@ -52,19 +52,12 @@ internal static class CalibrateVerb
     private static int Run(ParseResult parse, CliIo io)
     {
         string outPolicy = parse.GetValue(_outPolicy)!;
-        string policyPath = parse.GetValue(SharedOptions.Policy)!;
         if (string.IsNullOrWhiteSpace(outPolicy))
         {
             throw new EvalsException("--out-policy names no file; give the file to write the calibrated policy to.");
         }
 
-        if (SamePath(outPolicy, policyPath))
-        {
-            throw new EvalsException(
-                $"--out-policy '{outPolicy}' is the --policy file; calibrate writes a new policy and never rewrites "
-                + "the one it reads. Name another file.");
-        }
-
+        RefuseSharedFiles(parse);
         ReplayedInputs replayed = ReplayedInputs.Load(parse);
         Policy policy = replayed.Inputs.Policy;
         if (replayed.Set.Rule is not BooleanRule rule)
@@ -269,6 +262,53 @@ internal static class CalibrateVerb
 
         ReliabilityDiagram.Write(path, section.After);
         io.Error.WriteLine($"before not drawn: {ReportRenderer.NotApplicableReason(section.Before, DecisionType.Boolean)}");
+    }
+
+    // calibrate changes no file it reads, and of two outputs written to one file only the last would survive, so each
+    // file it writes must be neither an input nor another output. Checked before anything is read or written.
+    private static void RefuseSharedFiles(ParseResult parse)
+    {
+        (string Option, string? Path)[] inputs =
+        [
+            ("--policy", parse.GetValue(SharedOptions.Policy)),
+            ("--dataset", parse.GetValue(SharedOptions.Dataset)),
+            ("--tune", parse.GetValue(SharedOptions.Tune)),
+            ("--test", parse.GetValue(SharedOptions.Test)),
+            ("--recording", parse.GetValue(SharedOptions.Recording)),
+        ];
+        (string Option, string? Path)[] outputs =
+        [
+            ("--out-policy", parse.GetValue(_outPolicy)),
+            ("--out", parse.GetValue(SharedOptions.Out)),
+            ("--diagram", parse.GetValue(_diagram)),
+        ];
+        List<(string Option, string Path, bool Read)> taken =
+        [
+            .. inputs
+                .Where(input => !string.IsNullOrWhiteSpace(input.Path))
+                .Select(input => (input.Option, input.Path!, true)),
+        ];
+        foreach ((string option, string? path) in outputs)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                continue;
+            }
+
+            foreach ((string other, string otherPath, bool read) in taken)
+            {
+                if (SamePath(path, otherPath))
+                {
+                    throw new EvalsException(read
+                        ? $"{option} '{path}' is the {other} file; calibrate writes new files and never rewrites one "
+                            + "it reads. Name another file."
+                        : $"{option} '{path}' is also the {other} file; each file calibrate writes needs a name of "
+                            + "its own. Name another file.");
+                }
+            }
+
+            taken.Add((option, path, false));
+        }
     }
 
     // Windows and macOS file systems ignore case by default, so two spellings of one file must compare equal there.

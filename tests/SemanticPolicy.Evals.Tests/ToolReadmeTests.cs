@@ -12,10 +12,10 @@ public sealed partial class ToolReadmeTests
     private const string _help = "--help";
 
     // The options these verbs share are documented once, under this heading, and not repeated under each verb.
-    private const string _sharedHeading = "### Options of `run`, `report`, `sweep` and `compare`";
+    private const string _sharedHeading = "### Options of `run`, `report`, `calibrate`, `sweep` and `compare`";
 
     // The verbs the shared heading names. `samples` reads no policy, dataset or recording, and takes none of them.
-    private static readonly string[] _sharedVerbs = ["run", "report", "sweep", "compare"];
+    private static readonly string[] _sharedVerbs = ["run", "report", "calibrate", "sweep", "compare"];
 
     private static readonly string[] _verbs = [.. EvalsCli.Build().Subcommands.Select(command => command.Name)];
 

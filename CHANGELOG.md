@@ -27,15 +27,11 @@ policy that `report`, `sweep` and `compare` read.
   now carries the Http provider's assembly.
 - **`SemanticPolicy.Evals`.** `calibrate` fits Platt scaling to one binding of a Boolean rule on the
   tune rows of a recording and writes a new policy that carries the calibration, each threshold
-  moved so that every recorded row keeps its verdict. It prints ECE and the Brier score on the test
-  rows before and after, and refuses a fit that would change a verdict. The calibrated probability
-  is an estimate fitted on labelled data and can be wrong on inputs unlike them. `report`, `sweep`
-  and `compare` read a calibrated policy as the library evaluates it: `sweep` and `compare` choose
-  thresholds among the calibrated probabilities and sweep the gate on the provider's own evidence,
-  and `report` and `run` count the rows answered by a model other than the one the calibration was
-  fitted on, as `calibrationModelMismatchRows`. The shipped smoke set gains
-  `prompt-injection.calibrated.policy.json`, written by `calibrate` from its recording, as an
-  illustration.
+  moved so that every recorded row keeps its verdict; it prints ECE and the Brier score on the test
+  rows before and after. The calibrated probability is an estimate and can be wrong on inputs unlike
+  those rows. `report`, `sweep` and `compare` read a calibrated policy as the library evaluates it,
+  and `report` and `run` count the rows another model answered as `calibrationModelMismatchRows`.
+  The smoke set gains `prompt-injection.calibrated.policy.json`, an illustration `calibrate` wrote.
 
 ## 0.1.0-alpha.2 - 2026-09-30
 

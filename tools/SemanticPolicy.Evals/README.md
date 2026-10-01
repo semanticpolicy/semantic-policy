@@ -390,7 +390,7 @@ semantic-policy samples <dir>
 - **It overwrites nothing.** If any file it would write exists, it writes none, names that file and
   exits with code 1; choose another directory.
 
-### Options of `run`, `report`, `sweep` and `compare`
+### Options of `run`, `report`, `calibrate`, `sweep` and `compare`
 
 | Option | Meaning |
 |---|---|
@@ -490,19 +490,19 @@ same way.
 Fits a calibration for one binding of a Boolean rule on the tune rows of a recording, and writes a
 new policy that carries it. The calibrated binding's thresholds then read a probability, and that
 probability is an estimate fitted on labelled data: it can be wrong on inputs unlike them. It calls
-no provider and never rewrites the policy it read.
+no provider and changes no file it reads.
 
 ```bash
 semantic-policy calibrate --policy $P --dataset $D --recording $R --provider local --out-policy calibrated.policy.json
 ```
 
+`--recording` and `--force` work as in `report`, and `--out` adds a `calibrate` section to the
+[JSON result](#the-json-result). It adds:
+
 | Option | Meaning |
 |---|---|
-| `--policy <file>`, `--dataset <file>`, `--tune <file>`, `--test <file>`, `--tune-split <name>`, `--test-split <name>`, `--where metadata.<key>=<value>`, `--rule <id>` | As for the [other commands](#options-of-run-report-sweep-and-compare). The rule must be a Boolean rule. |
-| `--recording <file>`, `--force` | As in `report`. |
-| `--out <file>` | Also write the result as [JSON](#the-json-result), with a `calibrate` section. |
 | `--provider <name>` | The binding to calibrate; required when the policy has more than one. |
-| `--out-policy <file>` | Required. Where to write the calibrated policy. It may not be the `--policy` file. |
+| `--out-policy <file>` | Required. Where to write the calibrated policy: a file of its own, neither one it reads nor another of its outputs. |
 | `--diagram <file>` | Also draw the reliability diagram as SVG. When the operating point already read a probability, the diagram shows before and after calibration as two series over one plot; otherwise it shows after alone, and standard error says *"before not drawn:"* and why. |
 
 - **The rows it fits on.** The tune rows labelled with an answer whose recorded attempt at the
@@ -539,18 +539,17 @@ semantic-policy calibrate --policy $P --dataset $D --recording $R --provider loc
   first calibration of a score or a logit it reads *"before calibration: not applicable:"* and why.
   Both are measured at the binding alone, with no gate.
 - **It does not fix discrimination.** The map keeps the binding's order of rows, so it flags the
-  same rows and leaves the binding's ROC-AUC as it was. It makes a 0.8 come true about eight times
-  in ten; a provider that cannot tell flagged rows from the others still cannot.
+  same rows and tells them apart no better than before. It makes a 0.8 come true about eight times
+  in ten; a provider that cannot tell flagged rows from the others still cannot. `report` can still
+  print a slightly different ROC-AUC, 0.971 against 0.970 for warn on the shipped smoke set;
+  [Pitfalls](#pitfalls) says why.
 - **What it refuses.** It exits with code 1, names the cause and writes no file when the rule is not
   a Boolean rule, the operating point reads `margin` or `unknown` evidence, there are too few
   fitting rows, the fitted slope is not a finite number greater than zero (the evidence ranks
-  flagged rows below the others), the calibrated policy would change a recorded row's verdict,
-  `--out-policy` is empty or is the `--policy` file, or the policy has several bindings and no
-  `--provider`. A verdict changes when a threshold sits where the map gives the rows on its two sides
-  one probability: within the log-odds clamp, which holds every value within 10⁻⁶ of 0 or 1 to one
-  input, as a probability threshold of 1.0 does, or, when calibrating again, above the top of the old
-  map, where it never fired. The message names the rows; move that threshold to a value the
-  provider's evidence reaches.
+  flagged rows below the others), the calibrated policy would change a recorded row's verdict, the
+  policy has several bindings and no `--provider`, `--out-policy` is empty, or a file it would write
+  is one it reads or another of its outputs. A changed verdict is named row by row;
+  [Pitfalls](#pitfalls) says which thresholds cause one.
 
 On the shipped recording, with `$P`, `$D` and `$R` as in the quick start:
 
@@ -567,7 +566,7 @@ a clear label, at `local` alone and with no gate:
 
 | | ECE | Brier |
 |---|---|---|
-| Before calibration | not applicable: the evidence is a score | not applicable |
+| Before calibration | not applicable: deciding evidence is score | not applicable |
 | After calibration | 0.108 | 0.185 |
 
 The file it writes is the one shipped beside the recording (see [Shipped datasets](#shipped-datasets)).
@@ -603,14 +602,9 @@ A goal (`<constraint>` in `--help`) is one of these, with `v` from 0 to 1:
   0.05 grid, which is never recommended.
 - At a calibrated operating point the thresholds read a probability, so the candidates are the
   probabilities the calibration gives the values the binding returned, with the 0.05 grid, and only
-  those values are recommended. The map never reverses two rows, so the sweep recommends the
-  calibrated image of what it picks for the same binding uncalibrated, with the same test-row rates,
-  while two things hold. Neither curve is thinned: up to 80 distinct values on the tune rows; past
-  that, the grid takes places that the uncalibrated curve gives to values. And no two values the
-  binding returned get the same probability, which the map does not promise: under `logOdds` every
-  value closer than 1e-6 to 0 or 1 is read at that distance, and a steep map rounds the
-  probabilities of high values to exactly 1. Values merged that way are one candidate, so a cut the
-  uncalibrated curve makes between them has no calibrated twin; evaluation cannot make it either.
+  those values are recommended. The map never reverses two rows, so the sweep usually recommends the
+  calibrated image of what it picks for the same binding uncalibrated, with the same test-row rates;
+  [Pitfalls](#pitfalls) names the two cases where it does not.
 - The gate of a calibrated operating point is swept on the margin of the provider's own evidence,
   the calibration's source kind, and recommended on that kind, as a policy requires.
 - A curve holds at most 101 candidates, and so does a gate curve besides its no-gate point. Past
@@ -693,8 +687,8 @@ under the same goals and prints one table on the test rows. `--recording` and `-
 Each binding is swept in passes until its picks settle, as in `sweep`, and its test-row numbers are
 read at the point it settles on. If any binding cannot meet its goals or does not settle, `compare`
 still prints everything and exits with code 2. A calibrated binding is swept as in `sweep`, on the
-calibrated scale with its gate on the provider's own margin, so while the two conditions named there
-hold it reports the test-row numbers the same binding gets uncalibrated.
+calibrated scale with its gate on the provider's own margin, so it usually reports the test-row
+numbers the same binding gets uncalibrated; [Pitfalls](#pitfalls) names when it does not.
 
 Step 4 of the quick start, shortened:
 
@@ -957,6 +951,21 @@ instead of passing it. Keep the dataset's line endings fixed, as [Pitfalls](#pit
   so a run made with `--providers` is resumed with the same file. The header names each registration
   and the first model it reported, but a resume cannot check where a name points now: pointed at
   another server or model, it mixes two providers' answers in one recording under one name.
+- **A threshold `calibrate` cannot move.** `calibrate` refuses a fit that would change a recorded
+  row's verdict, and one changes only where the map gives the rows on the two sides of a threshold
+  one probability. Under `logOdds` every value within 10⁻⁶ of 0 or 1 is read as that bound, so a
+  probability threshold of 1.0 lands among the rows just below it. When calibrating again, a
+  threshold above the top of the old map, where it never fired, is taken back into that bound too.
+  Move the threshold to a value the provider's evidence reaches, and calibrate again.
+- **A calibrated curve that differs from its uncalibrated twin.** Two things break the match.
+  Thinning: a curve keeps at most 101 candidates, and at a calibrated point the 21 points of the
+  0.05 grid always keep theirs, so with more than 80 distinct values the calibrated curve can keep
+  fewer of the binding's values than the uncalibrated one. It can then pick another of them, and
+  `report`'s ROC-AUC can differ in the third decimal. Merged values: under `logOdds` every value
+  closer than 10⁻⁶ to 0 or 1 is read at that distance, and a steep map rounds the probabilities of
+  high values to exactly 1, so values the binding told apart can share one probability. They are
+  then one candidate, and a cut between them has no calibrated twin; evaluation cannot make it
+  either.
 
 ## The recording
 
