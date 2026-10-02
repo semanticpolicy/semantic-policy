@@ -38,6 +38,8 @@ belongs here.
   evaluates a policy and the application's handler acts on the verdict.
   [0021](0021-validation-rules-report-flagged-verdicts-as-failures.md) narrows it: an integration
   that only reports, such as a validation rule, may map the verdict by default.
+  [0022](0022-guard-types-in-core-and-guards-on-the-function-invoking-loop.md) narrows it: the
+  subjects, outcomes and handlers live in Core, and the machinery is shared source.
 - [0013](0013-evaluation-records-answers-and-replays-them-through-core.md) — The evaluation tool
   records provider answers once and replays them through Core.
   [0018](0018-evaluation-tool-reads-providers-from-a-file.md) narrows it: `run` can name its
@@ -67,6 +69,9 @@ belongs here.
 - [0021](0021-validation-rules-report-flagged-verdicts-as-failures.md) — A validation rule reports a
   flagged verdict as a failure by default, `Deny` an error and `Escalate` a warning, and the
   application decides what a failure means.
+- [0022](0022-guard-types-in-core-and-guards-on-the-function-invoking-loop.md) — The guard types
+  live in Core; the Microsoft.Extensions.AI guards wrap the function-invoking loop's invoker, and
+  the Agent Framework package is built on them.
 
 ## Format
 
