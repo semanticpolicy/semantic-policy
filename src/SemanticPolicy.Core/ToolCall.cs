@@ -7,7 +7,7 @@ namespace SemanticPolicy;
 /// A tool call the model proposed, as the pre-tool guard sees it before the tool runs: the tool's
 /// name and description, the arguments as JSON, the conversation the call came out of and an id for
 /// telemetry. Nothing in it is a framework type, so a handler written against it moves to another
-/// frontend unchanged.
+/// integration unchanged.
 /// </summary>
 /// <param name="Name">The tool's name; non-blank.</param>
 /// <param name="Description">The tool's description, or <see langword="null"/> when it has none.</param>

@@ -10,43 +10,36 @@ API.
 
 ## Unreleased
 
-A Choice rule's verdict names the option the provider picked, the guard layer's subjects, outcomes
-and handlers move into `SemanticPolicy.Core` with a public default context on each subject, a new
-package puts the tool guards on any Microsoft.Extensions.AI chat client, the evaluation CLI can call
-any server that speaks protocol v0, and `semantic-policy calibrate` fits a calibration into a new
-policy that `report`, `sweep` and `compare` read.
+A new package, `SemanticPolicy.Extensions.AI`, puts the tool guards on any Microsoft.Extensions.AI
+chat client, and the guard layer's types move into `SemanticPolicy.Core`, where both integrations
+share them. A Choice rule's verdict names the option the provider picked, and the evaluation CLI can
+call any protocol v0 server and fit a calibration into a new policy.
 
 - **`SemanticPolicy.Core`.** `RuleVerdict` gains `ChosenOption`, the key of the option the deciding
   answer picked on a Choice rule, and `DecidingAttempt`, the attempt at `DecidingBinding`, whose
   result holds that answer and the evidence the provider returned with it. Both are null when no
   answer decided the rule, because the gate abstained or the failure behaviour set the verdict, and
   `ChosenOption` is null on a Boolean or Score rule. Both are read from `Attempts`, so the
-  constructor, `Deconstruct` and the serialized verdict are as before. `ConversationMessage`,
-  `ModelInput`, `ToolCall`, `ToolResult`, `PreModelOutcome`, `PreToolOutcome` and `PostToolOutcome`
-  with their three `…Kind` enums, and the handlers `PreModelHandler`, `PreToolHandler` and
-  `PostToolHandler`, move here from `SemanticPolicy.AgentFramework`, unchanged and in the same
-  namespace, `SemanticPolicy`; Core gains no dependency. `ModelInput`, `ToolCall` and `ToolResult`
-  gain `ToSemanticContext()`, the context the bundled integrations send when no context delegate is
-  given: `input` for a model input, `user_request`, `tool` and `arguments` for a call, and
-  `user_request`, `tool` and `result` for a result, each under the subject's correlation id. An
-  application that calls `IPolicyEvaluator` itself can send the same parts.
-- **`SemanticPolicy.Extensions.AI`.** New package: `UseSemanticPolicyBeforeTool` and
-  `UseSemanticPolicyAfterTool` on `ChatClientBuilder` put the two tool points on the function-calling
-  loop of any `IChatClient`, with the same handlers and outcomes as the Agent Framework package, a
-  policy given by id or with its evaluator, and an optional context delegate. The calls go before
-  `UseFunctionInvocation()`; each guard wraps the loop's `FunctionInvoker` when the pipeline is
-  built, the guards run in the order written and outside an invoker the application sets in
-  `UseFunctionInvocation(configure: …)`, and a guard with no function-invoking client below it, an
-  id no registered policy carries, or a container without an evaluator fails at `Build`. The verdict
-  is awaited in every mode. `FunctionInvocationContext.ToToolCall()` reads the call a guard sees, so
-  an application can evaluate it itself. There is no pre-model point. The package depends on
-  `Microsoft.Extensions.AI` (MIT).
-- **`SemanticPolicy.AgentFramework`.** The subject, outcome and handler types above now come from
-  `SemanticPolicy.Core`, in the same namespace, and the package still brings them through its
-  dependency on Core, so source that uses them compiles unchanged. There are no type forwards: an
-  assembly compiled against 0.1.0-alpha.2 that uses one of them has to be rebuilt. The package now
-  builds on `SemanticPolicy.Extensions.AI` and brings it as a dependency, and ships its own README on
-  nuget.org instead of the repository's. The package's own API is unchanged.
+  constructor, `Deconstruct` and the serialized verdict are as before.
+- **`SemanticPolicy.Core`.** The guard layer's subjects (`ConversationMessage`, `ModelInput`,
+  `ToolCall`, `ToolResult`), outcomes (`PreModelOutcome`, `PreToolOutcome`, `PostToolOutcome` and
+  their `…Kind` enums) and handlers (`PreModelHandler`, `PreToolHandler`, `PostToolHandler`) move here
+  from `SemanticPolicy.AgentFramework`, unchanged and in the same namespace. Core gains no
+  dependency. `ModelInput`, `ToolCall` and `ToolResult` gain `ToSemanticContext()`, the default
+  context the integrations send, so an application that calls `IPolicyEvaluator` itself can send the
+  same parts.
+- **`SemanticPolicy.Extensions.AI`.** New. `UseSemanticPolicyBeforeTool` and
+  `UseSemanticPolicyAfterTool` on `ChatClientBuilder` put the two tool points on any `IChatClient`
+  with a function-calling loop, with the same handlers and outcomes as the Agent Framework package.
+  They go before `UseFunctionInvocation()`. A missing function-invoking client, an unknown policy id
+  or a container without an evaluator fails at `Build`, and so does a second `Build` over a
+  function-invoking client you constructed yourself. `FunctionInvocationContext.ToToolCall()` maps a
+  call for an application that evaluates it on its own. There is no pre-model point. The package
+  depends on `Microsoft.Extensions.AI` (MIT).
+- **`SemanticPolicy.AgentFramework`.** An assembly compiled against 0.1.0-alpha.2 that uses one of
+  the types that moved to Core has to be rebuilt: there are no type forwards. Source compiles
+  unchanged, because the package still brings Core. The package now depends on
+  `SemanticPolicy.Extensions.AI` and ships its own README on nuget.org. Its own API is unchanged.
 - **`SemanticPolicy.Evals`.** The providers file `run --providers` reads gains the `http` kind: an
   entry whose `options` are `SemanticPolicy.Providers.Http`'s `HttpProviderOptions` registers that
   provider, so a protocol v0 server can be evaluated and compared beside System One servers and Jev.

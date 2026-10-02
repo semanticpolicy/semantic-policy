@@ -5,7 +5,7 @@ namespace SemanticPolicy.Guards;
 /// <summary>
 /// One policy at one intervention point, in two halves: <see cref="EvaluateAsync"/> builds the
 /// context for a subject and asks the evaluator, and the guard half then hands the verdict to the
-/// application's handler and returns what it decided. The split is the seam a frontend that only
+/// application's handler and returns what it decided. The split is the seam an integration that only
 /// annotates — one that never applies an outcome — builds on. The guard applies no outcome, reads no
 /// verdict and reports no telemetry of its own: the evaluator's activity is the one trace, tied to
 /// the subject through the context's correlation id.
@@ -115,7 +115,7 @@ internal sealed class PolicyGuard<TSubject, TOutcome>
     /// <summary>
     /// The guard half: evaluates, then hands the subject and the verdict to the handler and returns
     /// both the verdict and what the handler decided. The outcome is returned as decided, in every
-    /// mode; applying it is the frontend's. A cancelled token ends the evaluation before the handler
+    /// mode; applying it is the integration's. A cancelled token ends the evaluation before the handler
     /// runs, and a verdict the evaluator could not reach — a configuration error, a cancellation —
     /// surfaces as its exception, untouched.
     /// </summary>

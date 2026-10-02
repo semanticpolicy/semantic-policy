@@ -5,11 +5,11 @@ namespace SemanticPolicy;
 /// <summary>
 /// What a tool returned, as the post-tool guard sees it before the model does: the call it answers
 /// and the value as the tool produced it. Nothing in it is a framework type, so a handler written
-/// against it moves to another frontend unchanged.
+/// against it moves to another integration unchanged.
 /// </summary>
 /// <param name="Call">The call the value answers.</param>
 /// <param name="Value">
-/// The tool's result as the frontend has it: a string, a <see cref="JsonElement"/>, any object, or
+/// The tool's result as the integration has it: a string, a <see cref="JsonElement"/>, any object, or
 /// <see langword="null"/>. A JSON element is of any kind but undefined.
 /// </param>
 public sealed record ToolResult(ToolCall Call, object? Value)

@@ -11,11 +11,11 @@ makes those decisions testable. Alpha: `src/SemanticPolicy.Core/`,
 `src/SemanticPolicy.Providers.TypeSafe/` and `src/SemanticPolicy.AgentFramework/` are implemented and
 tested. `src/SemanticPolicy.Providers.SystemOne/`, the provider for any System One server and the
 base TypeSafe is built on, and `src/SemanticPolicy.Providers.Http/`, the client for any protocol v0
-server, are implemented and tested too, and so are `src/SemanticPolicy.FluentValidation/`, which puts
-semantic rules on a FluentValidation validator, and `src/SemanticPolicy.Extensions.AI/`, which puts the
-two tool guards on any Microsoft.Extensions.AI chat client and which the Agent Framework package is
-built on. The five demos under `examples/` run on Jev: four
-around an agent, and `examples/SupportTicketForm/`, a support form's validator with no agent.
+server, are implemented and tested too, and so is `src/SemanticPolicy.FluentValidation/`, which puts
+semantic rules on a FluentValidation validator. `src/SemanticPolicy.Extensions.AI/`, implemented and
+tested as well, puts the two tool guards on any Microsoft.Extensions.AI chat client, and the Agent
+Framework package is built on it. The five demos under `examples/` run on Jev: four around an agent,
+and `examples/SupportTicketForm/`, a support form's validator with no agent.
 `docs/classification.md` shows a Choice rule picking a label on Core alone.
 `examples/CustomProvider/` is a provider of your own, over a local classifier and with its own
 tests, and `docs/custom-providers.md` gives the rules it follows.

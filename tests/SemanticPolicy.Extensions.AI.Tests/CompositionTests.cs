@@ -57,4 +57,37 @@ public sealed class CompositionTests
             result.Should().Be("deleted-ok");
         }
     }
+
+    [Fact]
+    public async Task Outer_After_Tool_Guard_Reads_The_Inner_Guards_Replacement()
+    {
+        StubTool branches = new("delete_branch", "Deletes a branch.", "deleted-ok");
+        ScriptedChatClient client = new ScriptedChatClient().Responds(
+            ScriptedTurn.Calls("call_1", "delete_branch", ScriptedLoop.Named("test-old")),
+            ScriptedTurn.Says("final-1"));
+        PolicyEvaluator evaluator = ScriptedLoop.Evaluator(ScriptedLoop.Flagging());
+        List<string> seen = [];
+        object? outerRead = null;
+        IChatClient guarded = new ChatClientBuilder(client)
+            .UseSemanticPolicyAfterTool(ScriptedLoop.DenyPolicy(), evaluator, (result, _, _) =>
+            {
+                seen.Add("after-1");
+                outerRead = result.Value;
+                return ValueTask.FromResult(PostToolOutcome.Proceed);
+            })
+            .UseSemanticPolicyAfterTool(ScriptedLoop.DenyPolicy(), evaluator, (_, _, _) =>
+            {
+                seen.Add("after-2");
+                return ValueTask.FromResult(PostToolOutcome.Replace("replaced-2"));
+            })
+            .UseFunctionInvocation()
+            .Build();
+
+        await guarded.GetResponseAsync("delete branch test-old", ScriptedLoop.With(branches), Token);
+
+        seen.Should().Equal("after-2", "after-1");
+        outerRead.Should().Be("replaced-2");
+        ToolResults.TextOf(ToolResults.In(client.Requests[1].Messages).Should().ContainSingle().Which.Result)
+            .Should().Be("replaced-2");
+    }
 }

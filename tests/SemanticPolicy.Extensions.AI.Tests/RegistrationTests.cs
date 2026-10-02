@@ -133,6 +133,47 @@ public sealed class RegistrationTests
         provider.Requests.Should().ContainSingle();
     }
 
+    [Fact]
+    public async Task Builder_Over_A_Client_Constructed_By_Hand_Fails_On_A_Second_Build()
+    {
+        ScriptedDecisionProvider provider = ScriptedLoop.Flagging();
+        StubTool branches = new("delete_branch", "Deletes a branch.", "deleted-ok");
+        FunctionInvokingChatClient loop = new(OneCallThenText());
+        ChatClientBuilder builder = new ChatClientBuilder(loop)
+            .UseSemanticPolicyBeforeTool(ScriptedLoop.DenyPolicy(), ScriptedLoop.Evaluator(provider), Proceeds());
+        IChatClient guarded = builder.Build();
+
+        Action second = () => builder.Build();
+
+        second.Should().Throw<InvalidOperationException>()
+            .WithMessage("*UseSemanticPolicyBeforeTool*already wrapped*UseFunctionInvocation()*");
+        await guarded.GetResponseAsync("delete branch test-old", ScriptedLoop.With(branches), Token);
+        provider.Requests.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Builder_With_Its_Own_Function_Invocation_Can_Be_Built_Again()
+    {
+        ScriptedDecisionProvider provider = ScriptedLoop.Flagging();
+        StubTool branches = new("delete_branch", "Deletes a branch.", "deleted-ok");
+        ScriptedChatClient client = new ScriptedChatClient().Responds(
+            ScriptedTurn.Calls("call_1", "delete_branch", ScriptedLoop.Named("test-old")),
+            ScriptedTurn.Says("final-1"),
+            ScriptedTurn.Calls("call_2", "delete_branch", ScriptedLoop.Named("test-older")),
+            ScriptedTurn.Says("final-2"));
+        ChatClientBuilder builder = new ChatClientBuilder(client)
+            .UseSemanticPolicyBeforeTool(ScriptedLoop.DenyPolicy(), ScriptedLoop.Evaluator(provider), Proceeds())
+            .UseFunctionInvocation();
+
+        IChatClient first = builder.Build();
+        IChatClient second = builder.Build();
+        await first.GetResponseAsync("delete branch test-old", ScriptedLoop.With(branches), Token);
+        await second.GetResponseAsync("delete branch test-older", ScriptedLoop.With(branches), Token);
+
+        provider.Requests.Should().HaveCount(2);
+        branches.Arguments.Should().Equal("test-old", "test-older");
+    }
+
     private static ScriptedChatClient OneCallThenText() =>
         new ScriptedChatClient().Responds(
             ScriptedTurn.Calls("call_1", "delete_branch", ScriptedLoop.Named("test-old")),
