@@ -3,7 +3,7 @@
 A decision provider of your own: `TeiClassifierProvider` implements `IDecisionProvider` over a
 [Text Embeddings Inference](https://github.com/huggingface/text-embeddings-inference) (TEI) server
 that serves a prompt-injection classifier, and `Program.cs` registers it and evaluates a policy with
-it. The example references `SemanticPolicy.Core` and nothing else, and its tests in
+it. Its one SemanticPolicy reference is `SemanticPolicy.Core`, and its tests in
 `CustomProvider.Tests` run on a fake transport of their own, so the pair is a pattern to copy.
 
 The classifier is [`protectai/deberta-v3-base-prompt-injection-v2`](https://huggingface.co/protectai/deberta-v3-base-prompt-injection-v2),
