@@ -9,11 +9,11 @@ Write a decision that no `if` or regex can make as a rule, let a decision model 
 measure it on labelled examples, without tying your application to one provider. Use it in business
 logic, around a model call, or inside an AI agent's loop.
 
-> **Status: alpha.** `0.1.0-alpha.2` is the second release, with every package on NuGet as a
+> **Status: alpha.** `0.1.0-alpha.3` is the third release, with every package on NuGet as a
 > prerelease: the core library (policies, the evaluation engine, calibration, telemetry, DI
-> registration), the TypeSafe Jev, System One and Http providers, the Microsoft Agent Framework and
-> FluentValidation integrations, and the evaluation CLI, the `semantic-policy` dotnet tool. Every
-> part of the API can still change between alpha releases.
+> registration), the TypeSafe Jev, System One and Http providers, the Microsoft.Extensions.AI,
+> Microsoft Agent Framework and FluentValidation integrations, and the evaluation CLI, the
+> `semantic-policy` dotnet tool. Every part of the API can still change between alpha releases.
 
 ## The idea
 
