@@ -74,6 +74,19 @@ internal static class ReportCommand
 
     private static int Report(ParseResult parseResult, CliIo io)
     {
+        CliFiles.RefuseSharedFiles(
+            "report",
+            [
+                ("--policy", parseResult.GetValue(SharedOptions.Policy)),
+                ("--dataset", parseResult.GetValue(SharedOptions.Dataset)),
+                ("--tune", parseResult.GetValue(SharedOptions.Tune)),
+                ("--test", parseResult.GetValue(SharedOptions.Test)),
+                ("--recording", parseResult.GetValue(SharedOptions.Recording)),
+            ],
+            [
+                ("--out", parseResult.GetValue(SharedOptions.Out)),
+                ("--diagram", parseResult.GetValue(_diagram)),
+            ]);
         IReadOnlyList<Requirement> requirements = Requirements(parseResult);
         InputSelection selection = InputSelection.From(parseResult);
         string recordingPath = parseResult.GetValue(SharedOptions.Recording)

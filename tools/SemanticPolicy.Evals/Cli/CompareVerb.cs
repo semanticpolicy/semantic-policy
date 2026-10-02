@@ -52,6 +52,16 @@ public static class CompareVerb
 
     private static int Run(ParseResult parse, CliIo io)
     {
+        CliFiles.RefuseSharedFiles(
+            "compare",
+            [
+                ("--policy", parse.GetValue(SharedOptions.Policy)),
+                ("--dataset", parse.GetValue(SharedOptions.Dataset)),
+                ("--tune", parse.GetValue(SharedOptions.Tune)),
+                ("--test", parse.GetValue(SharedOptions.Test)),
+                ("--recording", parse.GetValue(SharedOptions.Recording)),
+            ],
+            [("--out", parse.GetValue(SharedOptions.Out))]);
         IReadOnlyList<RungConstraint> rungConstraints = ReplayedInputs.RungConstraints(parse);
         IReadOnlyList<GateConstraint> gateConstraints = ReplayedInputs.GateConstraints(parse);
         ReplayedInputs replayed = ReplayedInputs.Load(parse);

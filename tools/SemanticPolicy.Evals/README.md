@@ -402,6 +402,8 @@ semantic-policy samples <dir>
 | `--rule <id>` | The rule to measure; required when the policy has more than one. |
 | `--out <file>` | Also write the result as [JSON](#the-json-result). |
 
+An output path never replaces an input file or another output; the command refuses a shared path before writing.
+
 ### `run`
 
 Asks every provider in the policy about every row, saves the answers in a recording, then prints the

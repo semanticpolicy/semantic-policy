@@ -41,6 +41,16 @@ public static class SweepVerb
 
     private static int Run(ParseResult parse, CliIo io)
     {
+        CliFiles.RefuseSharedFiles(
+            "sweep",
+            [
+                ("--policy", parse.GetValue(SharedOptions.Policy)),
+                ("--dataset", parse.GetValue(SharedOptions.Dataset)),
+                ("--tune", parse.GetValue(SharedOptions.Tune)),
+                ("--test", parse.GetValue(SharedOptions.Test)),
+                ("--recording", parse.GetValue(SharedOptions.Recording)),
+            ],
+            [("--out", parse.GetValue(SharedOptions.Out))]);
         // Constraints are read first, so a mistyped one is reported before any file is opened.
         IReadOnlyList<RungConstraint> rungConstraints = ReplayedInputs.RungConstraints(parse);
         IReadOnlyList<GateConstraint> gateConstraints = ReplayedInputs.GateConstraints(parse);
