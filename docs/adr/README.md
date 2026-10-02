@@ -20,6 +20,8 @@ belongs here.
   `SemanticDecision` type until a calibration layer produces one.
 - [0005](0005-evaluation-and-threshold-ownership.md) — Thresholds belong to a policy on a provider
   on a dataset, and are chosen from measured operating points.
+  [0023](0023-evaluation-tool-fits-a-calibration-into-a-new-policy.md) clarifies it: a calibration
+  is fitted on the tune rows the thresholds are chosen on, and reported on test.
 - [0006](0006-failure-and-abstention-model.md) — Provider outcome and policy verdict are two axes; a
   timeout is neither `false` nor `Deny`.
 - [0007](0007-per-policy-failure-behaviour.md) — There is no global fail-open or fail-closed; each
@@ -63,6 +65,8 @@ belongs here.
 - [0019](0019-calibration-is-data-on-a-boolean-operating-point.md) — A calibration is data on a
   Boolean operating point: the step function applies it before the thresholds, and it adds evidence
   beside the untouched result.
+  [0023](0023-evaluation-tool-fits-a-calibration-into-a-new-policy.md) adds the fitting side: the
+  evaluation tool fits one and writes it into a new policy.
 - [0020](0020-evaluation-tool-retries-resumes-and-gates-a-build.md) — The evaluation tool calls an
   `unavailable` answer again, resumes a run cut short, puts a Wilson interval on every proportion,
   and gates a build on the exact value.
@@ -72,6 +76,9 @@ belongs here.
 - [0022](0022-guard-types-in-core-and-guards-on-the-function-invoking-loop.md) — The guard types
   live in Core; the Microsoft.Extensions.AI guards wrap the function-invoking loop's invoker, and
   the Agent Framework package is built on them.
+- [0023](0023-evaluation-tool-fits-a-calibration-into-a-new-policy.md) — The evaluation tool fits a
+  Platt calibration on tune, reports it on test, and writes it into a new policy in which no
+  recorded row changes its verdict.
 
 ## Format
 
