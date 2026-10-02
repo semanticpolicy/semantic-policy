@@ -315,12 +315,14 @@ A probe asked Von, Laya and kev 30 questions each and compared their answers wit
 with Jev on 7 to 9 of 9 routing questions, but on only 8 to 11 of 21 guard questions. Agreeing with
 Jev is not being right, and 30 questions prove little, but that gap is the one to plan around. Use a
 local model as a router, or as a second voice in Shadow mode beside the provider that enforces, and
-compare the two with the evaluation CLI on your own data. Whether to enforce does not depend on where
-the model runs: a policy goes to Enforce only once it has been measured on your own labelled data at
-the threshold it will run with, and on a security decision Enforce may only add friction on top of a
-deterministic check — it never authorizes, and it is never the only thing between an untrusted input
-and a privileged action ([Not a security boundary][not-a-security-boundary]). On guard questions, the
-numbers above say today's local models do not reach that bar.
+compare the two with the evaluation CLI on your own data.
+
+Whether to enforce does not depend on where the model runs. A policy goes to Enforce only once it has
+been measured on your own labelled data at the threshold it will run with. On a security decision,
+Enforce may only add friction on top of a deterministic check: it never authorizes, and it is never
+the only thing between an untrusted input and a privileged action
+([Not a security boundary][not-a-security-boundary]). On guard questions, the numbers above say
+today's local models do not reach that bar.
 
 [Local decision models][local-models] has the rest of the probe: where the three servers come from,
 how fast each answered, how well it ranked the smoke set, and where it stops reading a long context.
@@ -366,13 +368,10 @@ IChatClient guarded = new ChatClientBuilder(chatClient)
     .Build(serviceProvider);
 ```
 
-The guards nest in the order they are written: before-tool handlers run first to last, after-tool
-handlers last to first, each reading the result returned by its nested stages. They sit outside any
-`FunctionInvoker` the application sets in
-`UseFunctionInvocation(configure: …)`, and await the verdict in every mode. There is no pre-model
-point: a chat client receives the whole history on every call, so there is no one input to judge.
-[The package's README][chat-client-readme] covers where the calls go, an invoker of your own,
-functions that need approval, and how to keep a Shadow policy off the critical path.
+The guards await the verdict in every mode. There is no pre-model point: a chat client receives the
+whole history on every call, so there is no one input to judge. [The package's README][chat-client-readme]
+covers the order several guards run in, an invoker of your own, functions that need approval, and
+how to keep a Shadow policy off the critical path.
 
 ## Outside agents
 

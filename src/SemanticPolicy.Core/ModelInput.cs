@@ -3,7 +3,7 @@ namespace SemanticPolicy;
 /// <summary>
 /// What a run is about to send to the model, as the pre-model guard sees it: the operation's messages
 /// and an id for telemetry. Nothing in it is a framework type, so a handler written against it moves
-/// to another frontend unchanged.
+/// to another integration unchanged.
 /// </summary>
 /// <param name="Messages">The messages of the operation, in order; the list may be empty.</param>
 /// <param name="CorrelationId">

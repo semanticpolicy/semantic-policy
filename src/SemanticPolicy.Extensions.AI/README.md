@@ -49,6 +49,10 @@ IChatClient guarded = new ChatClientBuilder(chatClient) // chatClient: the IChat
     .UseFunctionInvocation()
     .Build(serviceProvider);
 
+ChatResponse response = await guarded.GetResponseAsync(
+    "Delete the branch test-old.",
+    new ChatOptions { Tools = [AIFunctionFactory.Create(DeleteBranch)] }); // DeleteBranch: your tool's method
+
 static ValueTask<PreToolOutcome> OnToolCall(ToolCall call, PolicyVerdict verdict, CancellationToken cancellationToken)
 {
     // In Shadow, Effective is always Allow; Evaluated says what enforcing would have done.
@@ -60,8 +64,8 @@ static ValueTask<PreToolOutcome> OnToolCall(ToolCall call, PolicyVerdict verdict
 }
 ```
 
-Requests then go through `guarded` with the tools in `ChatOptions.Tools`, as they would through any
-function-invoking client.
+Write each guard before `UseFunctionInvocation()`; [where the calls go](#where-the-calls-go) says why,
+and how several guards nest.
 
 ## Not a security boundary
 
@@ -81,12 +85,10 @@ function that client calls to run a tool. A guard with no function-invoking clie
 after `UseFunctionInvocation()`, or on a pipeline without one — fails at `Build` with an
 `InvalidOperationException`, rather than leaving every call unchecked.
 
-The guards nest in the order their calls are written, outside the application's invoker.
-Before-tool handlers run from first to last; after-tool handlers run from last to first, each
-reading the result returned by the stages nested inside it. With two after-tool guards, the second
-one checks the tool's result first, and the first one checks what the second returned, including any
-replacement. Put a validator before a replacing after-tool guard in the builder if it must check the
-replacement.
+The guards nest in the order their calls are written. Before-tool handlers run first to last.
+After-tool handlers run last to first: with two of them, the second checks the tool's result and the
+first checks what the second returned, a replacement included. An after-tool guard that must check a
+replacement therefore goes above the guard that makes it.
 
 For example, the handlers in this pipeline run in the numbered order:
 
@@ -102,34 +104,9 @@ IChatClient guarded = new ChatClientBuilder(chatClient)
 ```
 
 A before-tool guard that refuses or stops ends the chain there: the guards after it, your invoker and
-the tool never run, and its message is the call's result.
-
-### Your own invoker
-
-All the guards run outside `FunctionInvokingChatClient.FunctionInvoker`. If your application sets
-one, set it in `UseFunctionInvocation(configure: …)`, as above: the before-tool guards then run ahead
-of it, and the innermost after-tool guard checks what it returned; outer after-tool guards check the
-result returned by their nested stages. Without an application invoker, the tool's own function runs.
-
-**Never assign `FunctionInvoker` after `Build`.** The guards wrap the invoker that is there when the
-pipeline is built; one assigned afterwards replaces them, and every call then runs unchecked, with no
-error.
-
-### A client you built by hand
-
-A `FunctionInvokingChatClient` you construct yourself, with its options and your invoker already set,
-goes into `new ChatClientBuilder(client)` with the guards on that builder, and the builder is built
-**once**:
-
-```csharp
-FunctionInvokingChatClient loop = new(chatClient) { AllowConcurrentInvocation = true };
-IChatClient guarded = new ChatClientBuilder(loop)
-    .UseSemanticPolicyBeforeTool("tool-intent", OnToolCall)
-    .Build(serviceProvider);
-```
-
-The builder holds that one instance, so every `Build` wraps its invoker again, and a second one would
-put every guard in the chain twice.
+the tool never run, and its message is the call's result. An invoker of your own, or a
+function-invoking client you construct yourself, is covered under
+[your own invoker or loop](#your-own-invoker-or-loop).
 
 ## The handler
 
@@ -177,6 +154,12 @@ IChatClient guarded = new ChatClientBuilder(chatClient)
     .Build();
 ```
 
+On this road `Build` does not check the policy. `PolicyEvaluator` checks the policies it is
+constructed with, so pass it the same policy, as above, and a binding to a provider it does not have
+fails right there. A policy it was not given is checked on every call instead, and a mistake in it
+reaches the model on the first one, as [when the evaluator throws](#when-the-evaluator-throws)
+describes.
+
 ## What the policy is asked
 
 Each point builds a context of named parts — only what the point is about, because a provider's
@@ -191,6 +174,10 @@ The call is read from the loop's `FunctionInvocationContext` with `ToToolCall()`
 and description, the arguments as JSON, every message of the conversation as its role and its text,
 and the function call's id. `user_request` is every **user-role** message, in order, joined into one
 part; an assistant or tool message never counts, whatever it says.
+
+A chat client receives the whole history on every request, so in a long conversation `user_request`
+carries every earlier request as well, and one the user made many turns ago can still make today's
+call read as asked for. Where that matters for a tool, narrow the context with the delegate below.
 
 Both methods take an optional delegate that builds the context instead:
 
@@ -245,6 +232,35 @@ loop.FunctionInvoker = (context, cancellationToken) =>
 
 `ToToolCall()`, `ToSemanticContext()` and `IPolicyEvaluator` are the same pieces a guard is built
 from, so the policy is asked exactly what a guard would have asked it.
+
+## Your own invoker or loop
+
+### An invoker
+
+All the guards run outside `FunctionInvokingChatClient.FunctionInvoker`. If your application sets
+one, set it in `UseFunctionInvocation(configure: …)`, as in [where the calls go](#where-the-calls-go):
+the before-tool guards run ahead of it and the after-tool guards check what it returned. Without an
+invoker of your own, the tool's function runs.
+
+**Never assign `FunctionInvoker` after `Build`.** The guards wrap the invoker that is there when the
+pipeline is built; one assigned afterwards replaces them, and every call then runs unchecked, with no
+error.
+
+### A function-invoking client you construct
+
+A `FunctionInvokingChatClient` you construct yourself, with its options and your invoker already set,
+goes into `new ChatClientBuilder(loop)` with the guards on that builder:
+
+```csharp
+FunctionInvokingChatClient loop = new(chatClient) { AllowConcurrentInvocation = true };
+IChatClient guarded = new ChatClientBuilder(loop)
+    .UseSemanticPolicyBeforeTool("tool-intent", OnToolCall)
+    .Build(serviceProvider);
+```
+
+Build that builder **once**. It holds the one instance, so a second `Build` would wrap its invoker
+again and run every guard twice; it fails with an `InvalidOperationException` instead. A builder that
+calls `UseFunctionInvocation()` makes a new client on every `Build` and can be built again.
 
 ## Functions that need approval
 

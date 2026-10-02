@@ -4,11 +4,11 @@ namespace SemanticPolicy;
 /// One message of the conversation a guarded operation runs in, reduced to what a policy can be
 /// asked about: who said it and what was said. The role is the trust boundary the default contexts
 /// read — <c>user</c> against <c>assistant</c>, <c>system</c> and <c>tool</c> — so it is kept as the
-/// frontend named it and compared ordinally, never normalised.
+/// integration named it and compared ordinally, never normalised.
 /// </summary>
-/// <param name="Role">The speaker's role, as the frontend names it; non-blank.</param>
+/// <param name="Role">The speaker's role, as the integration names it; non-blank.</param>
 /// <param name="Text">
-/// The message's text, as the frontend has it. A message of white space only says nothing and is
+/// The message's text, as the integration has it. A message of white space only says nothing and is
 /// skipped by every join.
 /// </param>
 public sealed record ConversationMessage(string Role, string Text)
@@ -31,7 +31,7 @@ public sealed record ConversationMessage(string Role, string Text)
     /// <summary>
     /// The messages' texts in order, one blank line between them, skipping any that is white space
     /// only: every message when <paramref name="role"/> is <see langword="null"/>, otherwise those of
-    /// that role. The join is the layer's; a frontend hands over the messages and never joins them.
+    /// that role. The join is the layer's; an integration hands over the messages and never joins them.
     /// </summary>
     internal static string Join(IReadOnlyList<ConversationMessage> messages, string? role) =>
         string.Join(

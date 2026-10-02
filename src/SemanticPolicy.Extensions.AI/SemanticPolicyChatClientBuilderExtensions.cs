@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using SemanticPolicy;
 using SemanticPolicy.Guards;
@@ -7,7 +8,7 @@ namespace Microsoft.Extensions.AI;
 /// <summary>
 /// Hangs a policy on a chat client's function-calling loop at two points: before a tool the model
 /// proposed runs, and after that tool returns. Every method takes the application's handler, which
-/// reads the verdict and decides what happens; the frontend applies what the handler returns and
+/// reads the verdict and decides what happens; the guard applies what the handler returns and
 /// decides nothing of its own, in Shadow and in Enforce alike. A verdict is a probabilistic signal
 /// about content and not an authorization, so a guard here is one layer among several rather than the
 /// one that holds — <c>SECURITY.md</c> and <c>docs/THREAT_MODEL.md</c> say what that means for what
@@ -33,9 +34,10 @@ public static class SemanticPolicyChatClientBuilderExtensions
     /// <para>
     /// Write the call before <c>UseFunctionInvocation()</c>. At <see cref="ChatClientBuilder.Build(IServiceProvider)"/>
     /// the guard finds the <see cref="FunctionInvokingChatClient"/> below it and wraps its
-    /// <see cref="FunctionInvokingChatClient.FunctionInvoker"/>; with no such client below it, the build
-    /// fails. The evaluator and the policy are looked up in the container given to the build as well, so
-    /// a missing registration fails there and not on the first call.
+    /// <see cref="FunctionInvokingChatClient.FunctionInvoker"/>; with no such client below it, or with
+    /// one this guard wrapped in an earlier build, the build fails. The evaluator and the policy are
+    /// looked up in the container given to the build as well, so a missing registration fails there and
+    /// not on the first call.
     /// </para>
     /// <para>
     /// Guards nest in the order their calls are written, outside the application's own invoker.
@@ -60,12 +62,12 @@ public static class SemanticPolicyChatClientBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrWhiteSpace(policyId);
         ArgumentNullException.ThrowIfNull(handler);
-        return builder.Use((inner, services) => Wrap(
-            inner,
+        return UseGuard(
+            builder,
             nameof(UseSemanticPolicyBeforeTool),
-            () => new PolicyGuard<ToolCall, PreToolOutcome>(
+            services => new PolicyGuard<ToolCall, PreToolOutcome>(
                 GuardSubject.PreTool, Evaluator(services, policyId), policyId, handler.Invoke, context),
-            ToolInvocationGuards.BeforeToolAsync));
+            ToolInvocationGuards.BeforeToolAsync);
     }
 
     /// <summary>
@@ -87,8 +89,8 @@ public static class SemanticPolicyChatClientBuilderExtensions
     /// <para>
     /// Write the call before <c>UseFunctionInvocation()</c>. At <see cref="ChatClientBuilder.Build(IServiceProvider)"/>
     /// the guard finds the <see cref="FunctionInvokingChatClient"/> below it and wraps its
-    /// <see cref="FunctionInvokingChatClient.FunctionInvoker"/>; with no such client below it, the build
-    /// fails.
+    /// <see cref="FunctionInvokingChatClient.FunctionInvoker"/>; with no such client below it, or with
+    /// one this guard wrapped in an earlier build, the build fails.
     /// </para>
     /// <para>
     /// Guards nest in the order their calls are written, outside the application's own invoker.
@@ -112,12 +114,12 @@ public static class SemanticPolicyChatClientBuilderExtensions
         Func<ToolCall, SemanticContext>? context = null)
     {
         Require(builder, policy, evaluator, handler);
-        return builder.Use((inner, services) => Wrap(
-            inner,
+        return UseGuard(
+            builder,
             nameof(UseSemanticPolicyBeforeTool),
-            () => new PolicyGuard<ToolCall, PreToolOutcome>(
+            _ => new PolicyGuard<ToolCall, PreToolOutcome>(
                 GuardSubject.PreTool, evaluator, policy, handler.Invoke, context),
-            ToolInvocationGuards.BeforeToolAsync));
+            ToolInvocationGuards.BeforeToolAsync);
     }
 
     /// <summary>
@@ -138,9 +140,10 @@ public static class SemanticPolicyChatClientBuilderExtensions
     /// <para>
     /// Write the call before <c>UseFunctionInvocation()</c>. At <see cref="ChatClientBuilder.Build(IServiceProvider)"/>
     /// the guard finds the <see cref="FunctionInvokingChatClient"/> below it and wraps its
-    /// <see cref="FunctionInvokingChatClient.FunctionInvoker"/>; with no such client below it, the build
-    /// fails. The evaluator and the policy are looked up in the container given to the build as well, so
-    /// a missing registration fails there and not on the first call.
+    /// <see cref="FunctionInvokingChatClient.FunctionInvoker"/>; with no such client below it, or with
+    /// one this guard wrapped in an earlier build, the build fails. The evaluator and the policy are
+    /// looked up in the container given to the build as well, so a missing registration fails there and
+    /// not on the first call.
     /// </para>
     /// <para>
     /// Guards nest in the order their calls are written, outside the application's own invoker.
@@ -163,12 +166,12 @@ public static class SemanticPolicyChatClientBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentException.ThrowIfNullOrWhiteSpace(policyId);
         ArgumentNullException.ThrowIfNull(handler);
-        return builder.Use((inner, services) => Wrap(
-            inner,
+        return UseGuard(
+            builder,
             nameof(UseSemanticPolicyAfterTool),
-            () => new PolicyGuard<ToolResult, PostToolOutcome>(
+            services => new PolicyGuard<ToolResult, PostToolOutcome>(
                 GuardSubject.PostTool, Evaluator(services, policyId), policyId, handler.Invoke, context),
-            ToolInvocationGuards.AfterToolAsync));
+            ToolInvocationGuards.AfterToolAsync);
     }
 
     /// <summary>
@@ -189,8 +192,8 @@ public static class SemanticPolicyChatClientBuilderExtensions
     /// <para>
     /// Write the call before <c>UseFunctionInvocation()</c>. At <see cref="ChatClientBuilder.Build(IServiceProvider)"/>
     /// the guard finds the <see cref="FunctionInvokingChatClient"/> below it and wraps its
-    /// <see cref="FunctionInvokingChatClient.FunctionInvoker"/>; with no such client below it, the build
-    /// fails.
+    /// <see cref="FunctionInvokingChatClient.FunctionInvoker"/>; with no such client below it, or with
+    /// one this guard wrapped in an earlier build, the build fails.
     /// </para>
     /// <para>
     /// Guards nest in the order their calls are written, outside the application's own invoker.
@@ -212,12 +215,12 @@ public static class SemanticPolicyChatClientBuilderExtensions
         Func<ToolResult, SemanticContext>? context = null)
     {
         Require(builder, policy, evaluator, handler);
-        return builder.Use((inner, services) => Wrap(
-            inner,
+        return UseGuard(
+            builder,
             nameof(UseSemanticPolicyAfterTool),
-            () => new PolicyGuard<ToolResult, PostToolOutcome>(
+            _ => new PolicyGuard<ToolResult, PostToolOutcome>(
                 GuardSubject.PostTool, evaluator, policy, handler.Invoke, context),
-            ToolInvocationGuards.AfterToolAsync));
+            ToolInvocationGuards.AfterToolAsync);
     }
 
     private static void Require(ChatClientBuilder builder, Policy policy, IPolicyEvaluator evaluator, Delegate handler)
@@ -228,6 +231,19 @@ public static class SemanticPolicyChatClientBuilderExtensions
         ArgumentNullException.ThrowIfNull(handler);
     }
 
+    // One table per Use… call: the loops this guard has wrapped. A builder over a client the
+    // application constructed holds that one instance, and wrapping its invoker on a second Build would
+    // run every guard twice. The table holds the loops weakly, so a built pipeline is not kept alive.
+    private static ChatClientBuilder UseGuard<TSubject, TOutcome>(
+        ChatClientBuilder builder,
+        string method,
+        Func<IServiceProvider, PolicyGuard<TSubject, TOutcome>> createGuard,
+        Func<FunctionInvocationContext, Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>>, PolicyGuard<TSubject, TOutcome>, CancellationToken, ValueTask<object?>> stage)
+    {
+        ConditionalWeakTable<FunctionInvokingChatClient, string> wrapped = new();
+        return builder.Use((inner, services) => Wrap(inner, services, wrapped, method, createGuard, stage));
+    }
+
     // Runs inside the builder's factory, so at Build. Factories run from the last added to the first,
     // which means the function-invoking client below has been built and configured by now, and every
     // guard written after this one has already wrapped its invoker: wrapping what is there keeps the
@@ -235,8 +251,10 @@ public static class SemanticPolicyChatClientBuilderExtensions
     // evaluate on the way in, first to last; after handlers evaluate on the way out, last to first.
     private static IChatClient Wrap<TSubject, TOutcome>(
         IChatClient inner,
+        IServiceProvider services,
+        ConditionalWeakTable<FunctionInvokingChatClient, string> wrapped,
         string method,
-        Func<PolicyGuard<TSubject, TOutcome>> createGuard,
+        Func<IServiceProvider, PolicyGuard<TSubject, TOutcome>> createGuard,
         Func<FunctionInvocationContext, Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>>, PolicyGuard<TSubject, TOutcome>, CancellationToken, ValueTask<object?>> stage)
     {
         FunctionInvokingChatClient loop = inner.GetService<FunctionInvokingChatClient>()
@@ -244,7 +262,16 @@ public static class SemanticPolicyChatClientBuilderExtensions
                 $"{method} found no function-invoking client below it: call it before UseFunctionInvocation() "
                 + "on the same builder, so the loop it guards is already there.");
 
-        PolicyGuard<TSubject, TOutcome> guard = createGuard();
+        // The guard is made before the loop is marked, so a lookup that fails here marks nothing.
+        PolicyGuard<TSubject, TOutcome> guard = createGuard(services);
+        if (!wrapped.TryAdd(loop, method))
+        {
+            throw new InvalidOperationException(
+                $"{method} has already wrapped this function-invoking client in an earlier Build, and a second "
+                + "would run the guard twice: build a builder over a client you constructed once, or let "
+                + "UseFunctionInvocation() make a new client on every Build.");
+        }
+
         Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>> next = loop.FunctionInvoker ?? InvokeFunction;
         loop.FunctionInvoker = (invocation, cancellationToken) => stage(invocation, next, guard, cancellationToken);
         return inner;
