@@ -112,6 +112,11 @@ semantic-policy compare --policy datasets/smoke/prompt-injection.policy.json \
   --recording datasets/smoke/prompt-injection.recording.jsonl --deny min-precision=0.95
 ```
 
+For each provider on its own, `compare` looks for the lowest deny threshold at which at least 95%
+of denials are right. Jev's comes out at 0.15, below the policy's warn of 0.6, so the output has a
+conflict line for it instead of a pair to copy into the policy; [Pitfalls][evals-pitfalls] says why
+and what to do.
+
 The snippets on this page assume these `using` directives, which need only `SemanticPolicy.Core` and
 the TypeSafe provider:
 
@@ -575,6 +580,7 @@ Apache-2.0. See [`LICENSE`][licence].
 [classification]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/classification.md
 [evals-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md
 [evals-quick-start]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md#quick-start
+[evals-pitfalls]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md#pitfalls
 [contributing]: https://github.com/semanticpolicy/semantic-policy/blob/main/CONTRIBUTING.md
 [issues]: https://github.com/semanticpolicy/semantic-policy/issues
 [licence]: https://github.com/semanticpolicy/semantic-policy/blob/main/LICENSE
