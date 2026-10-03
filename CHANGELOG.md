@@ -8,7 +8,7 @@ Notable changes to the packages `SemanticPolicy.Core`, `SemanticPolicy.Providers
 [Semantic Versioning](https://semver.org/); while the major version is 0, any release can change the
 API.
 
-## Unreleased
+## 0.1.0-alpha.3 - 2026-10-03
 
 A new package, `SemanticPolicy.Extensions.AI`, puts the tool guards on any Microsoft.Extensions.AI
 chat client, and the guard layer's types move into `SemanticPolicy.Core`, where both integrations
