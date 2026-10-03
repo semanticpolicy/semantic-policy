@@ -34,9 +34,25 @@ public sealed record InputSelection(
         ArgumentNullException.ThrowIfNull(parseResult);
         string policy = parseResult.GetValue(SharedOptions.Policy)
             ?? throw new EvalsException("--policy <file> is required.");
+        SharedOptions.EnsureInputPath(policy, "--policy", "the policy file to read");
         string? dataset = parseResult.GetValue(SharedOptions.Dataset);
         string? tune = parseResult.GetValue(SharedOptions.Tune);
         string? test = parseResult.GetValue(SharedOptions.Test);
+        if (dataset is not null)
+        {
+            SharedOptions.EnsureInputPath(dataset, "--dataset", "the dataset file to read");
+        }
+
+        if (tune is not null)
+        {
+            SharedOptions.EnsureInputPath(tune, "--tune", "the tune dataset to read");
+        }
+
+        if (test is not null)
+        {
+            SharedOptions.EnsureInputPath(test, "--test", "the test dataset to read");
+        }
+
         if (dataset is not null && (tune is not null || test is not null))
         {
             throw new EvalsException("--dataset excludes --tune and --test: give one file, or the pair.");

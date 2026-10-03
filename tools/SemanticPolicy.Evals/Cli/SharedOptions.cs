@@ -145,6 +145,14 @@ public static class SharedOptions
         Rule,
     ];
 
+    internal static void EnsureInputPath(string? path, string optionName, string description)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new EvalsException($"{optionName} names no file; give {description}.");
+        }
+    }
+
     private static Option<string[]> RungConstraintOption(string name, string rung) => new(name)
     {
         Description = $"A constraint on the {rung} threshold: min-recall=<v>, max-fpr=<v> or min-precision=<v>, v from "
