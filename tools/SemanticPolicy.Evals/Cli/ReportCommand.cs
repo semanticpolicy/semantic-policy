@@ -75,9 +75,10 @@ internal static class ReportCommand
     private static int Report(ParseResult parseResult, CliIo io)
     {
         IReadOnlyList<Requirement> requirements = Requirements(parseResult);
-        InputSelection selection = InputSelection.From(parseResult);
         string recordingPath = parseResult.GetValue(SharedOptions.Recording)
             ?? throw new EvalsException("--recording <file> is required.");
+        SharedOptions.EnsureInputPath(recordingPath, "--recording", "the recording file to read");
+        InputSelection selection = InputSelection.From(parseResult);
         LoadedInputs inputs = Load(selection, requirements);
         Recording recording = RecordingReader.Read(recordingPath);
         EvalsResult result = ReportPipeline.Build("report", inputs, recording, parseResult.GetValue(SharedOptions.Force));

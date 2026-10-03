@@ -84,6 +84,18 @@ internal static class RunCommand
         CancellationToken cancellationToken)
     {
         IReadOnlyList<Requirement> requirements = ReportCommand.Requirements(parseResult);
+        string? resumePath = parseResult.GetValue(_resume);
+        string? providersPath = parseResult.GetValue(_providers);
+        if (resumePath is not null)
+        {
+            SharedOptions.EnsureInputPath(resumePath, "--resume", "the recording to resume");
+        }
+
+        if (providersPath is not null)
+        {
+            SharedOptions.EnsureInputPath(providersPath, "--providers", "the providers file to read");
+        }
+
         InputSelection selection = InputSelection.From(parseResult);
         int parallel = parseResult.GetValue(_parallel);
         if (parallel < 1)
@@ -103,7 +115,7 @@ internal static class RunCommand
             throw new EvalsException("--retries must be at least 0.");
         }
 
-        if (parseResult.GetValue(_resume) is { } resumePath)
+        if (resumePath is not null)
         {
             return await ResumeAsync(
                 parseResult, io, configureProviders, selection, requirements, resumePath, parallel, retries, cancellationToken)

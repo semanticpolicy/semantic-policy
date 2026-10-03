@@ -22,9 +22,10 @@ internal sealed record ReplayedInputs(
 {
     public static ReplayedInputs Load(ParseResult parse)
     {
-        InputSelection selection = InputSelection.From(parse);
         string recordingPath = parse.GetValue(SharedOptions.Recording)
             ?? throw new EvalsException("--recording <file> is required: this verb replays a recording.");
+        SharedOptions.EnsureInputPath(recordingPath, "--recording", "the recording file to read");
+        InputSelection selection = InputSelection.From(parse);
         LoadedInputs inputs = Evals.Inputs.Load(selection);
         Recording recording = RecordingReader.Read(recordingPath);
         ReplaySet set = ReplaySet.Load(recording, inputs, parse.GetValue(SharedOptions.Force));
