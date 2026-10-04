@@ -105,19 +105,28 @@ internal static class RunCommand
 
         if (parseResult.GetValue(_resume) is { } resumePath)
         {
+            RefuseSharedFiles(parseResult, "--resume", resumePath);
             return await ResumeAsync(
                 parseResult, io, configureProviders, selection, requirements, resumePath, parallel, retries, cancellationToken)
                 .ConfigureAwait(false);
         }
 
+        string? requestedRecordPath = parseResult.GetValue(_record);
+        RefuseSharedFiles(parseResult, requestedRecordPath is null ? null : "--record", requestedRecordPath);
+
         LoadedInputs inputs = ReportCommand.Load(selection, requirements);
+        string recordPath = requestedRecordPath ?? DefaultRecordPath(selection, inputs.Policy);
+        if (requestedRecordPath is null)
+        {
+            RefuseSharedFiles(parseResult, "--record", recordPath);
+        }
+
         IReadOnlyDictionary<string, IDecisionProvider> providers = ResolveProviders(parseResult, configureProviders, inputs.Policy);
         if (inputs.Policy.Budget is not null)
         {
             io.Error.WriteLine("policy budget ignored: run is eager");
         }
 
-        string recordPath = parseResult.GetValue(_record) ?? DefaultRecordPath(selection, inputs.Policy);
         TimeSpan timeout = TimeSpan.FromSeconds(seconds);
         RecordingHeader header = new(
             RecordingHeader.FormatV0,
@@ -400,6 +409,21 @@ internal static class RunCommand
             ?? throw new InvalidOperationException("The selection names neither --dataset nor --tune.");
         return $"./{Path.GetFileNameWithoutExtension(dataset)}.{policy.Id}.recording.jsonl";
     }
+
+    private static void RefuseSharedFiles(ParseResult parseResult, string? recordOption, string? recordPath) =>
+        CliFiles.RefuseSharedFiles(
+            "run",
+            [
+                ("--policy", parseResult.GetValue(SharedOptions.Policy)),
+                ("--dataset", parseResult.GetValue(SharedOptions.Dataset)),
+                ("--tune", parseResult.GetValue(SharedOptions.Tune)),
+                ("--test", parseResult.GetValue(SharedOptions.Test)),
+                ("--providers", parseResult.GetValue(_providers)),
+            ],
+            [
+                (recordOption ?? "--record", recordPath),
+                ("--out", parseResult.GetValue(SharedOptions.Out)),
+            ]);
 
     // Written as each row lands rather than posted to a synchronization context, so the lines arrive in order
     // and none is still pending when the report starts printing.
