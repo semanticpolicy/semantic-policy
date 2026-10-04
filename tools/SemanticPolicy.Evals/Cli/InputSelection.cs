@@ -26,8 +26,8 @@ public sealed record InputSelection(
     /// <summary>Reads the shared input options off a parsed command line.</summary>
     /// <param name="parseResult">The parse result of a verb that carries <see cref="SharedOptions.InputOptions"/>.</param>
     /// <exception cref="EvalsException">
-    /// Neither form of dataset was given, both were, <c>--tune</c> and <c>--test</c> do not come as a pair, or a
-    /// <c>--where</c> token is malformed.
+    /// A file option is empty or only whitespace, neither form of dataset was given, both were, <c>--tune</c> and
+    /// <c>--test</c> do not come as a pair, or a <c>--where</c> token is malformed.
     /// </exception>
     public static InputSelection From(ParseResult parseResult)
     {
