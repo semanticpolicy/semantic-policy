@@ -53,6 +53,36 @@ public sealed class EvalsCliTests
     public static TheoryData<string> RootAndVerbs { get; } =
         new([string.Empty, .. EvalsCli.Build().Subcommands.Select(command => command.Name)]);
 
+    public static TheoryData<string, string> EmptyInputPaths { get; } = new()
+    {
+        { "run", "--policy" },
+        { "run", "--dataset" },
+        { "run", "--tune" },
+        { "run", "--test" },
+        { "run", "--providers" },
+        { "run", "--resume" },
+        { "report", "--policy" },
+        { "report", "--dataset" },
+        { "report", "--tune" },
+        { "report", "--test" },
+        { "report", "--recording" },
+        { "calibrate", "--policy" },
+        { "calibrate", "--dataset" },
+        { "calibrate", "--tune" },
+        { "calibrate", "--test" },
+        { "calibrate", "--recording" },
+        { "sweep", "--policy" },
+        { "sweep", "--dataset" },
+        { "sweep", "--tune" },
+        { "sweep", "--test" },
+        { "sweep", "--recording" },
+        { "compare", "--policy" },
+        { "compare", "--dataset" },
+        { "compare", "--tune" },
+        { "compare", "--test" },
+        { "compare", "--recording" },
+    };
+
     // The usage line is the first thing help prints, and it names the command a user types whichever process hosts the
     // tool: the installed tool's shim, `dotnet run`, or the host running these tests.
     [Theory]
@@ -109,6 +139,44 @@ public sealed class EvalsCliTests
 
         actual.Should().Be(exitCode);
         error.ToString().Should().Contain("probe-failure");
+        output.ToString().Should().BeEmpty();
+    }
+
+    [Theory]
+    [MemberData(nameof(EmptyInputPaths))]
+    public async Task Cli_Rejects_An_Empty_Input_Path_With_A_Single_Option_Error(string verb, string option)
+    {
+        StringWriter output = new();
+        StringWriter error = new();
+        Command root = EvalsCli.Build(new CliIo(output, error));
+        string[] args = verb == "run"
+            ? ["run", "--policy", "policy.json", "--dataset", "dataset.jsonl"]
+            : [verb, "--policy", "policy.json", "--dataset", "dataset.jsonl", "--recording", "recording.jsonl"];
+        if (verb == "calibrate")
+        {
+            args = [.. args, "--out-policy", "out-policy.json"];
+        }
+        int optionIndex = Array.IndexOf(args, option);
+        if (optionIndex < 0)
+        {
+            args = [.. args, option, string.Empty];
+        }
+        else
+        {
+            args[optionIndex + 1] = string.Empty;
+        }
+
+        InvocationConfiguration configuration = new()
+        {
+            Output = output,
+            Error = error,
+            EnableDefaultExceptionHandler = false,
+        };
+        int exitCode = await root.Parse(args).InvokeAsync(configuration, TestContext.Current.CancellationToken);
+
+        exitCode.Should().Be(ExitCodes.UsageOrData);
+        error.ToString().TrimEnd().Split(Environment.NewLine).Should().ContainSingle()
+            .Which.Should().Contain($"{option} names no file;");
         output.ToString().Should().BeEmpty();
     }
 
