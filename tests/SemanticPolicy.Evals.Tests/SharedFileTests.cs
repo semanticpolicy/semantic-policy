@@ -67,6 +67,25 @@ public sealed class SharedFileTests
         (await File.ReadAllBytesAsync(fixture.PolicyPath, TestContext.Current.CancellationToken)).Should().Equal(before);
     }
 
+    [Fact]
+    public async Task Run_Refuses_An_Out_That_Is_The_Default_Recording_And_Names_It_As_Such()
+    {
+        using CliFixture fixture = await CreateFixtureAsync();
+        string defaultRecording = Path.GetFullPath("rows.guard.recording.jsonl");
+
+        CliRun run = await CliFixture.InvokeAsync(
+        [
+            "run",
+            "--policy", fixture.PolicyPath,
+            "--dataset", fixture.DatasetPath,
+            "--out", defaultRecording,
+        ]);
+
+        run.ExitCode.Should().Be(ExitCodes.UsageOrData, run.Output);
+        run.Error.Should().Contain("--out").And.Contain("the default recording file").And.NotContain("--record");
+        File.Exists(defaultRecording).Should().BeFalse();
+    }
+
     private static Task<CliFixture> CreateFixtureAsync() =>
         CliFixture.CreateAsync(
             Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]),

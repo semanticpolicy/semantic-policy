@@ -128,9 +128,10 @@ internal static class RunCommand
 
         LoadedInputs inputs = ReportCommand.Load(selection, requirements);
         string recordPath = requestedRecordPath ?? DefaultRecordPath(selection, inputs.Policy);
+        // Named for what it is, not as --record, an option the user did not give.
         if (requestedRecordPath is null)
         {
-            RefuseSharedFiles(parseResult, "--record", recordPath);
+            RefuseSharedFiles(parseResult, "default recording", recordPath);
         }
 
         IReadOnlyDictionary<string, IDecisionProvider> providers = ResolveProviders(parseResult, configureProviders, inputs.Policy);
