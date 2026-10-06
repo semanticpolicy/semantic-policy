@@ -197,7 +197,8 @@ has the numbers and why yours will differ.
 
 The adapter declares no `ActivitySource`, no `Meter` and no logger, and logs nothing at all — not a
 prompt, not a tool argument, not a result. The one trace is the evaluator's `semanticpolicy.evaluate`
-activity.
+activity. [Telemetry](https://github.com/semanticpolicy/semantic-policy#telemetry) in the repository's
+README shows how to collect it, and the evaluator's metrics, with OpenTelemetry.
 
 To tie a verdict back to what it judged, the adapter puts a correlation id on the context: the
 function call's id at the two tool points, and an id generated per run at the pre-model point. It is

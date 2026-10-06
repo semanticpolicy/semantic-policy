@@ -446,6 +446,59 @@ what a failure carries, and [`examples/SupportTicketForm`][support-ticket-form] 
 built on it. A validator answers valid or not; to pick a label, such as the team a ticket goes to,
 [Classification][classification] runs a Choice rule on Core alone, with no agent.
 
+## Telemetry
+
+The evaluator reports through `System.Diagnostics` alone: one activity source and one meter, both
+named `SemanticPolicy`, and nothing is recorded until something listens. To collect them with
+OpenTelemetry .NET, add the two names, constants on `SemanticPolicyTelemetry`, to its tracing and
+metrics builders. With the `OpenTelemetry.Extensions.Hosting` and
+`OpenTelemetry.Exporter.OpenTelemetryProtocol` packages, on a host:
+
+```csharp
+using OpenTelemetry.Metrics;    // AddMeter, and AddOtlpExporter for metrics
+using OpenTelemetry.Trace;      // AddSource, and AddOtlpExporter for traces
+using SemanticPolicy.Telemetry; // SemanticPolicyTelemetry
+
+// builder: the host's builder, such as WebApplication.CreateBuilder(args).
+builder.Services.AddOpenTelemetry()
+    .WithTracing(tracing => tracing
+        .AddSource(SemanticPolicyTelemetry.ActivitySourceName)
+        .AddOtlpExporter())
+    .WithMetrics(metrics => metrics
+        .AddMeter(SemanticPolicyTelemetry.MeterName)
+        .AddOtlpExporter());
+```
+
+The exporter sends to `http://localhost:4317` unless `OTEL_EXPORTER_OTLP_ENDPOINT` names another
+collector. An application that already configures OpenTelemetry needs only the `AddSource` and
+`AddMeter` lines. `AddOpenTelemetry` starts with the host; a program without one, like the
+`ServiceCollection` snippets above, builds `Sdk.CreateTracerProviderBuilder()` and
+`Sdk.CreateMeterProviderBuilder()` with the same two calls and keeps both until it stops evaluating.
+
+| Name | What it is | Tags |
+|---|---|---|
+| `semanticpolicy.evaluate` | an activity per evaluation | the policy's id and mode, the effective and evaluated verdicts, and the correlation id when the context carries one |
+| `semanticpolicy.attempt` | an activity per provider call, a child of the evaluation | the rule, the provider and its model, the decision type, the outcome and the failure kind; on the attempt that decided the rule, the evidence kind and value and the threshold crossed; the margin, the calibration and the fallback where they apply |
+| `semanticpolicy.evaluations` | a counter of the evaluations that reached a verdict | the policy's id and mode, the evaluated verdict |
+| `semanticpolicy.attempts` | a counter of provider attempts | the provider, the decision type, the outcome and the failure kind |
+| `semanticpolicy.evaluation.duration` | a histogram of how long each of those evaluations took, in seconds | the policy's id and mode |
+
+Every tag's name is a constant on `SemanticPolicyTelemetry` too. The provider and integration
+packages declare no source or meter of their own, so these two names cover the whole library.
+
+A tag holds an identifier, a number or a word from the policy's own vocabulary, such as a verdict or
+a mode, and never content: not the rule's question, not the text or tool call that was judged, not
+the provider's response ([ADR 0008][adr-0008]). The correlation id is the one way from a span back
+to what it judged. It is whatever your application put on the context, as in
+`SemanticContext.FromText(input, correlationId)`; the runtime never derives one from the content,
+and it is on the span only, never on a metric.
+
+A verdict in a trace or a metric is a semantic signal, not an authorization. It records what the
+policy concluded, not what your application did with it, which the runtime does not know; a `deny`
+there is no proof of an attack, and an `allow` no proof of safety ([`SECURITY.md`][security]). In
+Shadow mode, the evaluated verdict beside an effective `allow` is where you read what a policy would
+have decided before it enforces.
+
 ## Examples
 
 Each demo is a single `dotnet run` on TypeSafe Jev through OpenRouter. Set `OPENROUTER_API_KEY` —
@@ -559,6 +612,7 @@ Apache-2.0. See [`LICENSE`][licence].
 [examples]: https://github.com/semanticpolicy/semantic-policy/blob/main/examples/README.md
 [adr-0003]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/adr/0003-evidence-semantics.md
 [adr-0005]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/adr/0005-evaluation-and-threshold-ownership.md
+[adr-0008]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/adr/0008-telemetry-and-content-logging.md
 [security]: https://github.com/semanticpolicy/semantic-policy/blob/main/SECURITY.md
 [threat-model]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/THREAT_MODEL.md
 [not-a-security-boundary]: https://github.com/semanticpolicy/semantic-policy#not-a-security-boundary
