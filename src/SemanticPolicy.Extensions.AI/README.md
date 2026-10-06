@@ -277,6 +277,8 @@ The package declares no `ActivitySource`, no `Meter` and no logger, and logs not
 prompt, not a tool argument, not a result. The one trace is the evaluator's `semanticpolicy.evaluate`
 activity, and the function call's id is the correlation id on the context, so the verdict ties back
 to the call it judged. The id is never derived from the content.
+[Telemetry](https://github.com/semanticpolicy/semantic-policy#telemetry) in the repository's README
+shows how to collect the activity, and the evaluator's metrics, with OpenTelemetry.
 
 ## When the evaluator throws
 
