@@ -159,7 +159,7 @@ the factory creates the `HttpClient` under it, and every verdict reports it as t
 
 | Option | |
 |---|---|
-| `o.Route` | Required. `TypeSafeJevRoute.TypeSafe` or `TypeSafeJevRoute.OpenRouter`; construct your own to reach another gateway or proxy with the same request and response shape. |
+| `o.Route` | Required. `TypeSafeJevRoute.TypeSafe` or `TypeSafeJevRoute.OpenRouter`; construct your own to reach Jev through another gateway or proxy with the same request and response shape. Every answer is reported as a calibrated probability, so another model belongs under [Any System One server][any-system-one-server]. |
 | `o.ApiKey` | The key. Leave it unset and it is read from the environment variable the route names — `TYPESAFE_API_KEY` or `OPENROUTER_API_KEY` — or from the one `o.ApiKeyVariable` names. Read once, when the evaluator is first resolved. |
 | `o.Model` | Overrides the model the route pins. A route pins a named version rather than a floating alias, because a threshold is measured against one model: `jev-1.13.0` direct, `typesafe/jev-1.13` through the gateway. |
 | `o.Timeout` | How long one call may take, ten seconds by default. Past it the provider reports a timeout, and the policy's `OnFailure` decides what that means. |
@@ -221,6 +221,9 @@ same treatment: loggers stripped, redirects off, its own timeout infinite, `o.Ti
 | `o.Path` | `/v1/systemone` by default. |
 | `o.Timeout` | Ten seconds by default, as for TypeSafe. |
 
+Every call asks the rule's question under the key `decision`, so a server that matches a question to
+a head it trained by name answers only from a head named `decision`.
+
 **Why a score, not a probability.** A server's number between 0 and 1 orders its answers, but
 nothing says that 0.8 is right four times in five. So the provider reports it as a score on the
 `systemone` scale, and a policy thresholds it with `WarnAboveScore`, `DenyAboveScore` and
@@ -230,6 +233,26 @@ resolved; it never reads a score as a probability ([ADR 0003][adr-0003]). Settin
 `o.Evidence = EvidenceKind.Probability` (from `SemanticPolicy.Protocol`) reports the same numbers on
 the `calibrated` scale. That is your claim that the server is calibrated, not the provider's: it
 checks nothing, so measure calibration on your own data before you make it.
+
+**Other models through OpenRouter.** OpenRouter's System One endpoint answers for several decision
+models besides Jev. Register them here, not with a `TypeSafeJevRoute` of your own, which would report
+their answers as calibrated probabilities:
+
+```csharp
+services.AddSemanticPolicy()
+    .AddSystemOne("pplx", o =>
+    {
+        o.BaseUrl = new Uri("https://openrouter.ai/api");
+        o.Model = "perplexity/pplx-decider-v1-27b"; // the name OpenRouter lists
+        o.ApiKeyVariable = "OPENROUTER_API_KEY";
+    })
+    .AddPolicy(policy);
+```
+
+On 7 October 2026, registered this way, `perplexity/pplx-decider-v1-27b` and `liquid/d1` answered
+every row of the evaluation CLI's smoke set and ranked its attacks above its benign rows at a
+ROC-AUC of 0.998 and 0.995; Jev's recorded run scores 1.000. On 94 rows that shows the route works,
+not which model is better.
 
 **Plain `http`.** Off loopback it sends your content, and your key if there is one, across the
 network in clear text. `o.AllowInsecureHttp = true` says in code that someone decided that, for a
@@ -241,7 +264,8 @@ longer is not sent, and the provider reports a rejected input. That is a failure
 with a second binding and `.OnFailure(FailureBehavior.Fallback(Verdict.Deny))`: a context too long
 for this server goes to the next binding, and the rule ends in `Deny` when none is left. Under
 `FailureBehavior.Allow`, anyone who pads an input past the limit skips the rule.
-[Local decision models][local-models] gives the limits a probe measured on Von and Laya.
+[Local decision models][local-models] gives the limits a probe measured on Von and Laya, and says
+which server refuses a context it would cut instead.
 
 ### Any protocol v0 server
 
@@ -351,7 +375,7 @@ the only thing between an untrusted input and a privileged action
 ([Not a security boundary][not-a-security-boundary]). On guard questions, the numbers above say
 today's local models do not reach that bar.
 
-[Local decision models][local-models] has the rest of the probe: where the three servers come from,
+[Local decision models][local-models] has the rest of the probe: where the four servers come from,
 how fast each answered, how well it ranked the smoke set, and where it stops reading a long context.
 
 ## Guarding an agent
