@@ -395,6 +395,11 @@ IChatClient guarded = new ChatClientBuilder(chatClient)
     .Build(serviceProvider);
 ```
 
+The tools an `McpClient` from the MCP C# SDK lists are `AIFunction`s, so the same two methods guard
+an MCP server's tools, with no extra SemanticPolicy package: put them in `ChatOptions.Tools`, and your
+handlers get each call before it reaches the server and each result before the model sees it, with
+the policy's verdict as a signal to act on.
+
 The guards await the verdict in every mode. There is no pre-model point: a chat client receives the
 whole history on every call, so there is no one input to judge. [The package's README][chat-client-readme]
 covers the order several guards run in, an invoker of your own, functions that need approval, and

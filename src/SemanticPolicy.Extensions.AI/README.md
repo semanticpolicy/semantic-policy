@@ -131,6 +131,14 @@ handler decided so — there is no mode in which the library overrides you.
 string-valued element for a method returning `string`, an object element with camel-cased property
 names for one returning an object.
 
+**The tools an `McpClient` from the MCP C# SDK lists are `AIFunction`s too**, so these handlers
+guard them with no extra package. The `ToolCall` carries the tool's name and description as the
+server declared them, and `ToolResult.Value` is what `McpClientTool` handed the loop:
+
+- for a plain result of one text block, a `TextContent` carrying that text;
+- for an error or a structured result, a `JsonElement` of the whole `CallToolResult`, with
+  `isError` or `structuredContent` among its properties.
+
 ## Pass a policy id, or the policy itself
 
 **A policy id**, as in the quick start: the evaluator and the policy come from the container passed

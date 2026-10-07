@@ -50,6 +50,12 @@
     <!-- AwesomeAssertions is the Apache-2.0 fork of FluentAssertions 7. FluentAssertions 8+ is
          commercially licensed and must not be referenced here. -->
     <PackageVersion Include="AwesomeAssertions" Version="9.6.0" />
+    <!-- The MCP C# SDK. tests/SemanticPolicy.Extensions.AI.Tests runs a real MCP client and server in
+         process with it, to show the tools an McpClient lists pass through the tool guards like any
+         other function. The client, the server, the stream transports and McpClientTool are all in
+         .Core; ModelContextProtocol on top of it adds only the hosting builder, which nothing here
+         uses, so it is not referenced. No project under src/ references either. Apache-2.0. -->
+    <PackageVersion Include="ModelContextProtocol.Core" Version="2.2.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
