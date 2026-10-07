@@ -64,6 +64,9 @@ internal static class ScriptedLoop
     public static ChatOptions With(params StubTool[] tools) =>
         new() { Tools = [.. tools.Select(tool => (AITool)tool.Function)] };
 
+    /// <summary>The options of one request, offering tools that came from elsewhere, unchanged.</summary>
+    public static ChatOptions With(IEnumerable<AITool> tools) => new() { Tools = [.. tools] };
+
     /// <summary>The arguments of a call that names one branch or tag.</summary>
     public static Dictionary<string, object?> Named(string name) =>
         new(StringComparer.Ordinal) { ["name"] = name };
