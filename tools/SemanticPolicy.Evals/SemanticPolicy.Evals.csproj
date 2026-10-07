@@ -41,6 +41,11 @@
     <ProjectReference Include="..\..\src\SemanticPolicy.Providers.TypeSafe\SemanticPolicy.Providers.TypeSafe.csproj" />
   </ItemGroup>
 
+  <!-- The providers file is read by the code the MCP gateway reads it with, so a file measured here runs there. -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Shared\ProvidersFileReader.cs" Link="Shared\ProvidersFileReader.cs" />
+  </ItemGroup>
+
   <!-- The shipped datasets travel as files beside the assembly, where `samples` reads them: in the build output, in a
        project that references this one, and through the publish directory in the tool package. Selected by extension
        and given an explicit lower-case path, because on a case-insensitive file system datasets\ is one folder with
