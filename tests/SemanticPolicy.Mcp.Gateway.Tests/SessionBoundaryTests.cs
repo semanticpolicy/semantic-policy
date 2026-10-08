@@ -61,7 +61,10 @@ public sealed class SessionBoundaryTests
         Func<Task> act = async () => await gateway.Host!.CallToolAsync(call, Token);
 
         await act.Should().ThrowAsync<McpException>();
-        upstream.Calls.Should().BeEmpty();
+
+        // An ordinary call afterwards shows what crossing looks like, so the one tools/call seen upstream is that one.
+        await gateway.Host!.CallToolAsync(ToolsUpstream.Lookup.Name, cancellationToken: Token);
+        gateway.UpstreamSide.SentRequests.Where(method => method == RequestMethods.ToolsCall).Should().ContainSingle();
     }
 
     [Theory]
@@ -113,21 +116,7 @@ public sealed class SessionBoundaryTests
     {
         TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        McpServerOptions upstream = new()
-        {
-            Handlers = new McpServerHandlers
-            {
-                ListToolsHandler = (_, _) => ValueTask.FromResult(new ListToolsResult { Tools = [ToolsUpstream.Lookup] }),
-                CallToolHandler = async (_, cancellationToken) =>
-                {
-                    using CancellationTokenRegistration registration = cancellationToken.Register(() => cancelled.TrySetResult());
-                    started.TrySetResult();
-                    await Task.Delay(Timeout.Infinite, cancellationToken);
-                    return new CallToolResult();
-                },
-            },
-        };
-        await using GatewayHarness gateway = await ConnectAsync(upstream);
+        await using GatewayHarness gateway = await ConnectAsync(HangingUpstream(started, cancelled));
         JsonRpcRequest call = new()
         {
             Id = new RequestId("call-a"),
@@ -162,6 +151,42 @@ public sealed class SessionBoundaryTests
         await gateway.UpstreamRun.WaitAsync(gateway.Deadline);
         gateway.Log.ToString().Should().BeEmpty();
     }
+
+    // The SDK's server stops reading when the host's input ends, but goes on waiting for the calls it is serving, and
+    // an upstream call may never be answered.
+    [Fact]
+    public async Task Host_Ending_The_Session_During_A_Call_Cancels_The_Upstream_Call_And_Ends_The_Gateway()
+    {
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using GatewayHarness gateway = await ConnectAsync(HangingUpstream(started, cancelled));
+        Task pending = gateway.Host!.CallToolAsync(ToolsUpstream.Lookup.Name, cancellationToken: Token).AsTask();
+        await started.Task.WaitAsync(gateway.Deadline);
+
+        await gateway.EndHostSessionAsync();
+
+        // The host that went away stopped waiting for its answer.
+        await pending.Awaiting(task => task).Should().ThrowAsync<OperationCanceledException>();
+        (await gateway.Gateway.WaitAsync(gateway.Deadline)).Should().Be(ExitCodes.Success);
+        await cancelled.Task.WaitAsync(gateway.Deadline);
+        gateway.Log.ToString().Should().BeEmpty();
+    }
+
+    // An upstream whose one tool never answers: it signals when a call starts and when that call is cancelled.
+    private static McpServerOptions HangingUpstream(TaskCompletionSource started, TaskCompletionSource cancelled) => new()
+    {
+        Handlers = new McpServerHandlers
+        {
+            ListToolsHandler = (_, _) => ValueTask.FromResult(new ListToolsResult { Tools = [ToolsUpstream.Lookup] }),
+            CallToolHandler = async (_, cancellationToken) =>
+            {
+                using CancellationTokenRegistration registration = cancellationToken.Register(() => cancelled.TrySetResult());
+                started.TrySetResult();
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+                return new CallToolResult();
+            },
+        },
+    };
 
     // Handlers that would answer each server-to-client request, so the host declares all three capabilities and
     // counts any such request that reaches it.

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Threading.Channels;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -9,6 +10,7 @@ namespace SemanticPolicy.Mcp.Gateway.Tests.Support;
 // stream transports leave their streams open on disposal, so the stop is the pipe closing.
 internal sealed class UpstreamTransport(IClientTransport inner, Action stopUpstream) : IClientTransport
 {
+    private readonly ConcurrentQueue<string> _sentRequests = new();
     private Session? _session;
 
     public string Name => inner.Name;
@@ -19,6 +21,10 @@ internal sealed class UpstreamTransport(IClientTransport inner, Action stopUpstr
     // Thrown by every send, as the stdio transport throws when the process has exited during the handshake.
     public Exception? SendFailure { get; set; }
 
+    // The method of each request the gateway sent upstream, in order. The upstream's server can refuse a request before
+    // any handler of the test's sees it, so this, not a handler's count, shows what crossed.
+    public IReadOnlyList<string> SentRequests => [.. _sentRequests];
+
     public async Task<ITransport> ConnectAsync(CancellationToken cancellationToken = default)
     {
         if (ConnectFailure is not null)
@@ -26,7 +32,7 @@ internal sealed class UpstreamTransport(IClientTransport inner, Action stopUpstr
             throw ConnectFailure;
         }
 
-        _session = new Session(await inner.ConnectAsync(cancellationToken), SendFailure, stopUpstream);
+        _session = new Session(await inner.ConnectAsync(cancellationToken), SendFailure, _sentRequests, stopUpstream);
         return _session;
     }
 
@@ -38,14 +44,16 @@ internal sealed class UpstreamTransport(IClientTransport inner, Action stopUpstr
     {
         private readonly ITransport _inner;
         private readonly Exception? _sendFailure;
+        private readonly ConcurrentQueue<string> _sentRequests;
         private readonly Action _stop;
         private readonly Channel<JsonRpcMessage> _messages = Channel.CreateUnbounded<JsonRpcMessage>();
         private readonly Task _pump;
 
-        public Session(ITransport inner, Exception? sendFailure, Action stop)
+        public Session(ITransport inner, Exception? sendFailure, ConcurrentQueue<string> sentRequests, Action stop)
         {
             _inner = inner;
             _sendFailure = sendFailure;
+            _sentRequests = sentRequests;
             _stop = stop;
             _pump = PumpAsync();
         }
@@ -54,8 +62,15 @@ internal sealed class UpstreamTransport(IClientTransport inner, Action stopUpstr
 
         public ChannelReader<JsonRpcMessage> MessageReader => _messages.Reader;
 
-        public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default) =>
-            _sendFailure is null ? _inner.SendMessageAsync(message, cancellationToken) : Task.FromException(_sendFailure);
+        public Task SendMessageAsync(JsonRpcMessage message, CancellationToken cancellationToken = default)
+        {
+            if (message is JsonRpcRequest request)
+            {
+                _sentRequests.Enqueue(request.Method);
+            }
+
+            return _sendFailure is null ? _inner.SendMessageAsync(message, cancellationToken) : Task.FromException(_sendFailure);
+        }
 
         public void Fail(Exception exception) => _messages.Writer.TryComplete(exception);
 

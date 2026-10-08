@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using SemanticPolicy.Mcp.Gateway.Tests.Support;
@@ -112,6 +113,27 @@ public sealed class PassThroughTests
             default:
                 throw new ArgumentOutOfRangeException(nameof(primitive));
         }
+    }
+
+    // The host's own client words an error response once, as it would the upstream's answer to it directly.
+    [Fact]
+    public async Task Upstream_Error_Response_Reaches_The_Host_Unchanged()
+    {
+        McpServerOptions options = new ToolsUpstream([ToolsUpstream.Lookup]).Options();
+        options.Handlers.CallToolHandler = (request, _) =>
+        {
+            McpProtocolException refusal = new($"Unknown tool: '{request.Params!.Name}'", McpErrorCode.InvalidParams);
+            refusal.Data["detail"] = "detail-a";
+            throw refusal;
+        };
+        await using GatewayHarness gateway = await ConnectAsync(options);
+
+        Func<Task> act = async () => await gateway.Host!.CallToolAsync("tool-x", cancellationToken: Token);
+
+        McpProtocolException seen = (await act.Should().ThrowAsync<McpProtocolException>()).Which;
+        seen.Message.Should().Be("Request failed (remote): Unknown tool: 'tool-x'");
+        seen.ErrorCode.Should().Be(McpErrorCode.InvalidParams);
+        seen.Data["detail"].Should().Be("detail-a");
     }
 
     [Fact]

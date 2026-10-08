@@ -1,3 +1,4 @@
+using System.Collections;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
@@ -24,6 +25,9 @@ public static class GatewayProxy
         NotificationMethods.PromptListChangedNotification,
         NotificationMethods.ResourceUpdatedNotification,
     ];
+
+    // What the SDK's client puts in front of the message of an error response it was sent.
+    private const string _remoteFailure = "Request failed (remote): ";
 
     // Strings, so they never meet the numbers the SDK's client gives the requests it sends on its own.
     private static long _lastRequestId;
@@ -110,9 +114,22 @@ public static class GatewayProxy
         try
         {
             Task run = server.RunAsync(serving.Token);
-            if (await Task.WhenAny(run, client.Completion).ConfigureAwait(false) == run)
+            Task<ClientCompletionDetails> upstreamEnded = client.Completion;
+            if (await Task.WhenAny(run, host.MessageReader.Completion, upstreamEnded).ConfigureAwait(false) != upstreamEnded)
             {
-                await run.ConfigureAwait(false);
+                // The host ended its session, or serving was stopped from outside. The server stops reading when the
+                // host's input ends but goes on waiting for the calls it is serving, so stopping it cancels them, and
+                // each cancelled call tells the upstream.
+                await serving.CancelAsync().ConfigureAwait(false);
+                try
+                {
+                    await run.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Serving stopped because the session had ended.
+                }
+
                 return ExitCodes.Success;
             }
 
@@ -222,6 +239,18 @@ public static class GatewayProxy
                     request.Params,
                     requestId: id,
                     cancellationToken: cancellationToken).ConfigureAwait(false);
+            }
+            catch (McpProtocolException failure) when (failure.Message.StartsWith(_remoteFailure, StringComparison.Ordinal))
+            {
+                // The upstream's error goes on as the upstream sent it: its code, its data and its own message, without
+                // the words the SDK's client put in front of it, which the host's client puts there again.
+                McpProtocolException forwarded = new(failure.Message[_remoteFailure.Length..], failure, failure.ErrorCode);
+                foreach (DictionaryEntry entry in failure.Data)
+                {
+                    forwarded.Data[entry.Key] = entry.Value;
+                }
+
+                throw forwarded;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

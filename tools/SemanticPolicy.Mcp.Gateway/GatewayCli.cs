@@ -72,6 +72,11 @@ public static class GatewayCli
         {
             problems.Add($"The upstream command is missing; give the MCP server's command line after {_separator}.");
         }
+        else if (string.IsNullOrWhiteSpace(upstream[0]))
+        {
+            // What a host configuration gives when it fills the command from a variable that is not set.
+            problems.Add($"The upstream command is empty; give the MCP server's command line after {_separator}.");
+        }
 
         if (problems.Count > 0)
         {
