@@ -105,6 +105,26 @@ public sealed class GatewayFileTests
     }
 
     [Fact]
+    public void One_Policy_File_Spelled_Two_Ways_Serves_Both_Points_On_Windows()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "only Windows compares file paths without regard to case.");
+        using Workspace workspace = Workspace.Create();
+        workspace.Write("providers.json", Layout.Valid.Providers);
+        workspace.Write("guard.json", Policy("shared-guard"));
+        string gateway = workspace.Write(
+            "gateway.json",
+            Object(
+                "\"providers\": \"providers.json\"",
+                "\"results\": " + Object("\"policy\": \"guard.json\"", ResultsWarn, ResultsEscalate, ResultsDeny, ResultsAbstain),
+                "\"definitions\": " + Object("\"policy\": \"GUARD.json\"", DefinitionsWarn, DefinitionsEscalate, DefinitionsDeny, DefinitionsAbstain)));
+
+        GatewayComposition composition = GatewayComposition.Compose(gateway);
+
+        composition.Results!.Policy.Id.Should().Be("shared-guard");
+        composition.Definitions!.Policy.Id.Should().Be("shared-guard");
+    }
+
+    [Fact]
     public void Gateway_File_With_No_Point_Composes_And_Screens_Nothing()
     {
         using Workspace workspace = Workspace.Create();

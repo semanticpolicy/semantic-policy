@@ -210,7 +210,7 @@ public sealed class GatewayComposition
         // names the policy, unable to tell them apart.
         if (points is [var first, var second]
             && first.Point.Policy.Id == second.Point.Policy.Id
-            && first.Entry.PolicyPath != second.Entry.PolicyPath)
+            && !PathComparer.Equals(first.Entry.PolicyPath, second.Entry.PolicyPath))
         {
             throw new GatewayException(
                 $"Gateway file '{gatewayPath}': {second.Entry.Name}.policy '{second.Entry.PolicyPath}' holds policy '{second.Point.Policy.Id}', as {first.Entry.Name}.policy '{first.Entry.PolicyPath}' does; give each policy its own id.");
@@ -218,7 +218,7 @@ public sealed class GatewayComposition
 
         try
         {
-            return new PolicyEvaluator(providers, points.DistinctBy(loaded => loaded.Entry.PolicyPath).Select(loaded => loaded.Point.Policy));
+            return new PolicyEvaluator(providers, points.DistinctBy(loaded => loaded.Entry.PolicyPath, PathComparer).Select(loaded => loaded.Point.Policy));
         }
         catch (PolicyConfigurationException failure)
         {
@@ -236,6 +236,9 @@ public sealed class GatewayComposition
             $"line {e.LineNumber + 1 ?? 1}, byte {e.BytePositionInLine + 1 ?? 1}");
         return e.Path is null or "$" ? position : $"{position}, in {e.Path}";
     }
+
+    // Windows filesystems treat two spellings of one path as the same file, and GetFullPath keeps the spelling given.
+    private static StringComparer PathComparer { get; } = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
     private sealed record Loaded(PointEntry Entry, GatewayPoint Point);
 
