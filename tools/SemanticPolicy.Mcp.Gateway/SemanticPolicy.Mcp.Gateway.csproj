@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <Description>The semantic-policy-mcp command: a gateway between an MCP host and one MCP server, which screens the server's tool results and tool definitions with SemanticPolicy policies and acts on each verdict as its gateway file says.</Description>
+    <PackageTags>$(PackageTags);mcp;model-context-protocol;gateway;cli;dotnet-tool</PackageTags>
+  </PropertyGroup>
+
+  <!-- Packed as a dotnet tool: one framework-dependent package that carries Core, Http, SystemOne and TypeSafe as
+       assemblies beside its own, with their .pdb files, and declares no NuGet dependency. That leaves the symbol
+       package Directory.Build.props asks of every project nothing to carry, so the tool has none. -->
+  <PropertyGroup>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>semantic-policy-mcp</ToolCommandName>
+    <PackageId>SemanticPolicy.Mcp.Gateway</PackageId>
+    <RollForward>Major</RollForward>
+    <IncludeSymbols>false</IncludeSymbols>
+  </PropertyGroup>
+
+  <!-- English only: help's headings, such as "Options:", come from System.CommandLine, whose translations would print
+       them in the user's display language beside the tool's English descriptions. -->
+  <PropertyGroup>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="System.CommandLine" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
+    <ProjectReference Include="..\..\src\SemanticPolicy.Providers.Http\SemanticPolicy.Providers.Http.csproj" />
+    <ProjectReference Include="..\..\src\SemanticPolicy.Providers.SystemOne\SemanticPolicy.Providers.SystemOne.csproj" />
+    <ProjectReference Include="..\..\src\SemanticPolicy.Providers.TypeSafe\SemanticPolicy.Providers.TypeSafe.csproj" />
+  </ItemGroup>
+
+  <!-- The providers file is read by the code the evaluation tool reads it with, so a file measured there runs here. -->
+  <ItemGroup>
+    <Compile Include="..\..\src\Shared\ProvidersFileReader.cs" Link="Shared\ProvidersFileReader.cs" />
+  </ItemGroup>
+
+</Project>

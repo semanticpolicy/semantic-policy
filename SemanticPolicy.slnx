@@ -23,9 +23,11 @@
     <Project Path="tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj" />
     <Project Path="tests/SemanticPolicy.Extensions.AI.Tests/SemanticPolicy.Extensions.AI.Tests.csproj" />
     <Project Path="tests/SemanticPolicy.FluentValidation.Tests/SemanticPolicy.FluentValidation.Tests.csproj" />
+    <Project Path="tests/SemanticPolicy.Mcp.Gateway.Tests/SemanticPolicy.Mcp.Gateway.Tests.csproj" />
     <Project Path="tests/SemanticPolicy.Providers.ContractTests/SemanticPolicy.Providers.ContractTests.csproj" />
   </Folder>
   <Folder Name="/tools/">
     <Project Path="tools/SemanticPolicy.Evals/SemanticPolicy.Evals.csproj" />
+    <Project Path="tools/SemanticPolicy.Mcp.Gateway/SemanticPolicy.Mcp.Gateway.csproj" />
   </Folder>
 </Solution>
