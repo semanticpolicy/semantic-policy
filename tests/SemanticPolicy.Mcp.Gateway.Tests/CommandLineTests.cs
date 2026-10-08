@@ -8,6 +8,7 @@ public sealed class CommandLineTests
     [InlineData("no --gateway", "--gateway")]
     [InlineData("nothing after --", "upstream command")]
     [InlineData("no -- at all", "upstream command")]
+    [InlineData("blank command after --", "upstream command")]
     public async Task Command_Line_Without_A_Gateway_File_Or_An_Upstream_Command_Is_Refused(string defect, string named)
     {
         using Workspace workspace = Workspace.Create();
@@ -17,6 +18,7 @@ public sealed class CommandLineTests
             "no --gateway" => ["--", "upstream-server", "--stdio"],
             "nothing after --" => ["--gateway", gateway, "--"],
             "no -- at all" => ["--gateway", gateway, "upstream-server"],
+            "blank command after --" => ["--gateway", gateway, "--", " ", "--stdio"],
             _ => throw new ArgumentOutOfRangeException(nameof(defect)),
         };
 

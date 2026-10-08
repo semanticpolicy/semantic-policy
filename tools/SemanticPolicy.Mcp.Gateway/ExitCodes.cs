@@ -17,4 +17,16 @@ public static class ExitCodes
     /// message says which. Nothing was started.
     /// </summary>
     public const int Configuration = 2;
+
+    /// <summary>
+    /// The upstream server could not be started, did not complete the MCP handshake, or ended while the gateway was
+    /// serving; the message names the step, never the server's own messages.
+    /// </summary>
+    public const int UpstreamFailure = 3;
+
+    /// <summary>
+    /// The gateway stopped on an error of its own. The message says no more, because an error's text can carry what
+    /// passed through the gateway.
+    /// </summary>
+    public const int Unexpected = 4;
 }
