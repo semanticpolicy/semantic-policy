@@ -17,7 +17,8 @@ public sealed class GatewayComposition
     private const string _timeoutRefusal =
         "a call is limited by the budget of the policy that makes it, so set budget in the policy file";
 
-    private GatewayComposition(
+    // The tests serve a composition over a scripted provider through this; the gateway builds one only through Compose.
+    internal GatewayComposition(
         IPolicyEvaluator evaluator,
         GatewayPoint? results,
         GatewayPoint? definitions,

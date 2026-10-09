@@ -44,6 +44,13 @@
     <!-- System.CommandLine (MIT) parses the verbs and options of tools/SemanticPolicy.Evals. Nothing
          under src/ references it. -->
     <PackageVersion Include="System.CommandLine" Version="2.0.12" />
+    <!-- tools/SemanticPolicy.Mcp.Gateway builds a tracer and a meter provider over the evaluator's own
+         activity source and meter when its environment names an OTLP endpoint. Nothing under src/
+         references it: a library emits, and its application chooses an exporter. Apache-2.0. -->
+    <PackageVersion Include="OpenTelemetry" Version="1.19.1" />
+    <!-- The exporter those providers send through, configured by the OTEL_EXPORTER_OTLP_ variables the
+         gateway reads. Apache-2.0. -->
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.19.1" />
   </ItemGroup>
 
   <ItemGroup Label="Testing">

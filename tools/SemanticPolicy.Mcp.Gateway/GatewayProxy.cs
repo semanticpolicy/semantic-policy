@@ -33,28 +33,54 @@ public static class GatewayProxy
     private static long _lastRequestId;
 
     /// <summary>
-    /// Opens the upstream session, then serves the host until the host ends its session or the upstream ends.
+    /// Opens the upstream session, then serves the host until the host ends its session or the upstream ends, screening
+    /// tool results and tool definitions with the composition's points.
     /// </summary>
     /// <param name="command">The upstream server's command, for the gateway's own messages. Never its arguments.</param>
     /// <param name="host">The host's side: the gateway serves on it.</param>
     /// <param name="upstream">The upstream server's side: the gateway is its client.</param>
-    /// <param name="log">The gateway's stderr.</param>
+    /// <param name="composition">The screening points and the evaluator behind them.</param>
+    /// <param name="log">The gateway's stderr: one metadata line per evaluation, and its failure messages.</param>
+    /// <param name="environment">
+    /// The gateway's environment, as <see cref="Environment.GetEnvironmentVariables()"/> returns it. Its OTLP variables
+    /// decide whether the evaluator's telemetry is exported.
+    /// </param>
     /// <param name="cancellationToken">Stops serving.</param>
     /// <returns>
     /// <see cref="ExitCodes.Success"/> when the host ends the session, <see cref="ExitCodes.UpstreamFailure"/> when the
     /// upstream fails to start or ends first.
     /// </returns>
-    public static async Task<int> RunAsync(
+    public static Task<int> RunAsync(
         string command,
         ITransport host,
         IClientTransport upstream,
+        GatewayComposition composition,
         TextWriter log,
-        CancellationToken cancellationToken = default)
+        IDictionary environment,
+        CancellationToken cancellationToken = default) =>
+        RunAsync(command, host, upstream, composition, log, environment, callWaiting: null, cancellationToken);
+
+    // callWaiting is told the tool's name each time a host call starts waiting on a definition's verdict, which nothing
+    // outside the gateway can observe.
+    internal static async Task<int> RunAsync(
+        string command,
+        ITransport host,
+        IClientTransport upstream,
+        GatewayComposition composition,
+        TextWriter log,
+        IDictionary environment,
+        Action<string>? callWaiting,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(upstream);
+        ArgumentNullException.ThrowIfNull(composition);
         ArgumentNullException.ThrowIfNull(log);
+        ArgumentNullException.ThrowIfNull(environment);
+
+        // Disposed on the way out, which flushes the last batch of spans before the process ends.
+        using GatewayTelemetry? telemetry = GatewayTelemetry.Start(environment);
 
         // A failure is reported in the gateway's words and nothing of the exception: the SDK's message for a child that
         // exited, and the exceptions inside it, carry the child's last stderr lines.
@@ -90,7 +116,7 @@ public static class GatewayProxy
 
         await using (client)
         {
-            return await ServeAsync(command, host, client, log, cancellationToken).ConfigureAwait(false);
+            return await ServeAsync(command, host, client, composition, log, callWaiting, cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -98,10 +124,14 @@ public static class GatewayProxy
         string command,
         ITransport host,
         McpClient client,
+        GatewayComposition composition,
         TextWriter log,
+        Action<string>? callWaiting,
         CancellationToken cancellationToken)
     {
-        await using McpServer server = McpServer.Create(host, ServerOptions(client));
+        using CancellationTokenSource serving = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        ToolScreening screening = new(composition, log, callWaiting, serving.Token);
+        await using McpServer server = McpServer.Create(host, ServerOptions(client, screening));
 
         // A handler the server serves never announces a list change itself, so the upstream's announcements are
         // re-sent through the server.
@@ -110,7 +140,6 @@ public static class GatewayProxy
             (notification, token) => new ValueTask(server.SendMessageAsync(
                 new JsonRpcNotification { Method = notification.Method, Params = notification.Params?.DeepClone() },
                 token))))];
-        using CancellationTokenSource serving = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
         {
             Task run = server.RunAsync(serving.Token);
@@ -176,14 +205,14 @@ public static class GatewayProxy
 
     // The host is offered the upstream's own identity, instructions and capabilities, and a handler only for what the
     // upstream declared, because the server declares a capability for every handler it is given.
-    private static McpServerOptions ServerOptions(McpClient upstream)
+    private static McpServerOptions ServerOptions(McpClient upstream, ToolScreening screening)
     {
         ServerCapabilities declared = upstream.ServerCapabilities;
         McpServerHandlers handlers = new();
         if (declared.Tools is not null)
         {
-            handlers.ListToolsHandler = Forward<ListToolsRequestParams, ListToolsResult>(upstream, RequestMethods.ToolsList);
-            handlers.CallToolHandler = Forward<CallToolRequestParams, CallToolResult>(upstream, RequestMethods.ToolsCall);
+            handlers.ListToolsHandler = screening.List(Forward<ListToolsRequestParams, ListToolsResult>(upstream, RequestMethods.ToolsList));
+            handlers.CallToolHandler = screening.Call(Forward<CallToolRequestParams, CallToolResult>(upstream, RequestMethods.ToolsCall));
         }
 
         if (declared.Resources is not null)
