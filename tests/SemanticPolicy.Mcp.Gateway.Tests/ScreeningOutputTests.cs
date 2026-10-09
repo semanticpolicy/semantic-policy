@@ -118,6 +118,45 @@ public sealed class ScreeningOutputTests
         exported.Should().NotContainAny(_canaries);
     }
 
+    // A signal's own endpoint is used as it is given, with nothing appended, and under that signal's own protocol.
+    [Theory]
+    [InlineData("TRACES", "/collector-a/traces")]
+    [InlineData("METRICS", "/collector-a/metrics")]
+    public async Task Otlp_Export_Goes_To_A_Signals_Own_Endpoint(string signal, string path)
+    {
+        using OtlpStub stub = OtlpStub.Start();
+        Dictionary<string, string> environment = new(StringComparer.Ordinal)
+        {
+            [$"OTEL_EXPORTER_OTLP_{signal}_ENDPOINT"] = stub.Endpoint + path,
+            [$"OTEL_EXPORTER_OTLP_{signal}_PROTOCOL"] = "http/protobuf",
+        };
+        await using GatewayHarness gateway = await ConnectAsync(
+            Canaries().Options(),
+            composition: CanaryComposition(new ScriptedDecisionProvider()),
+            environment: environment);
+
+        await gateway.Host!.ListToolsAsync(new ListToolsRequestParams(), Token);
+        await gateway.EndHostSessionAsync();
+        await gateway.Gateway.WaitAsync(gateway.Deadline);
+
+        stub.Paths.Should().NotBeEmpty().And.OnlyContain(received => received == path);
+    }
+
+    // The protocol allows a blank string as a request's id. The evaluations go on under it, and the lines name it.
+    [Fact]
+    public async Task Requests_Under_A_Blank_Id_Are_Screened_And_Their_Lines_Carry_It()
+    {
+        ScriptedDecisionProvider provider = new();
+        await using GatewayHarness gateway = await ConnectAsync(Canaries().Options(), composition: CanaryComposition(provider));
+
+        await SendAsync(gateway, "", RequestMethods.ToolsList, new ListToolsRequestParams());
+        await SendAsync(gateway, " ", RequestMethods.ToolsCall, new CallToolRequestParams { Name = _toolName });
+
+        provider.Requests.Should().HaveCount(2);
+        gateway.LogLines.Select(line => JsonSerializer.Deserialize<JsonElement>(line).GetProperty("correlationId").GetString())
+            .Should().Equal("", " ");
+    }
+
     [Theory]
     [InlineData(null, "", false, false)]
     [InlineData("OTEL_EXPORTER_OTLP_ENDPOINT", " ", false, false)]

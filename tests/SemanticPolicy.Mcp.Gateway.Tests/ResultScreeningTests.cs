@@ -1,5 +1,7 @@
 using System.Text.Json;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 using SemanticPolicy.Mcp.Gateway.Tests.Support;
 using SemanticPolicy.Protocol;
 using static SemanticPolicy.Mcp.Gateway.Tests.Support.GatewayHarness;
@@ -146,6 +148,51 @@ public sealed class ResultScreeningTests
 
         received.IsError.Should().Be(expected.IsError);
         Wire(received).Should().Be(Wire(expected));
+    }
+
+    // An upstream can answer a call with an error instead of a result, and a host may hand the error's message to the
+    // model as it would a result's text.
+    [Theory]
+    [InlineData("pass", true)]
+    [InlineData("annotate", true)]
+    [InlineData("withhold", true)]
+    [InlineData("pass", false)]
+    public async Task Upstream_Error_Answering_A_Call_Is_Screened_And_Gets_The_Operators_Action(string action, bool data)
+    {
+        MappedAction warn = action switch
+        {
+            "pass" => Screens.Pass,
+            "annotate" => Screens.Annotate,
+            _ => Screens.Withhold,
+        };
+        McpServerOptions options = new ScriptedUpstream().Options();
+        options.Handlers.CallToolHandler = (_, _) =>
+        {
+            McpProtocolException refusal = new("error-a", McpErrorCode.InvalidParams);
+            if (data)
+            {
+                refusal.Data["detail"] = "detail-a";
+            }
+
+            throw refusal;
+        };
+        ScriptedDecisionProvider provider = new ScriptedDecisionProvider().Answers(ScriptedDecisionProvider.Warned);
+        await using GatewayHarness gateway = await ConnectAsync(options, composition: Screens.Composition(provider, results: Screens.Results(warn)));
+
+        Func<Task> act = async () => await gateway.Host!.CallToolAsync(new CallToolRequestParams { Name = _toolName }, Token);
+
+        McpProtocolException seen = (await act.Should().ThrowAsync<McpProtocolException>()).Which;
+        Compact(provider.Requests.Should().ContainSingle().Subject.Context.GetProperty("result")).Should().Be(
+            data ? """{"message":"error-a","data":{"detail":"detail-a"}}""" : "\"error-a\"");
+        seen.ErrorCode.Should().Be(McpErrorCode.InvalidParams);
+        seen.Message.Should().Be("Request failed (remote): " + action switch
+        {
+            "annotate" => Screens.AnnotateMessage + "\nerror-a",
+            "withhold" => Screens.WithholdMessage,
+            _ => "error-a",
+        });
+        seen.Data.Contains("detail").Should().Be(data && action != "withhold");
+        JsonDocument.Parse(gateway.LogLines.Should().ContainSingle().Subject).RootElement.GetProperty("action").GetString().Should().Be(action);
     }
 
     [Theory]

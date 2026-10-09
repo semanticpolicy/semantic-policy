@@ -1,7 +1,10 @@
 using System.Buffers;
+using System.Collections;
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 using SemanticPolicy.Evaluation;
@@ -19,12 +22,13 @@ namespace SemanticPolicy.Mcp.Gateway;
 // newer definition. A page is not the whole catalogue: a name missing from one keeps its state.
 internal sealed class ToolScreening(GatewayComposition composition, TextWriter log, Action<string>? callWaiting, CancellationToken lifetime)
 {
-    // A ToolCall needs its arguments, but neither context the gateway builds carries them.
-    private static readonly JsonElement _noArguments = JsonSerializer.SerializeToElement(new Dictionary<string, object>());
-
     // Guards both maps, so a call's admission and a page's publication happen in one order.
     private readonly Lock _lock = new();
     private readonly Lock _logLock = new();
+
+    // One upstream list at a time, from sending it to publishing its page, so pages publish in the order the upstream
+    // answered them. Two answers read back to back would otherwise publish in whichever order their handlers resume.
+    private readonly SemaphoreSlim _listing = new(1, 1);
     private readonly Dictionary<Definition, Task<MappedAction>> _verdicts = [];
 
     // The definition each name was most recently listed with: what names a tool in a result's context, and what admits a
@@ -34,8 +38,19 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult> List(McpRequestHandler<ListToolsRequestParams, ListToolsResult> forward) =>
         async (request, cancellationToken) =>
         {
-            ListToolsResult page = await forward(request, cancellationToken).ConfigureAwait(false);
-            Task<MappedAction>?[] verdicts = Publish(page.Tools, CorrelationId(request));
+            ListToolsResult page;
+            Task<MappedAction>?[] verdicts;
+            await _listing.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                page = await forward(request, cancellationToken).ConfigureAwait(false);
+                verdicts = Publish(page.Tools, CorrelationId(request));
+            }
+            finally
+            {
+                _listing.Release();
+            }
+
             if (composition.Definitions is null)
             {
                 return page;
@@ -56,13 +71,32 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
                 return refused;
             }
 
-            CallToolResult result = await forward(request, cancellationToken).ConfigureAwait(false);
-            return composition.Results is { } point && name is not null
-                ? await ScreenResultAsync(point, name, result, CorrelationId(request), cancellationToken).ConfigureAwait(false)
-                : result;
+            if (composition.Results is not { } point || name is null)
+            {
+                return await forward(request, cancellationToken).ConfigureAwait(false);
+            }
+
+            CallToolResult result;
+            try
+            {
+                result = await forward(request, cancellationToken).ConfigureAwait(false);
+            }
+            catch (McpProtocolException error)
+            {
+                // An error answering the call carries text a host may hand the model as it would a result's.
+                if (await ScreenErrorAsync(point, name, error, CorrelationId(request), cancellationToken).ConfigureAwait(false) is { } replaced)
+                {
+                    throw replaced;
+                }
+
+                throw;
+            }
+
+            return await ScreenResultAsync(point, name, result, CorrelationId(request), cancellationToken).ConfigureAwait(false);
         };
 
-    // The host's JSON-RPC id, so a line and a span join the host's own log of the request.
+    // The host's JSON-RPC id, so a line and a span join the host's own log of the request. A blank one, which the
+    // protocol allows, is kept as it is.
     private static string CorrelationId<TParams>(RequestContext<TParams> request) => request.JsonRpcRequest.Id.ToString();
 
     // Makes each tool on the page its name's current definition, and returns each one's verdict, started now unless an
@@ -81,7 +115,7 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
                     Definition definition = new(tool.Name, tool.Description, tool.InputSchema.GetRawText());
                     if (!_verdicts.TryGetValue(definition, out Task<MappedAction>? verdict))
                     {
-                        verdict = Task.Run(() => ScreenDefinitionAsync(point, tool, correlationId), CancellationToken.None);
+                        verdict = Task.Run(() => ScreenDefinitionAsync(point, definition, tool, correlationId), CancellationToken.None);
                         _verdicts.Add(definition, verdict);
                     }
 
@@ -129,17 +163,28 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
         }
     }
 
-    // Runs on the gateway's lifetime, never on a list's token, so a list the host cancels leaves it to finish.
-    private async Task<MappedAction> ScreenDefinitionAsync(GatewayPoint point, Tool tool, string correlationId)
+    // Runs on the gateway's lifetime, never on a list's token, so a list the host cancels leaves it to finish. An
+    // evaluation that throws leaves the cache, so the next list that holds the definition evaluates it again instead of
+    // failing on the same exception. The removal waits for the lock Publish holds, so the entry is in the cache by then.
+    private async Task<MappedAction> ScreenDefinitionAsync(GatewayPoint point, Definition definition, Tool tool, string correlationId)
     {
-        SemanticContext call = new ToolCall(tool.Name, tool.Description, _noArguments, [], correlationId).ToSemanticContext();
-        SemanticContext context = new(
-            [call.Parts.Single(part => part.Name == "tool"), ContextPart.Json("input_schema", tool.InputSchema)],
-            correlationId);
-        (PolicyVerdict verdict, TimeSpan latency) = await EvaluateAsync(point, context, lifetime).ConfigureAwait(false);
-        MappedAction action = Act(point, verdict.Effective);
-        Log("definition", point, tool.Name, verdict, action.Action, latency, correlationId, unscreened: null);
-        return action;
+        try
+        {
+            SemanticContext context = new([ToolPart(tool.Name, tool.Description), ContextPart.Json("input_schema", tool.InputSchema)], correlationId);
+            (PolicyVerdict verdict, TimeSpan latency) = await EvaluateAsync(point, context, lifetime).ConfigureAwait(false);
+            MappedAction action = Act(point, verdict.Effective);
+            Log("definition", point, tool.Name, verdict, action.Action, latency, correlationId, unscreened: null);
+            return action;
+        }
+        catch (Exception)
+        {
+            lock (_lock)
+            {
+                _verdicts.Remove(definition);
+            }
+
+            throw;
+        }
     }
 
     private static bool Hides(MappedAction action) => action.Action switch
@@ -156,24 +201,14 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
         string correlationId,
         CancellationToken cancellationToken)
     {
-        (object? value, bool unscreened) = Screenable(result);
-        if (value is null)
+        (ContextPart? part, bool unscreened) = Screenable(result);
+        if (part is null)
         {
             Log("result", point, name, verdict: null, GatewayAction.Pass, latency: null, correlationId, unscreened);
             return result;
         }
 
-        string? description;
-        lock (_lock)
-        {
-            description = _current.GetValueOrDefault(name)?.Description;
-        }
-
-        SemanticContext full = new ToolResult(new ToolCall(name, description, _noArguments, [], correlationId), value).ToSemanticContext();
-        SemanticContext context = new([.. full.Parts.Where(part => part.Name != "user_request")], full.CorrelationId);
-        (PolicyVerdict verdict, TimeSpan latency) = await EvaluateAsync(point, context, cancellationToken).ConfigureAwait(false);
-        MappedAction action = Act(point, verdict.Effective);
-        Log("result", point, name, verdict, action.Action, latency, correlationId, unscreened);
+        MappedAction action = await ScreenAsync(point, name, part, correlationId, unscreened, cancellationToken).ConfigureAwait(false);
         switch (action.Action)
         {
             case GatewayAction.Pass:
@@ -191,10 +226,94 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
         }
     }
 
+    // Null lets the error go on as it is. Otherwise the error the host receives instead: it stays an error with the
+    // upstream's code, and an action changes only its text, as it does a result's. Withheld, nothing of the upstream's
+    // error goes on but its code.
+    private async Task<McpProtocolException?> ScreenErrorAsync(
+        GatewayPoint point,
+        string name,
+        McpProtocolException error,
+        string correlationId,
+        CancellationToken cancellationToken)
+    {
+        MappedAction action = await ScreenAsync(point, name, Screenable(error), correlationId, unscreened: false, cancellationToken).ConfigureAwait(false);
+        switch (action.Action)
+        {
+            case GatewayAction.Pass:
+                return null;
+            case GatewayAction.Annotate:
+                McpProtocolException annotated = new($"{action.Message}\n{error.Message}", error, error.ErrorCode);
+                foreach (DictionaryEntry entry in error.Data)
+                {
+                    annotated.Data[entry.Key] = entry.Value;
+                }
+
+                return annotated;
+            case GatewayAction.Withhold:
+                return new McpProtocolException(action.Message!, error.ErrorCode);
+            default:
+                throw new UnreachableException($"The gateway file gave a result the action {action.Action}.");
+        }
+    }
+
+    // Evaluates one result on the result point, under the tool its name's current definition describes, and writes the
+    // line.
+    private async Task<MappedAction> ScreenAsync(
+        GatewayPoint point,
+        string name,
+        ContextPart result,
+        string correlationId,
+        bool unscreened,
+        CancellationToken cancellationToken)
+    {
+        string? description;
+        lock (_lock)
+        {
+            description = _current.GetValueOrDefault(name)?.Description;
+        }
+
+        SemanticContext context = new([ToolPart(name, description), result], correlationId);
+        (PolicyVerdict verdict, TimeSpan latency) = await EvaluateAsync(point, context, cancellationToken).ConfigureAwait(false);
+        MappedAction action = Act(point, verdict.Effective);
+        Log("result", point, name, verdict, action.Action, latency, correlationId, unscreened);
+        return action;
+    }
+
+    // The tool part a ToolCall's context carries: the name and, only when there is one, the description. It is built
+    // here because a ToolCall refuses a blank name, which an upstream can list and a host can call.
+    private static ContextPart ToolPart(string name, string? description)
+    {
+        JsonObject tool = new() { ["name"] = name };
+        if (!string.IsNullOrEmpty(description))
+        {
+            tool["description"] = description;
+        }
+
+        return ContextPart.Json("tool", JsonSerializer.SerializeToElement(tool));
+    }
+
+    // What the host receives of an error besides its code: the message alone, or, when the error carries data, the
+    // message and the data's string-keyed entries, the only ones the server sends on, as one JSON object.
+    private static ContextPart Screenable(McpProtocolException error)
+    {
+        Dictionary<string, object?> data = [];
+        foreach (DictionaryEntry entry in error.Data)
+        {
+            if (entry.Key is string key)
+            {
+                data[key] = entry.Value;
+            }
+        }
+
+        return data.Count == 0
+            ? ContextPart.Text("result", error.Message)
+            : ContextPart.Json("result", JsonSerializer.SerializeToElement(new { message = error.Message, data }, JsonSerializerOptions.Web));
+    }
+
     // Every text the model may read, in order: the text blocks and the text of embedded resources. Structured content
     // stands in only when there is no text, because a result with both carries the same data twice. Anything else is not
     // screened, and the line says the result held it.
-    private static (object? Value, bool Unscreened) Screenable(CallToolResult result)
+    private static (ContextPart? Part, bool Unscreened) Screenable(CallToolResult result)
     {
         List<string> texts = [];
         bool unscreened = false;
@@ -216,11 +335,11 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
 
         if (texts.Count > 0)
         {
-            return (string.Join('\n', texts), unscreened);
+            return (ContextPart.Text("result", string.Join('\n', texts)), unscreened);
         }
 
         return result.StructuredContent is { ValueKind: not (JsonValueKind.Undefined or JsonValueKind.Null) } structured
-            ? (structured, unscreened)
+            ? (ContextPart.Json("result", structured), unscreened)
             : (null, unscreened);
     }
 

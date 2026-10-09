@@ -279,6 +279,82 @@ public sealed class DefinitionScreeningTests
         provider.Requests.Should().ContainSingle();
     }
 
+    // Two lists in flight each round: the upstream serves A's older definition, which passes, then its newer one, which
+    // hides. Which page would publish last is a race between two handlers resuming, so one round proves little; a page
+    // published out of order in any round lets that round's call through.
+    [Fact]
+    public async Task Pages_Become_Current_In_The_Order_The_Upstream_Answered_Them()
+    {
+        const int rounds = 20;
+        ScriptedDecisionProvider provider = new ScriptedDecisionProvider().Flags(_flag);
+        ScriptedUpstream upstream = new();
+        for (int round = 0; round < rounds; round++)
+        {
+            upstream
+                .Lists(ScriptedUpstream.Tool(_toolName, $"description-old-{round}"))
+                .Lists(ScriptedUpstream.Tool(_toolName, $"description-new-{round}-{_flag}"));
+        }
+
+        await using GatewayHarness gateway = await ConnectAsync(upstream.Options(), composition: Screens.Composition(provider, definitions: Screens.Definitions()));
+
+        for (int round = 0; round < rounds; round++)
+        {
+            await Task.WhenAll(List(gateway), List(gateway)).WaitAsync(gateway.Deadline);
+            Withheld(await Call(gateway));
+        }
+
+        upstream.Calls.Should().BeEmpty();
+    }
+
+    // A ToolCall refuses a blank name, but an upstream can list one and a host can call it.
+    [Fact]
+    public async Task Blank_Named_Tool_Is_Screened_Like_Any_Other()
+    {
+        Tool blank = ScriptedUpstream.Tool(" ", "description-blank");
+        Tool other = ScriptedUpstream.Tool("tool_b", "description-b");
+        ScriptedDecisionProvider provider = new();
+        ScriptedUpstream upstream = new ScriptedUpstream().Lists(blank, other).Lists(blank, other);
+        await using GatewayHarness gateway = await ConnectAsync(
+            upstream.Options(),
+            composition: Screens.Composition(provider, Screens.Results(), Screens.Definitions()));
+
+        ListToolsResult first = await gateway.Host!.ListToolsAsync(new ListToolsRequestParams(), Token);
+        ListToolsResult second = await gateway.Host!.ListToolsAsync(new ListToolsRequestParams(), Token);
+        CallToolResult call = await gateway.Host!.CallToolAsync(new CallToolRequestParams { Name = " " }, Token);
+
+        first.Tools.Select(tool => tool.Name).Should().Equal(" ", "tool_b");
+        Wire(second).Should().Be(Wire(first));
+        call.IsError.Should().NotBe(true);
+        upstream.Calls.Should().Equal(" ");
+        provider.Requests.Select(request => Compact(request.Context.GetProperty("tool"))).Should().BeEquivalentTo(
+            """{"name":" ","description":"description-blank"}""",
+            """{"name":"tool_b","description":"description-b"}""",
+            """{"name":" ","description":"description-blank"}""");
+    }
+
+    // A provider that throws is a programming error the evaluator lets through, and it fails the list the definition is
+    // on. The next list evaluates the definition again instead of failing on the same exception.
+    [Fact]
+    public async Task Definition_Whose_Evaluation_Threw_Is_Evaluated_Again_By_The_Next_List()
+    {
+        int answers = 0;
+        ScriptedDecisionProvider provider = new ScriptedDecisionProvider().Answers(_ =>
+            Interlocked.Increment(ref answers) == 1 ? throw new InvalidOperationException("failure-a") : ScriptedDecisionProvider.Clear);
+        Tool tool = ScriptedUpstream.Tool(_toolName, "description-a");
+        ScriptedUpstream upstream = new ScriptedUpstream().Lists(tool).Lists(tool);
+        await using GatewayHarness gateway = await ConnectAsync(upstream.Options(), composition: Screens.Composition(provider, definitions: Screens.Definitions()));
+
+        Func<Task> first = async () => await gateway.Host!.ListToolsAsync(new ListToolsRequestParams(), Token);
+        await first.Should().ThrowAsync<McpProtocolException>();
+        ListToolsResult second = await gateway.Host!.ListToolsAsync(new ListToolsRequestParams(), Token);
+        CallToolResult call = await Call(gateway);
+
+        second.Tools.Select(listed => listed.Name).Should().Equal(_toolName);
+        provider.Requests.Should().HaveCount(2);
+        call.IsError.Should().NotBe(true);
+        upstream.Calls.Should().Equal(_toolName);
+    }
+
     // Sends the first list and waits until its definition is being evaluated, then the same for the second, so the
     // upstream's two answers reach the gateway in that order.
     private static async Task<(Task<ListToolsResult> First, Task<ListToolsResult> Second)> ListOlderThenNewerAsync(

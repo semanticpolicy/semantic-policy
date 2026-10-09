@@ -2,6 +2,7 @@ using System.Collections;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using OpenTelemetry;
+using OpenTelemetry.Exporter;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
 using SemanticPolicy.Telemetry;
@@ -13,9 +14,11 @@ namespace SemanticPolicy.Mcp.Gateway;
 // the upstream server and its child process. Disposing it flushes what is still batched.
 internal sealed class GatewayTelemetry : IDisposable
 {
-    private const string _endpoint = "OTEL_EXPORTER_OTLP_ENDPOINT";
-    private const string _tracesEndpoint = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT";
-    private const string _metricsEndpoint = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT";
+    private const string _tracesSignal = "TRACES";
+    private const string _metricsSignal = "METRICS";
+
+    // What a signal's own variables set besides its endpoint, each in place of the generic variable for the same setting.
+    private static readonly string[] _settings = ["PROTOCOL", "HEADERS", "TIMEOUT", "COMPRESSION"];
 
     private readonly TracerProvider? _traces;
     private readonly MeterProvider? _metrics;
@@ -45,27 +48,26 @@ internal sealed class GatewayTelemetry : IDisposable
             }
         }
 
-        bool traces = Named(variables, _endpoint) || Named(variables, _tracesEndpoint);
-        bool metrics = Named(variables, _endpoint) || Named(variables, _metricsEndpoint);
+        bool traces = Named(variables, Variable(null, "ENDPOINT")) || Named(variables, Variable(_tracesSignal, "ENDPOINT"));
+        bool metrics = Named(variables, Variable(null, "ENDPOINT")) || Named(variables, Variable(_metricsSignal, "ENDPOINT"));
         if (!traces && !metrics)
         {
             return null;
         }
 
-        IConfiguration configuration = new ConfigurationBuilder().AddInMemoryCollection(variables).Build();
         return new GatewayTelemetry(
             traces
                 ? Sdk.CreateTracerProviderBuilder()
-                    .ConfigureServices(services => services.AddSingleton(configuration))
+                    .ConfigureServices(services => services.AddSingleton(Configuration(variables, _tracesSignal)))
                     .AddSource(SemanticPolicyTelemetry.ActivitySourceName)
-                    .AddOtlpExporter()
+                    .AddOtlpExporter(options => SetEndpoint(options, variables, _tracesSignal))
                     .Build()
                 : null,
             metrics
                 ? Sdk.CreateMeterProviderBuilder()
-                    .ConfigureServices(services => services.AddSingleton(configuration))
+                    .ConfigureServices(services => services.AddSingleton(Configuration(variables, _metricsSignal)))
                     .AddMeter(SemanticPolicyTelemetry.MeterName)
-                    .AddOtlpExporter()
+                    .AddOtlpExporter(options => SetEndpoint(options, variables, _metricsSignal))
                     .Build()
                 : null);
     }
@@ -75,6 +77,37 @@ internal sealed class GatewayTelemetry : IDisposable
         _traces?.Dispose();
         _metrics?.Dispose();
     }
+
+    // AddOtlpExporter reads only the generic variables, so in the configuration a signal's provider is given, that
+    // signal's own variables stand in for them.
+    private static IConfiguration Configuration(Dictionary<string, string?> variables, string signal)
+    {
+        Dictionary<string, string?> configured = new(variables, StringComparer.Ordinal);
+        foreach (string setting in _settings)
+        {
+            if (Named(variables, Variable(signal, setting)))
+            {
+                configured[Variable(null, setting)] = variables[Variable(signal, setting)];
+            }
+        }
+
+        return new ConfigurationBuilder().AddInMemoryCollection(configured).Build();
+    }
+
+    // A signal's own endpoint is set on the options rather than in the configuration: one read from the generic variable
+    // has the signal's path appended under http/protobuf, while a signal's own is used as it is given. One that is not
+    // an absolute URI is ignored, as the exporter ignores a generic one.
+    private static void SetEndpoint(OtlpExporterOptions options, Dictionary<string, string?> variables, string signal)
+    {
+        if (Uri.TryCreate(variables.GetValueOrDefault(Variable(signal, "ENDPOINT")), UriKind.Absolute, out Uri? endpoint))
+        {
+            options.Endpoint = endpoint;
+        }
+    }
+
+    // OTEL_EXPORTER_OTLP_{setting}, or OTEL_EXPORTER_OTLP_{signal}_{setting} for a signal's own.
+    private static string Variable(string? signal, string setting) =>
+        signal is null ? $"OTEL_EXPORTER_OTLP_{setting}" : $"OTEL_EXPORTER_OTLP_{signal}_{setting}";
 
     private static bool Named(Dictionary<string, string?> variables, string name) =>
         !string.IsNullOrWhiteSpace(variables.GetValueOrDefault(name));
