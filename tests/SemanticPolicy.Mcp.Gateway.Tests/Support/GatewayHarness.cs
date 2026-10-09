@@ -1,3 +1,4 @@
+using System.Collections;
 using System.IO.Pipelines;
 using System.Text.Json;
 using ModelContextProtocol;
@@ -20,9 +21,21 @@ internal sealed class GatewayHarness : IAsyncDisposable
     private readonly StreamServerTransport _hostSide;
     private readonly CancellationTokenSource _deadline = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
     private readonly Task _upstreamRun;
+    private readonly GatewayComposition _composition;
+    private readonly IDictionary _environment;
+    private readonly Lock _lock = new();
+    private readonly List<(int Count, TaskCompletionSource Signal)> _waitingCalls = [];
+    private int _waited;
 
-    private GatewayHarness(McpServerOptions upstreamOptions, Func<GatewayHarness, IClientTransport>? upstream, string command)
+    private GatewayHarness(
+        McpServerOptions upstreamOptions,
+        Func<GatewayHarness, IClientTransport>? upstream,
+        string command,
+        GatewayComposition? composition,
+        IDictionary? environment)
     {
+        _composition = composition ?? Screens.None;
+        _environment = environment ?? new Dictionary<string, string>();
         _deadline.CancelAfter(TimeSpan.FromSeconds(10));
 
         // The upstream runs on the test's own token, not the deadline: stopping it would fire its handlers' tokens, and
@@ -65,12 +78,17 @@ internal sealed class GatewayHarness : IAsyncDisposable
         McpServerOptions upstreamOptions,
         Func<GatewayHarness, IClientTransport>? upstream = null,
         string command = Command) =>
-        new(upstreamOptions, upstream, command);
+        new(upstreamOptions, upstream, command, composition: null, environment: null);
 
-    // Starts the upstream and the gateway, then connects a host through the gateway.
-    public static async Task<GatewayHarness> ConnectAsync(McpServerOptions upstreamOptions, McpClientOptions? hostOptions = null)
+    // Starts the upstream and the gateway, then connects a host through the gateway. With no composition the gateway
+    // screens nothing; the environment is the one the gateway reads, never the process's.
+    public static async Task<GatewayHarness> ConnectAsync(
+        McpServerOptions upstreamOptions,
+        McpClientOptions? hostOptions = null,
+        GatewayComposition? composition = null,
+        IDictionary? environment = null)
     {
-        GatewayHarness harness = new(upstreamOptions, upstream: null, Command);
+        GatewayHarness harness = new(upstreamOptions, upstream: null, Command, composition, environment);
         harness.Host = await McpClient.CreateAsync(
             new StreamClientTransport(harness._hostToGateway.Writer.AsStream(), harness._gatewayToHost.Reader.AsStream()),
             hostOptions,
@@ -90,6 +108,28 @@ internal sealed class GatewayHarness : IAsyncDisposable
 
         await _hostToGateway.Writer.CompleteAsync();
     }
+
+    // Completes once host calls have started waiting on a definition's verdict count times; a call that waits again after
+    // a newer definition was published counts again.
+    public Task WaitForWaitingCallsAsync(int count)
+    {
+        TaskCompletionSource signal;
+        lock (_lock)
+        {
+            if (_waited >= count)
+            {
+                return Task.CompletedTask;
+            }
+
+            signal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _waitingCalls.Add((count, signal));
+        }
+
+        return signal.Task.WaitAsync(Deadline);
+    }
+
+    // The gateway's stderr, one line per entry.
+    public IReadOnlyList<string> LogLines => Log.ToString().Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
 
     // Whether the gateway wrote anything at all towards the host. Call it only once the gateway has stopped.
     public async Task<bool> HostReceivedAnythingAsync()
@@ -128,11 +168,29 @@ internal sealed class GatewayHarness : IAsyncDisposable
     {
         try
         {
-            return await GatewayProxy.RunAsync(command, _hostSide, upstream, Log, Deadline);
+            return await GatewayProxy.RunAsync(command, _hostSide, upstream, _composition, Log, _environment, OnCallWaiting, Deadline);
         }
         finally
         {
             await _gatewayToHost.Writer.CompleteAsync();
+        }
+    }
+
+    private void OnCallWaiting(string tool)
+    {
+        lock (_lock)
+        {
+            _waited++;
+            _waitingCalls.RemoveAll(waiter =>
+            {
+                if (_waited < waiter.Count)
+                {
+                    return false;
+                }
+
+                waiter.Signal.TrySetResult();
+                return true;
+            });
         }
     }
 

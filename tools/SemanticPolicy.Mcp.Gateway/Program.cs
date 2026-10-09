@@ -18,7 +18,9 @@ try
                 composition.KeyVariables,
                 Environment.GetEnvironmentVariables(),
                 Console.Error)),
+            composition,
             Console.Error,
+            Environment.GetEnvironmentVariables(),
             cancellationToken));
 }
 catch (Exception)
