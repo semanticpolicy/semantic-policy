@@ -1,0 +1,15 @@
+{
+  "providers": {
+    "jev": {
+      "kind": "typesafe-jev",
+      "options": {
+        "route": {
+          "baseUrl": "https://openrouter.ai/api",
+          "path": "/v1/systemone",
+          "model": "typesafe/jev-1.13",
+          "apiKeyVariable": "OPENROUTER_API_KEY"
+        }
+      }
+    }
+  }
+}
