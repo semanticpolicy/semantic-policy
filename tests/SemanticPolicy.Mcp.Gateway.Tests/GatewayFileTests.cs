@@ -12,10 +12,8 @@ public sealed class GatewayFileTests
     [InlineData("an allow key", "Gateway file '{gateway}': results.allow is refused")]
     [InlineData("an unknown action", "Gateway file '{gateway}': results.warn.action is not an action the results point takes")]
     [InlineData("hide on results", "Gateway file '{gateway}': results.warn.action is not an action the results point takes")]
-    [InlineData("ask on results", "Gateway file '{gateway}': results.escalate.action is not an action the results point takes")]
     [InlineData("annotate on definitions", "Gateway file '{gateway}': definitions.warn.action is not an action the definitions point takes")]
     [InlineData("withhold on definitions", "Gateway file '{gateway}': definitions.escalate.action is not an action the definitions point takes")]
-    [InlineData("ask on definitions", "Gateway file '{gateway}': definitions.deny.action is not an action the definitions point takes")]
     [InlineData("annotate without a message", "Gateway file '{gateway}': results.warn.message is missing")]
     [InlineData("withhold without a message", "Gateway file '{gateway}': results.deny.message is missing")]
     [InlineData("hide without a message", "Gateway file '{gateway}': definitions.deny.message is missing")]
@@ -39,7 +37,38 @@ public sealed class GatewayFileTests
     [InlineData("a policy bound to a provider the file does not register", "Gateway file '{gateway}': results.policy '{dir}results.policy.json': policy 'results-guard' binds provider 'absent', which providers file '{providers}' does not register")]
     [InlineData("an adapter that cannot be built", "Providers file '{providers}': provider 'jev': the environment variable {unset} is not set.")]
     [InlineData("a policy its provider cannot answer", "Gateway file '{gateway}': results.policy '{dir}results.policy.json': Policy 'results-guard', provider 'v0'")]
-    public async Task Gateway_File_With_A_Problem_Never_Starts_And_Names_It(string defect, string expected)
+    public Task Gateway_File_With_A_Problem_Never_Starts_And_Names_It(string defect, string expected) => RefusedAsync(defect, expected);
+
+    [Theory]
+    [InlineData("ask on definitions", "Gateway file '{gateway}': definitions.deny.action is refused")]
+    [InlineData("ask without a message", "Gateway file '{gateway}': results.escalate.message is missing")]
+    [InlineData("ask without withheld", "Gateway file '{gateway}': results.escalate.withheld is missing")]
+    [InlineData("ask without a fallback", "Gateway file '{gateway}': results.escalate.fallback is missing")]
+    [InlineData("a fallback of ask", "Gateway file '{gateway}': results.escalate.fallback.action is refused")]
+    [InlineData("a fallback that hides", "Gateway file '{gateway}': results.escalate.fallback.action is not an action a fallback takes")]
+    [InlineData("a fallback without its message", "Gateway file '{gateway}': results.escalate.fallback.message is missing")]
+    [InlineData("withheld beside withhold", "Gateway file '{gateway}': results.deny.withheld is refused")]
+    public Task Ask_Entry_With_A_Problem_Never_Starts(string defect, string expected) => RefusedAsync(defect, expected);
+
+    [Fact]
+    public void Ask_Entry_Composes_Its_Dialog_Its_Withheld_Message_And_Its_Fallback()
+    {
+        using Workspace workspace = Workspace.Create();
+        string gateway = (Layout.Valid with
+        {
+            Gateway = Samples.Gateway(Object(ResultsPolicyPath, ResultsWarn, AskEntry("escalate"), ResultsDeny, ResultsAbstain), Definitions),
+        }).WriteTo(workspace);
+
+        GatewayComposition composition = GatewayComposition.Compose(gateway);
+
+        composition.Results!.Mapping.Escalate.Should().Be(new MappedAction(GatewayAction.Ask, "message-ask")
+        {
+            Withheld = "message-withheld",
+            Fallback = new MappedAction(GatewayAction.Withhold, "message-fallback"),
+        });
+    }
+
+    private static async Task RefusedAsync(string defect, string expected)
     {
         string unset = UnsetVariable();
         using Workspace workspace = Workspace.Create();
@@ -166,6 +195,32 @@ public sealed class GatewayFileTests
                 "{{key}}": { "action": "{{action}}", "message": "{{message}}" }
                 """;
 
+    // An ask entry with each of its keys unless left out with null; the fallback is given as its JSON.
+    private static string AskEntry(
+        string key,
+        string? message = "message-ask",
+        string? withheld = "message-withheld",
+        string? fallback = """{ "action": "withhold", "message": "message-fallback" }""")
+    {
+        List<string> members = ["\"action\": \"ask\""];
+        if (message is not null)
+        {
+            members.Add($"\"message\": \"{message}\"");
+        }
+
+        if (withheld is not null)
+        {
+            members.Add($"\"withheld\": \"{withheld}\"");
+        }
+
+        if (fallback is not null)
+        {
+            members.Add($"\"fallback\": {fallback}");
+        }
+
+        return $"\"{key}\": {Object([.. members])}";
+    }
+
     // The valid layout with one defect, and the canary planted in the value the defect breaks or, where the defect
     // is a missing value, in a value beside it.
     private static Layout Broken(string defect, string unset)
@@ -180,10 +235,21 @@ public sealed class GatewayFileTests
             "an allow key" => Gateway(Object(ResultsPolicyPath, Entry("allow", "annotate", Canary), ResultsWarn, ResultsEscalate, ResultsDeny, ResultsAbstain)),
             "an unknown action" => Gateway(Object(ResultsPolicyPath, Entry("warn", Canary, "message-a"), ResultsEscalate, ResultsDeny, ResultsAbstain)),
             "hide on results" => Gateway(Object(ResultsPolicyPath, Entry("warn", "hide", Canary), ResultsEscalate, ResultsDeny, ResultsAbstain)),
-            "ask on results" => Gateway(Object(ResultsPolicyPath, ResultsWarn, Entry("escalate", "ask", Canary), ResultsDeny, ResultsAbstain)),
             "annotate on definitions" => Gateway(Results, Object(DefinitionsPolicyPath, Entry("warn", "annotate", Canary), DefinitionsEscalate, DefinitionsDeny, DefinitionsAbstain)),
             "withhold on definitions" => Gateway(Results, Object(DefinitionsPolicyPath, DefinitionsWarn, Entry("escalate", "withhold", Canary), DefinitionsDeny, DefinitionsAbstain)),
-            "ask on definitions" => Gateway(Results, Object(DefinitionsPolicyPath, DefinitionsWarn, DefinitionsEscalate, Entry("deny", "ask", Canary), DefinitionsAbstain)),
+            "ask on definitions" => Gateway(Results, Object(DefinitionsPolicyPath, DefinitionsWarn, DefinitionsEscalate, AskEntry("deny", message: Canary), DefinitionsAbstain)),
+            "ask without a message" => Gateway(Object(ResultsPolicyPath, ResultsWarn, AskEntry("escalate", message: null, withheld: Canary), ResultsDeny, ResultsAbstain)),
+            "ask without withheld" => Gateway(Object(ResultsPolicyPath, ResultsWarn, AskEntry("escalate", message: Canary, withheld: null), ResultsDeny, ResultsAbstain)),
+            "ask without a fallback" => Gateway(Object(ResultsPolicyPath, ResultsWarn, AskEntry("escalate", message: Canary, fallback: null), ResultsDeny, ResultsAbstain)),
+            "a fallback of ask" => Gateway(Object(
+                ResultsPolicyPath,
+                ResultsWarn,
+                AskEntry("escalate", fallback: $$"""{ "action": "ask", "message": "{{Canary}}", "withheld": "message-withheld", "fallback": { "action": "pass" } }"""),
+                ResultsDeny,
+                ResultsAbstain)),
+            "a fallback that hides" => Gateway(Object(ResultsPolicyPath, ResultsWarn, AskEntry("escalate", fallback: $$"""{ "action": "hide", "message": "{{Canary}}" }"""), ResultsDeny, ResultsAbstain)),
+            "a fallback without its message" => Gateway(Object(ResultsPolicyPath, ResultsWarn, AskEntry("escalate", message: Canary, fallback: """{ "action": "withhold" }"""), ResultsDeny, ResultsAbstain)),
+            "withheld beside withhold" => Gateway(Object(ResultsPolicyPath, ResultsWarn, ResultsEscalate, $"\"deny\": {{ \"action\": \"withhold\", \"message\": \"message-c\", \"withheld\": \"{Canary}\" }}", ResultsAbstain)),
             "annotate without a message" => Gateway(Object(ResultsPolicyPath, Entry("warn", "annotate"), ResultsEscalate, Entry("deny", "withhold", Canary), ResultsAbstain)),
             "withhold without a message" => Gateway(Object(ResultsPolicyPath, canaryWarn, ResultsEscalate, Entry("deny", "withhold"), ResultsAbstain)),
             "hide without a message" => Gateway(Results, Object(DefinitionsPolicyPath, DefinitionsWarn, Entry("escalate", "hide", Canary), Entry("deny", "hide"), DefinitionsAbstain)),

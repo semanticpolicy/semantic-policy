@@ -22,6 +22,9 @@ namespace SemanticPolicy.Mcp.Gateway;
 // newer definition. A page is not the whole catalogue: a name missing from one keeps its state.
 internal sealed class ToolScreening(GatewayComposition composition, TextWriter log, Action<string>? callWaiting, CancellationToken lifetime)
 {
+    // What the dialog shows in place of a tool name that is not a plain identifier.
+    private const string _unshownName = "(not shown: the server gave it a name that is not a plain identifier)";
+
     // Guards both maps, so a call's admission and a page's publication happen in one order.
     private readonly Lock _lock = new();
     private readonly Lock _logLock = new();
@@ -34,6 +37,8 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
     // The definition each name was most recently listed with: what names a tool in a result's context, and what admits a
     // call to it.
     private readonly Dictionary<string, Listed> _current = new(StringComparer.Ordinal);
+
+    private long _lastAskId;
 
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult> List(McpRequestHandler<ListToolsRequestParams, ListToolsResult> forward) =>
         async (request, cancellationToken) =>
@@ -84,7 +89,7 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
             catch (McpProtocolException error)
             {
                 // An error answering the call carries text a host may hand the model as it would a result's.
-                if (await ScreenErrorAsync(point, name, error, CorrelationId(request), cancellationToken).ConfigureAwait(false) is { } replaced)
+                if (await ScreenErrorAsync(request.Server, point, name, error, CorrelationId(request), cancellationToken).ConfigureAwait(false) is { } replaced)
                 {
                     throw replaced;
                 }
@@ -92,7 +97,7 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
                 throw;
             }
 
-            return await ScreenResultAsync(point, name, result, CorrelationId(request), cancellationToken).ConfigureAwait(false);
+            return await ScreenResultAsync(request.Server, point, name, result, CorrelationId(request), cancellationToken).ConfigureAwait(false);
         };
 
     // The host's JSON-RPC id, so a line and a span join the host's own log of the request. A blank one, which the
@@ -173,7 +178,7 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
             SemanticContext context = new([ToolPart(tool.Name, tool.Description), ContextPart.Json("input_schema", tool.InputSchema)], correlationId);
             (PolicyVerdict verdict, TimeSpan latency) = await EvaluateAsync(point, context, lifetime).ConfigureAwait(false);
             MappedAction action = Act(point, verdict.Effective);
-            Log("definition", point, tool.Name, verdict, action.Action, latency, correlationId, unscreened: null);
+            Log("definition", point, tool.Name, verdict, Name(action.Action), latency, correlationId, unscreened: null);
             return action;
         }
         catch (Exception)
@@ -195,6 +200,7 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
     };
 
     private async Task<CallToolResult> ScreenResultAsync(
+        McpServer host,
         GatewayPoint point,
         string name,
         CallToolResult result,
@@ -204,11 +210,11 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
         (ContextPart? part, bool unscreened) = Screenable(result);
         if (part is null)
         {
-            Log("result", point, name, verdict: null, GatewayAction.Pass, latency: null, correlationId, unscreened);
+            Log("result", point, name, verdict: null, Name(GatewayAction.Pass), latency: null, correlationId, unscreened);
             return result;
         }
 
-        MappedAction action = await ScreenAsync(point, name, part, correlationId, unscreened, cancellationToken).ConfigureAwait(false);
+        MappedAction action = await ScreenAsync(host, point, name, part, correlationId, unscreened, cancellationToken).ConfigureAwait(false);
         switch (action.Action)
         {
             case GatewayAction.Pass:
@@ -230,13 +236,14 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
     // upstream's code, and an action changes only its text, as it does a result's. Withheld, nothing of the upstream's
     // error goes on but its code.
     private async Task<McpProtocolException?> ScreenErrorAsync(
+        McpServer host,
         GatewayPoint point,
         string name,
         McpProtocolException error,
         string correlationId,
         CancellationToken cancellationToken)
     {
-        MappedAction action = await ScreenAsync(point, name, Screenable(error), correlationId, unscreened: false, cancellationToken).ConfigureAwait(false);
+        MappedAction action = await ScreenAsync(host, point, name, Screenable(error), correlationId, unscreened: false, cancellationToken).ConfigureAwait(false);
         switch (action.Action)
         {
             case GatewayAction.Pass:
@@ -256,9 +263,10 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
         }
     }
 
-    // Evaluates one result on the result point, under the tool its name's current definition describes, and writes the
-    // line.
+    // Evaluates one result on the result point, under the tool its name's current definition describes, settles an ask
+    // with the person, and writes the line. What it returns is never an ask.
     private async Task<MappedAction> ScreenAsync(
+        McpServer host,
         GatewayPoint point,
         string name,
         ContextPart result,
@@ -275,9 +283,101 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
         SemanticContext context = new([ToolPart(name, description), result], correlationId);
         (PolicyVerdict verdict, TimeSpan latency) = await EvaluateAsync(point, context, cancellationToken).ConfigureAwait(false);
         MappedAction action = Act(point, verdict.Effective);
-        Log("result", point, name, verdict, action.Action, latency, correlationId, unscreened);
-        return action;
+        void Settle(string done) => Log("result", point, name, verdict, done, latency, correlationId, unscreened);
+        if (action.Action != GatewayAction.Ask)
+        {
+            Settle(Name(action.Action));
+            return action;
+        }
+
+        try
+        {
+            (MappedAction taken, string done) = await AskAsync(host, name, action, cancellationToken).ConfigureAwait(false);
+            Settle(done);
+            return taken;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The call was cancelled while the person was being asked. The verdict was reached, so it has its line.
+            Settle("ask:abandoned");
+            throw;
+        }
     }
+
+    // Only the person's explicit accept lets a flagged result through. A decline, a cancel, an answer the protocol does
+    // not define or a failed request withholds it, and none of them falls back to the mapping. The dialog carries the
+    // operator's text and the tool's name and never the result: a server's text in a dialog the person trusts as the
+    // host's would be the server talking the person into accepting it. The name is the server's text too, so it is shown
+    // only when it is a plain identifier. Of the answer only its action is read; whatever the person entered is left
+    // unread.
+    //
+    // A host that cannot show a form gets the fallback and is never sent a request. The SDK reads an elicitation
+    // capability that names no mode, as a host on this revision declares it, as form.
+    //
+    // A call the host cancels while the person is being asked withdraws the question. The SDK stops waiting for a
+    // cancelled request without telling the host, which would keep the dialog up for an answer nobody reads, so the
+    // request goes under an id of the gateway's own and the gateway tells the host; were the SDK to start telling it
+    // too, the protocol has the host ignore the second notice.
+    private async Task<(MappedAction Taken, string Done)> AskAsync(
+        McpServer host,
+        string name,
+        MappedAction ask,
+        CancellationToken cancellationToken)
+    {
+        if (host.ClientCapabilities?.Elicitation?.Form is null)
+        {
+            MappedAction fallback = ask.Fallback!;
+            return (fallback, $"ask:fallback:{Name(fallback.Action)}");
+        }
+
+        RequestId id = new($"gateway-ask-{Interlocked.Increment(ref _lastAskId)}");
+        string answer;
+        try
+        {
+            ElicitResult result = await host.SendRequestAsync<ElicitRequestParams, ElicitResult>(
+                RequestMethods.ElicitationCreate,
+                new ElicitRequestParams
+                {
+                    Message = $"{ask.Message}\n\nTool: {(IsPlainName(name) ? name : _unshownName)}",
+
+                    // A yes or no needs no field, and Claude Code shows a form with none as a plain accept or decline.
+                    RequestedSchema = new ElicitRequestParams.RequestSchema(),
+                },
+                requestId: id,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            answer = result.Action is "accept" or "decline" or "cancel" ? result.Action : "failed";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await host.SendNotificationAsync(
+                    NotificationMethods.CancelledNotification,
+                    new CancelledNotificationParams { RequestId = id },
+                    cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (IOException)
+            {
+                // A host that has gone cannot be told, and has no dialog left to close.
+            }
+
+            throw;
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            answer = "failed";
+        }
+
+        MappedAction taken = answer == "accept"
+            ? new MappedAction(GatewayAction.Pass, null)
+            : new MappedAction(GatewayAction.Withhold, ask.Withheld);
+        return (taken, $"ask:{answer}");
+    }
+
+    // A tool name as the protocol's 2025-11-25 revision recommends one: 1 to 128 ASCII letters, digits, '_', '-' and '.'.
+    // No line break, no space and no length to carry a sentence.
+    private static bool IsPlainName(string name) =>
+        name.Length is >= 1 and <= 128 && name.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.');
 
     // The tool part a ToolCall's context carries: the name and, only when there is one, the description. It is built
     // here because a ToolCall refuses a blank name, which an upstream can list and a host can call.
@@ -365,13 +465,13 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
     };
 
     // One JSON object per line. The tool's name is the only thing in it the upstream wrote: never a result's text, a
-    // description, a schema or the rule's question.
+    // description, a schema, the rule's question or anything a person entered in answer to an ask.
     private void Log(
         string at,
         GatewayPoint point,
         string tool,
         PolicyVerdict? verdict,
-        GatewayAction action,
+        string action,
         TimeSpan? latency,
         string correlationId,
         bool? unscreened)
@@ -389,7 +489,7 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
                 line.WriteString("evaluated", Name(verdict.Evaluated));
             }
 
-            line.WriteString("action", Name(action));
+            line.WriteString("action", action);
             if (latency is { } elapsed)
             {
                 line.WriteNumber("latencyMs", (long)Math.Round(elapsed.TotalMilliseconds));
