@@ -60,5 +60,38 @@ public sealed class SampleFilesTests
         }
     }
 
+    // A structural guard: the gateway reads the sample providers file only when it starts, so the copied samples are
+    // composed here as it composes them: the providers file read with the gateway's refusals, every policy bound to a
+    // provider it registers, and that provider built and able to answer the rules. Only the key variable is renamed, to
+    // one this test sets.
+    [Fact]
+    public void Sample_Files_Compose_As_The_Gateway_Starts()
+    {
+        string variable = Samples.UnsetVariable();
+        using Workspace workspace = Workspace.Create();
+        foreach (string name in new[] { "gateway.json", "results.policy.json", "definitions.policy.json" })
+        {
+            workspace.Write(name, File.ReadAllText(Repository.Sample(name)));
+        }
+
+        string providers = File.ReadAllText(Repository.Sample("providers.json"));
+        providers.Should().Contain("\"apiKeyVariable\": \"OPENROUTER_API_KEY\"", "the sample's key is OpenRouter's");
+        workspace.Write("providers.json", providers.Replace("OPENROUTER_API_KEY", variable, StringComparison.Ordinal));
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, "test-key-not-a-credential");
+
+            GatewayComposition composition = GatewayComposition.Compose(workspace.PathOf("gateway.json"));
+
+            composition.KeyVariables.Should().Equal(variable);
+            composition.Results.Should().NotBeNull();
+            composition.Definitions.Should().NotBeNull();
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+        }
+    }
+
     private static string[] Names(JsonElement element) => [.. element.EnumerateObject().Select(property => property.Name)];
 }

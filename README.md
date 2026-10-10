@@ -119,7 +119,7 @@ and what to do.
 
 The MCP gateway is a dotnet tool too, whose command is `semantic-policy-mcp`. `dnx`, which comes
 with the .NET 10 SDK, runs it from NuGet without installing it, and is how an MCP host starts it;
-[The MCP gateway][mcp-gateway] says what goes after each `--`.
+[the gateway's README][gateway-running] says what goes after each `--`.
 
 ```bash
 dnx SemanticPolicy.Mcp.Gateway --prerelease -- --gateway /path/to/gateway.json -- node /path/to/server.js
@@ -674,6 +674,7 @@ Apache-2.0. See [`LICENSE`][licence].
 [evals-quick-start]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md#quick-start
 [evals-pitfalls]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md#pitfalls
 [gateway-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Mcp.Gateway/README.md
+[gateway-running]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Mcp.Gateway/README.md#running-it
 [mcp-gateway]: https://github.com/semanticpolicy/semantic-policy#the-mcp-gateway
 [contributing]: https://github.com/semanticpolicy/semantic-policy/blob/main/CONTRIBUTING.md
 [issues]: https://github.com/semanticpolicy/semantic-policy/issues

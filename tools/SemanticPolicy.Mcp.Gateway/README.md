@@ -240,7 +240,9 @@ been, so write it to the model, as the sample's are.
 - **The policy's `budget` limits a call.** A host's tool call waits for its result's verdict, so the
   budget, `"00:00:05"` in the samples, is how long one check may hold it up. When it runs out, the
   policy's `onFailure` decides; the samples fall back to `escalate`. The providers file refuses
-  `timeout` for that reason: a call has one limit, the budget of the policy that makes it.
+  `timeout`, so the budget is the only limit you set. Behind it, each adapter still gives up on a
+  request after its own 10 seconds: a budget longer than that gives a check no more time, and
+  `onFailure` decides at 10 seconds.
 
 The sample maps a definition's `escalate` and `abstain` to `pass` on purpose. A definition is
 checked once per gateway process and its verdict kept, so `hide` on `escalate` would hide a tool
