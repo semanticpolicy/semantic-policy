@@ -117,6 +117,14 @@ of denials are right. Jev's comes out at 0.15, below the policy's warn of 0.6, s
 conflict line for it instead of a pair to copy into the policy; [Pitfalls][evals-pitfalls] says why
 and what to do.
 
+The MCP gateway is a dotnet tool too, whose command is `semantic-policy-mcp`. `dnx`, which comes
+with the .NET 10 SDK, runs it from NuGet without installing it, and is how an MCP host starts it;
+[the gateway's README][gateway-running] says what goes after each `--`.
+
+```bash
+dnx SemanticPolicy.Mcp.Gateway --prerelease -- --gateway /path/to/gateway.json -- node /path/to/server.js
+```
+
 The snippets on this page assume these `using` directives, which need only `SemanticPolicy.Core` and
 the TypeSafe provider:
 
@@ -425,12 +433,35 @@ IChatClient guarded = new ChatClientBuilder(chatClient)
 The tools an `McpClient` from the MCP C# SDK lists are `AIFunction`s, so the same two methods guard
 an MCP server's tools, with no extra SemanticPolicy package: put them in `ChatOptions.Tools`, and your
 handlers get each call before it reaches the server and each result before the model sees it, with
-the policy's verdict as a signal to act on.
+the policy's verdict as a signal to act on. For a host you do not write, such as Claude Desktop or
+Cursor, [The MCP gateway][mcp-gateway] puts a policy in front of an MCP server with no code.
 
 The guards await the verdict in every mode. There is no pre-model point: a chat client receives the
 whole history on every call, so there is no one input to judge. [The package's README][chat-client-readme]
 covers the order several guards run in, an invoker of your own, functions that need approval, and
 how to keep a Shadow policy off the critical path.
+
+## The MCP gateway
+
+`semantic-policy-mcp`, the MCP gateway, puts a policy between an MCP host you do not write, such as
+Claude Desktop, Claude Code, Cursor or VS Code, and one MCP server. The host starts the gateway in
+place of the server, the gateway starts the server, and it asks a policy about each tool result and
+each tool definition the server sends. Its gateway file says what to do on each verdict: pass the
+result, put a note in front of it, withhold it, or hide the tool.
+
+```bash
+dnx SemanticPolicy.Mcp.Gateway --prerelease -- --gateway /path/to/gateway.json -- node /path/to/server.js
+```
+
+The sample gateway file runs both checks in Shadow, with policies bound to Jev through OpenRouter,
+so it logs what each policy concluded and changes nothing. Two labelled sets of synthetic rows come
+with it, with a recorded run of each, so the evaluation CLI replays the samples' numbers without a
+key. Like every rule here, the gateway is not a security boundary: a withheld result is no proof of
+an attack, and a passed one no proof of safety.
+
+[The gateway's README][gateway-readme] covers each host's configuration, the gateway file, what
+passes unscreened, the line it logs per check, and how to measure a policy on your own servers'
+tools before it enforces.
 
 ## Outside agents
 
@@ -599,6 +630,7 @@ src/
   SemanticPolicy.FluentValidation/      FluentValidation integration — semantic rules on validators
 tools/
   SemanticPolicy.Evals/                 the evaluation CLI — runs on TypeSafe Jev and a local Von
+  SemanticPolicy.Mcp.Gateway/           the MCP gateway — one MCP server's tool results and definitions screened by policy
 examples/
   PromptInjectionGuard/ ToolIntentGuard/ ToolResultGuard/ AgentRouter/
   SupportTicketForm/                    a support form whose validator asks a policy, with no agent
@@ -610,6 +642,7 @@ tests/
   SemanticPolicy.AgentFramework.Tests/  the adapter's tests, no key needed
   SemanticPolicy.FluentValidation.Tests/  the validator integration's tests, no key needed
   SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, no key needed
+  SemanticPolicy.Mcp.Gateway.Tests/     the gateway's tests, no key needed
 docs/
   adr/                                  architecture decisions, immutable once merged
   classification.md                     a Choice rule that picks a label, outside any agent
@@ -667,6 +700,9 @@ Apache-2.0. See [`LICENSE`][licence].
 [evals-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md
 [evals-quick-start]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md#quick-start
 [evals-pitfalls]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md#pitfalls
+[gateway-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Mcp.Gateway/README.md
+[gateway-running]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Mcp.Gateway/README.md#running-it
+[mcp-gateway]: https://github.com/semanticpolicy/semantic-policy#the-mcp-gateway
 [contributing]: https://github.com/semanticpolicy/semantic-policy/blob/main/CONTRIBUTING.md
 [issues]: https://github.com/semanticpolicy/semantic-policy/issues
 [licence]: https://github.com/semanticpolicy/semantic-policy/blob/main/LICENSE

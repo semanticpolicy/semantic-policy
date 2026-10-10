@@ -25,6 +25,13 @@ Jev through OpenRouter and a local Von server through SystemOne, or the provider
 names; it makes a call answered `unavailable` again and resumes a run cut short. `report` and `run`
 can gate a build on required rates.
 
+`tools/SemanticPolicy.Mcp.Gateway/`, the MCP gateway, is implemented and tested in
+`tests/SemanticPolicy.Mcp.Gateway.Tests/`. It is the `semantic-policy-mcp` dotnet tool: it proxies
+one stdio MCP server for a host and screens the server's tool results and tool definitions with the
+policies its gateway file names. It reads providers files with the evaluation CLI's own reader,
+`src/Shared/ProvidersFileReader.cs`. Its `samples/` are the sample gateway file, its policies and
+providers file, and two labelled synthetic sets with a recorded run of each.
+
 ## Layout
 
 ```
@@ -36,6 +43,7 @@ src/SemanticPolicy.Extensions.AI/           Microsoft.Extensions.AI integration:
 src/SemanticPolicy.AgentFramework/          Microsoft Agent Framework integration, built on Extensions.AI
 src/SemanticPolicy.FluentValidation/        FluentValidation integration: semantic rules on validators
 tools/SemanticPolicy.Evals/                 evaluation CLI
+tools/SemanticPolicy.Mcp.Gateway/           MCP gateway: one stdio server's tool results and definitions screened by policy, and its samples
 examples/                                   demos on Jev: PromptInjectionGuard, ToolIntentGuard, ToolResultGuard, AgentRouter, SupportTicketForm
 examples/CustomProvider/                    a provider of your own over a local classifier, and its tests
 tests/SemanticPolicy.Core.Tests/            unit tests
@@ -44,6 +52,7 @@ tests/SemanticPolicy.Extensions.AI.Tests/   the chat-client guards' tests, on a 
 tests/SemanticPolicy.AgentFramework.Tests/  the adapter's tests, on a scripted model and provider
 tests/SemanticPolicy.FluentValidation.Tests/  the integration's tests, on a scripted provider
 tests/SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, on a scripted provider
+tests/SemanticPolicy.Mcp.Gateway.Tests/     the gateway's tests, on scripted servers and a scripted provider
 docs/adr/                                   architecture decisions, immutable once merged
 docs/classification.md                      a Choice rule that picks a label, outside any agent
 docs/custom-providers.md                    which provider to use, and the rules for writing your own
@@ -69,12 +78,15 @@ Run the narrowest command that reads what you changed. All three must pass befor
 | `src/SemanticPolicy.AgentFramework/**`, `src/Shared/Guards/**` | `dotnet test tests/SemanticPolicy.AgentFramework.Tests/SemanticPolicy.AgentFramework.Tests.csproj` |
 | `src/SemanticPolicy.FluentValidation/**` | `dotnet test tests/SemanticPolicy.FluentValidation.Tests/SemanticPolicy.FluentValidation.Tests.csproj` |
 | `tools/SemanticPolicy.Evals/**` | `dotnet test tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj` |
+| `tools/SemanticPolicy.Mcp.Gateway/**` | `dotnet test tests/SemanticPolicy.Mcp.Gateway.Tests/SemanticPolicy.Mcp.Gateway.Tests.csproj` |
+| `src/Shared/ProvidersFileReader.cs` | `dotnet test tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj` and `dotnet test tests/SemanticPolicy.Mcp.Gateway.Tests/SemanticPolicy.Mcp.Gateway.Tests.csproj` |
 | `examples/CustomProvider/**` | `dotnet test examples/CustomProvider/CustomProvider.Tests/CustomProvider.Tests.csproj` |
 | any `.cs` — whitespace and `.editorconfig` style only | `dotnet format --verify-no-changes` |
 
 CI runs the same commands on a pull request into `main`, then packs `tools/SemanticPolicy.Evals/` as
 the `SemanticPolicy.Evals` dotnet tool, installs it from that package alone and runs it outside the
-checkout on the datasets it carries, with no key. The demos need `OPENROUTER_API_KEY` and a live
+checkout on the datasets it carries, with no key; with the same tool it replays the MCP gateway's two
+sample sets from the checkout against their recordings. The demos need `OPENROUTER_API_KEY` and a live
 model, and `examples/CustomProvider/` a local TEI server, so neither CI nor this table runs those
 programs; `examples/README.md` says how to run them by hand. CI's `dotnet test`, like the table's
 row, runs `examples/CustomProvider/CustomProvider.Tests/`, which needs neither.
