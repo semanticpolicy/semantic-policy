@@ -243,7 +243,7 @@ services.AddSemanticPolicy()
     .AddSystemOne("pplx", o =>
     {
         o.BaseUrl = new Uri("https://openrouter.ai/api");
-        o.Model = "perplexity/pplx-decider-v1-27b"; // the name OpenRouter lists
+        o.Model = "perplexity/pplx-decider-v1.1-27b"; // the name OpenRouter lists
         o.ApiKeyVariable = "OPENROUTER_API_KEY";
     })
     .AddPolicy(policy);
@@ -251,8 +251,11 @@ services.AddSemanticPolicy()
 
 On 7 October 2026, registered this way, `perplexity/pplx-decider-v1-27b` and `liquid/d1` answered
 every row of the evaluation CLI's smoke set and ranked its attacks above its benign rows at a
-ROC-AUC of 0.998 and 0.995; Jev's recorded run scores 1.000. On 94 rows that shows the route works,
-not which model is better.
+ROC-AUC of 0.998 and 0.995; Jev's recorded run scores 1.000. On 10 October, OpenRouter answered
+`perplexity/pplx-decider-v1-27b` with 404 and listed `perplexity/pplx-decider-v1.1-27b` in its place,
+which scored 0.998 on the same set. On 94 rows that shows the route works, not which model is better.
+OpenRouter retires model names, so look up the current one under
+`https://openrouter.ai/api/v1/models?output_modalities=decisions` before you pin it.
 
 **Plain `http`.** Off loopback it sends your content, and your key if there is one, across the
 network in clear text. `o.AllowInsecureHttp = true` says in code that someone decided that, for a
