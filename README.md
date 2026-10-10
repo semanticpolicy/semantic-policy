@@ -404,10 +404,10 @@ IChatClient guarded = new ChatClientBuilder(chatClient)
 ```
 
 The tools an `McpClient` from the MCP C# SDK lists are `AIFunction`s, so the same two methods guard
-an MCP server's tools, with no extra SemanticPolicy package: put them in `ChatOptions.Tools`, and your
-handlers get each call before it reaches the server and each result before the model sees it, with
-the policy's verdict as a signal to act on. For a host you do not write, such as Claude Desktop or
-Cursor, [The MCP gateway][mcp-gateway] puts a policy in front of an MCP server with no code.
+an MCP server's tools, with no extra SemanticPolicy package. Put the tools `ListToolsAsync` returns
+in `ChatOptions.Tools`, and your handlers get each call before it reaches the server and each result
+before the model sees it. For a host you do not write, such as Claude Desktop or Cursor,
+[The MCP gateway][mcp-gateway] puts a policy in front of an MCP server with no code.
 
 The guards await the verdict in every mode. There is no pre-model point: a chat client receives the
 whole history on every call, so there is no one input to judge. [The package's README][chat-client-readme]
@@ -420,7 +420,8 @@ how to keep a Shadow policy off the critical path.
 Claude Desktop, Claude Code, Cursor or VS Code, and one MCP server. The host starts the gateway in
 place of the server, the gateway starts the server, and it asks a policy about each tool result and
 each tool definition the server sends. Its gateway file says what to do on each verdict: pass the
-result, put a note in front of it, withhold it, or hide the tool.
+result, put a note in front of it, withhold it, ask the person whether it may pass, or hide the
+tool.
 
 ```bash
 dnx SemanticPolicy.Mcp.Gateway --prerelease -- --gateway /path/to/gateway.json -- node /path/to/server.js

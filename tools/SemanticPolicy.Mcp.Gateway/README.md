@@ -14,12 +14,10 @@ in front of a host with no code of your own.
 ## What the gateway is not
 
 - **Not a security boundary.** A verdict is a decision model's probabilistic reading of a result or
-  a definition, and it can be wrong in either direction on an input nobody anticipated. A
-  prompt-injection rule raises the cost of an attack; it does not close the attack. Treat the
-  gateway as one layer among least-privilege tools, output handling, and a human in the loop for
-  anything irreversible.
-- **Not proof of anything.** A withheld result is not proof of an attack, and a passed one is not
-  proof of safety. Both are inputs to a decision the host and its user still own.
+  a definition, and it can be wrong in either direction: a withheld result is not proof of an
+  attack, and a passed one is not proof of safety. A prompt-injection rule raises the cost of an
+  attack; it does not close the attack. Treat the gateway as one layer among least-privilege tools,
+  output handling, and a human in the loop for anything irreversible.
 - **Not a screen of everything.** It reads tool results and tool definitions and nothing else, and
   not every part of a result; [What passes unscreened](#what-passes-unscreened) lists the rest.
 - **Not a source of thresholds.** The sample policies' thresholds are illustrations. Thresholds are
@@ -33,13 +31,18 @@ identifiers, verdicts and durations, never the text that was judged.
 
 ## Quick start
 
+You need the .NET 10 SDK, an OpenRouter API key, and an MCP server your host already starts over
+stdio.
+
 1. Copy the four sample files into one folder: [`gateway.json`][gateway-json],
    [`providers.json`][providers-json], [`results.policy.json`][results-policy] and
    [`definitions.policy.json`][definitions-policy].
-2. Set `OPENROUTER_API_KEY` where your host starts its servers. The samples' policies bind Jev
-   through OpenRouter, and the key pays for each check.
-3. Put the gateway in front of your server in the host's configuration, as
-   [Host configuration](#host-configuration) shows.
+2. In the host's configuration, replace the server's command with the gateway's line, which wraps
+   it, and give the gateway `OPENROUTER_API_KEY`. [Host configuration](#host-configuration) shows
+   both for each host. The samples' policies bind Jev through OpenRouter, and the key pays for each
+   check.
+3. Call one of the server's tools from the host, and find the gateway's line for it where the host
+   keeps the server's log: [The log](#the-log) says what the line holds.
 
 The samples run in Shadow mode: the gateway asks the policy about every result and definition and
 logs what it concluded, but passes everything as it is. Nothing changes for the host until you
@@ -57,31 +60,37 @@ dnx SemanticPolicy.Mcp.Gateway --prerelease -- --gateway /path/to/gateway.json -
 The line has three parts, split at each `--`:
 
 - **`dnx`'s own.** `--prerelease` is needed while the gateway is on NuGet only as a prerelease;
-  without it, `dnx` answers that the package is not found in the NuGet feeds. On the .NET SDK
-  10.0.302, `dnx` asked nothing before it ran the tool, on its first download too, so a host with no
+  without it, `dnx` answers that the package is not found in the NuGet feeds. `dnx` asks for no
+  confirmation, even on the first download (checked on the .NET SDK 10.0.302), so a host with no
   terminal can start it.
 - **The gateway's.** `--gateway` names the gateway file, and is required. Give it as an absolute
   path: the host decides which directory the gateway starts in.
 - **The server's.** Everything after the second `--` is the server's command line, exactly as you
   would give it to the host, and the gateway passes it on unchanged.
 
-`semantic-policy-mcp --help` and `--version` print the usage and the version. To keep one version
-until you update it, install the tool, then use `semantic-policy-mcp` as the command, with the
-gateway's options straight after it:
+To keep one version until you update it, install the tool and give the host `semantic-policy-mcp`
+as the command, with no `dnx` part:
 
 ```bash
 dotnet tool install --global SemanticPolicy.Mcp.Gateway --prerelease
+semantic-policy-mcp --gateway /path/to/gateway.json -- node /path/to/server.js
 ```
+
+`semantic-policy-mcp --help` and `--version` print the usage and the version.
 
 ## Host configuration
 
-Each host takes the same line: `dnx` as the command, and the rest as its arguments. The gateway
-reads the key its providers file names, `OPENROUTER_API_KEY` for the samples, from the environment
-the host starts it in. A host's `env` entry sets it there; a key written as its value is a key in
-the host's configuration file, so keep that file out of repositories.
+Each host takes the same line: `dnx` as the command, and the rest as its arguments. Only Claude Code
+was run with the gateway; the Claude Desktop, Cursor and VS Code configurations below follow those
+hosts' documentation.
 
-On Windows, `dnx` is a `.cmd` file. Claude Code started it as `dnx`; a host that cannot start it
-that way takes `cmd` as the command, and `/c` followed by the whole line as its arguments.
+The gateway reads the key its providers file names, `OPENROUTER_API_KEY` for the samples, from the
+environment the host starts it in. A host's `env` entry sets it there. A key written into that entry
+as plain text sits in the host's configuration file, so keep that file out of repositories.
+
+On Windows, `dnx` is a `.cmd` file. Claude Code starts it as it is. If another host cannot, make
+`cmd` the command and put `/c` in front of the rest: `"command": "cmd"` and
+`"args": ["/c", "dnx", "SemanticPolicy.Mcp.Gateway", …]`.
 
 ### Claude Code
 
@@ -89,16 +98,18 @@ that way takes `cmd` as the command, and `/c` followed by the whole line as its 
 claude mcp add gateway --scope user -- dnx SemanticPolicy.Mcp.Gateway --prerelease -- --gateway /path/to/gateway.json -- node /path/to/server.js
 ```
 
-Claude Code hands its own environment to the servers it starts, so a key set where Claude Code
-starts reaches the gateway. `--env OPENROUTER_API_KEY=<key>` stores it in Claude Code's configuration
-instead; give the name, `gateway` here, before it, because `--env` takes several values and would
-read the name as one. In PowerShell, run `claude.cmd mcp add` if `claude` is a `.ps1` script there:
-PowerShell drops the first `--` from a script's arguments.
+Claude Code passes its own environment to the servers it starts, so `OPENROUTER_API_KEY` set before
+Claude Code starts reaches the gateway. To store the key in Claude Code's configuration instead, add
+`--env OPENROUTER_API_KEY=<key>` after the name, `gateway` here: `--env` takes several values, so
+before the name it would read the name as one of them.
+
+In PowerShell, if `claude` is a `.ps1` script, run `claude.cmd mcp add` instead: PowerShell drops the
+first `--` from a script's arguments.
 
 ### Claude Desktop
 
 In `claude_desktop_config.json`, which **Edit Config** under Claude Desktop's **Developer** settings
-opens. The key is written in the file:
+opens. Here the key is written into the file itself:
 
 ```json
 {
@@ -154,9 +165,8 @@ In `.vscode/mcp.json`. The `inputs` entry asks for the key once instead of keepi
 
 The gateway speaks MCP revision `2025-06-18` to the host and to the server, and no other, so it
 translates nothing between them. A host that asks for another revision is answered with
-`2025-06-18` and goes on only if it supports that revision. Claude Code 2.1.293 connected to the
-gateway at `2025-06-18` on Windows, started both as `dnx` and as `cmd /c dnx`. Claude Desktop, Cursor
-and VS Code were not tried: their configuration above follows their documentation.
+`2025-06-18` and goes on only if it supports that revision. Claude Code 2.1.293 on Windows connected
+at `2025-06-18`, started both as `dnx` and as `cmd /c dnx`.
 
 A server that cannot answer `2025-06-18` stops the gateway at the handshake, with exit code 3 and
 the message that it did not complete the MCP handshake.
@@ -208,8 +218,13 @@ The sample, [`gateway.json`][gateway-json], screens both points:
 | `policy` | The point's policy file, in SemanticPolicy's policy JSON. One file may serve both points. |
 | `warn`, `escalate`, `deny`, `abstain` | What the point does on that verdict, as an `action` and a `message`, and for `ask` also a `withheld` message and a `fallback`. All four are required. |
 
-Leave a point out and the gateway passes what it would have screened. `allow` is not a key: an
-allowed result or definition always passes. A point takes these actions:
+A policy answers each check with one of five verdicts, from least to most severe: `allow`, nothing
+found; `warn`, worth knowing about; `abstain`, too close to call; `escalate`, for a person to
+decide, which the sample policies also give when a check fails; and `deny`. `allow` is not a key:
+an allowed result or definition always passes. Leave a point out and the gateway passes what it
+would have screened.
+
+A point takes these actions:
 
 | Point | Action | What the host gets |
 |---|---|---|
@@ -240,12 +255,12 @@ the person reads in the dialog.
   result.
 - **The server gets no key.** The gateway starts the server with its own environment minus every
   variable the providers file names as holding a key, bound or not.
-- **The policy's `budget` limits a call.** A host's tool call waits for its result's verdict, so the
-  budget, `"00:00:05"` in the samples, is how long one check may hold it up. When it runs out, the
-  policy's `onFailure` decides; the samples fall back to `escalate`. The providers file refuses
-  `timeout`, so the budget is the only limit you set. Behind it, each adapter still gives up on a
-  request after its own 10 seconds: a budget longer than that gives a check no more time, and
-  `onFailure` decides at 10 seconds.
+- **The policy's `budget` limits each check.** A host's tool call waits for its result's verdict, so
+  the budget, `"00:00:05"` in the samples, is how long one check may hold it up. When it runs out,
+  the policy's `onFailure` decides; the samples fall back to `escalate`. Keep it under 10 seconds:
+  each provider adapter gives up on a request after 10 seconds anyway, so a longer budget buys no
+  time and `onFailure` decides at 10. The providers file's `timeout` is refused here, so the budget
+  is the only limit you set.
 
 The sample maps a definition's `escalate` and `abstain` to `pass` on purpose. A definition is
 checked once per gateway process and its verdict kept, so `hide` on `escalate` would hide a tool
@@ -354,8 +369,9 @@ data.
 ## The log
 
 The gateway writes one line to its stderr for each check: a JSON object of metadata, with no
-content in it. Where a server's stderr ends up is the host's choice; Claude Desktop, for one, writes
-it to `mcp-server-<name>.log`. A line for a result looks like this:
+content in it. To the host, the gateway is the server, so the line goes wherever the host keeps a
+server's stderr; Claude Desktop, for one, writes it to `mcp-server-<name>.log`. A line for a result
+looks like this:
 
 ```json
 {"point":"result","policy":"mcp-tool-results","tool":"fetch_page","effective":"allow","evaluated":"warn","action":"pass","latencyMs":284,"correlationId":"7","unscreened":false}
@@ -375,9 +391,8 @@ it to `mcp-server-<name>.log`. A line for a result looks like this:
 
 `effective`, `evaluated` and `latencyMs` are left out of a result's line when the result had
 nothing to read. No line holds a result's text, a description, a schema, the rule's question or
-anything a person entered in a dialog.
-Besides these lines, the gateway writes to stderr only its own messages when it refuses to start or
-stops.
+anything a person entered in a dialog. Besides these lines, the gateway writes to stderr only its
+own messages when it refuses to start or stops.
 
 ### Telemetry
 
@@ -404,7 +419,7 @@ server's command, the step and the exit code, when there is one, and ends with e
 The upstream server 'node' ended while the gateway was serving (exit code 1). Run its command on its own to see its messages.
 ```
 
-Run the server's command on its own, in a terminal, to see its messages.
+## Exit codes
 
 | Exit code | Meaning |
 |---|---|
@@ -448,15 +463,16 @@ techniques without aiming them at the assistant. Each set is split 60 rows to tu
 ## Measured on the samples
 
 One run of each set through Jev (`typesafe/jev-1.13-20260917`) on OpenRouter, replayed with the
-evaluation tool's `report` at the samples' thresholds. From the `tools/SemanticPolicy.Mcp.Gateway`
-folder of a clone, these replay it with no key and no call:
+evaluation tool's `report` at the samples' thresholds. With the evaluation tool installed, as
+[Before Enforce](#before-enforce-measure-your-own) shows, these replay it from the
+`tools/SemanticPolicy.Mcp.Gateway` folder of a clone, with no key and no call:
 
 ```bash
 semantic-policy report --policy samples/results.policy.json --dataset samples/results.jsonl --recording samples/results.recording.jsonl
 semantic-policy report --policy samples/definitions.policy.json --dataset samples/definitions.jsonl --recording samples/definitions.recording.jsonl
 ```
 
-| Set | Rung | Flagged at | Precision | Recall | False-positive rate |
+| Set | Verdict | Flagged at | Precision | Recall | False-positive rate |
 |---|---|---|---|---|---|
 | results | warn | 0.6 | 0.974 (38 of 39) | 0.905 (38 of 42) | 0.017 (1 of 58) |
 | results | deny | 0.9 | 1.000 (23 of 23) | 0.548 (23 of 42) | 0.000 (0 of 58) |

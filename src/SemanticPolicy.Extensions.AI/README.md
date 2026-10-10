@@ -133,7 +133,7 @@ names for one returning an object.
 
 **The tools an `McpClient` from the MCP C# SDK lists are `AIFunction`s too**, so these handlers
 guard them with no extra package. The `ToolCall` carries the tool's name and description as the
-server declared them, and `ToolResult.Value` is what `McpClientTool` handed the loop:
+server declared them, and `ToolResult.Value` is what `McpClientTool` returned to the loop:
 
 - for a plain result of one text block, a `TextContent` carrying that text;
 - for an error or a structured result, a `JsonElement` of the whole `CallToolResult`, with
