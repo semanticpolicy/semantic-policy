@@ -37,7 +37,9 @@ jobs:
 
       # The evaluation tool as a user gets it: packed as the release packs it, installed with --source, which replaces
       # every configured feed, so a version already on nuget.org cannot stand in for this build, and run outside the
-      # checkout on the files the package carries. Nothing here needs a key or calls a provider.
+      # checkout on the files the package carries. The MCP gateway's sample sets are not in that package; they are
+      # replayed from the checkout, against the recordings their README quotes. Nothing here needs a key or calls a
+      # provider.
       - name: Pack, install and run the evaluation tool
         run: |
           dotnet pack tools/SemanticPolicy.Evals/SemanticPolicy.Evals.csproj --no-build --configuration Release --output "$RUNNER_TEMP/evals-feed"
@@ -46,3 +48,6 @@ jobs:
           cd "$RUNNER_TEMP/evals-run"
           "$RUNNER_TEMP/evals-tool/semantic-policy" samples datasets
           "$RUNNER_TEMP/evals-tool/semantic-policy" report --policy datasets/smoke/prompt-injection.policy.json --dataset datasets/smoke/prompt-injection.smoke.jsonl --recording datasets/smoke/prompt-injection.recording.jsonl
+          gateway_samples="$GITHUB_WORKSPACE/tools/SemanticPolicy.Mcp.Gateway/samples"
+          "$RUNNER_TEMP/evals-tool/semantic-policy" report --policy "$gateway_samples/results.policy.json" --dataset "$gateway_samples/results.jsonl" --recording "$gateway_samples/results.recording.jsonl"
+          "$RUNNER_TEMP/evals-tool/semantic-policy" report --policy "$gateway_samples/definitions.policy.json" --dataset "$gateway_samples/definitions.jsonl" --recording "$gateway_samples/definitions.recording.jsonl"
