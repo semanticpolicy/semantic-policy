@@ -15,6 +15,8 @@ internal static class Screens
     public const string WithholdMessage = "message-withhold";
     public const string EscalateMessage = "message-escalate";
     public const string HideMessage = "message-hide";
+    public const string AskMessage = "message-ask";
+    public const string WithheldMessage = "message-withheld";
 
     public static MappedAction Pass { get; } = new(GatewayAction.Pass, null);
 
@@ -23,6 +25,10 @@ internal static class Screens
     public static MappedAction Withhold { get; } = new(GatewayAction.Withhold, WithholdMessage);
 
     public static MappedAction Hide { get; } = new(GatewayAction.Hide, HideMessage);
+
+    // Asks the person, and takes the fallback given, Withhold unless another, when the host cannot ask.
+    public static MappedAction Ask(MappedAction? fallback = null) =>
+        new(GatewayAction.Ask, AskMessage) { Withheld = WithheldMessage, Fallback = fallback ?? Withhold };
 
     public static Policy Policy(string id, PolicyMode mode = PolicyMode.Enforce, TimeSpan? budget = null, string question = "question-a")
     {

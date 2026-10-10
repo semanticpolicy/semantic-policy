@@ -84,7 +84,7 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
             catch (McpProtocolException error)
             {
                 // An error answering the call carries text a host may hand the model as it would a result's.
-                if (await ScreenErrorAsync(point, name, error, CorrelationId(request), cancellationToken).ConfigureAwait(false) is { } replaced)
+                if (await ScreenErrorAsync(request.Server, point, name, error, CorrelationId(request), cancellationToken).ConfigureAwait(false) is { } replaced)
                 {
                     throw replaced;
                 }
@@ -92,7 +92,7 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
                 throw;
             }
 
-            return await ScreenResultAsync(point, name, result, CorrelationId(request), cancellationToken).ConfigureAwait(false);
+            return await ScreenResultAsync(request.Server, point, name, result, CorrelationId(request), cancellationToken).ConfigureAwait(false);
         };
 
     // The host's JSON-RPC id, so a line and a span join the host's own log of the request. A blank one, which the
@@ -173,7 +173,7 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
             SemanticContext context = new([ToolPart(tool.Name, tool.Description), ContextPart.Json("input_schema", tool.InputSchema)], correlationId);
             (PolicyVerdict verdict, TimeSpan latency) = await EvaluateAsync(point, context, lifetime).ConfigureAwait(false);
             MappedAction action = Act(point, verdict.Effective);
-            Log("definition", point, tool.Name, verdict, action.Action, latency, correlationId, unscreened: null);
+            Log("definition", point, tool.Name, verdict, Name(action.Action), latency, correlationId, unscreened: null);
             return action;
         }
         catch (Exception)
@@ -195,6 +195,7 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
     };
 
     private async Task<CallToolResult> ScreenResultAsync(
+        McpServer host,
         GatewayPoint point,
         string name,
         CallToolResult result,
@@ -204,11 +205,11 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
         (ContextPart? part, bool unscreened) = Screenable(result);
         if (part is null)
         {
-            Log("result", point, name, verdict: null, GatewayAction.Pass, latency: null, correlationId, unscreened);
+            Log("result", point, name, verdict: null, Name(GatewayAction.Pass), latency: null, correlationId, unscreened);
             return result;
         }
 
-        MappedAction action = await ScreenAsync(point, name, part, correlationId, unscreened, cancellationToken).ConfigureAwait(false);
+        MappedAction action = await ScreenAsync(host, point, name, part, correlationId, unscreened, cancellationToken).ConfigureAwait(false);
         switch (action.Action)
         {
             case GatewayAction.Pass:
@@ -230,13 +231,14 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
     // upstream's code, and an action changes only its text, as it does a result's. Withheld, nothing of the upstream's
     // error goes on but its code.
     private async Task<McpProtocolException?> ScreenErrorAsync(
+        McpServer host,
         GatewayPoint point,
         string name,
         McpProtocolException error,
         string correlationId,
         CancellationToken cancellationToken)
     {
-        MappedAction action = await ScreenAsync(point, name, Screenable(error), correlationId, unscreened: false, cancellationToken).ConfigureAwait(false);
+        MappedAction action = await ScreenAsync(host, point, name, Screenable(error), correlationId, unscreened: false, cancellationToken).ConfigureAwait(false);
         switch (action.Action)
         {
             case GatewayAction.Pass:
@@ -256,9 +258,10 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
         }
     }
 
-    // Evaluates one result on the result point, under the tool its name's current definition describes, and writes the
-    // line.
+    // Evaluates one result on the result point, under the tool its name's current definition describes, settles an ask
+    // with the person, and writes the line. What it returns is never an ask.
     private async Task<MappedAction> ScreenAsync(
+        McpServer host,
         GatewayPoint point,
         string name,
         ContextPart result,
@@ -275,8 +278,56 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
         SemanticContext context = new([ToolPart(name, description), result], correlationId);
         (PolicyVerdict verdict, TimeSpan latency) = await EvaluateAsync(point, context, cancellationToken).ConfigureAwait(false);
         MappedAction action = Act(point, verdict.Effective);
-        Log("result", point, name, verdict, action.Action, latency, correlationId, unscreened);
-        return action;
+        (MappedAction taken, string done) = action.Action == GatewayAction.Ask
+            ? await AskAsync(host, name, action, cancellationToken).ConfigureAwait(false)
+            : (action, Name(action.Action));
+        Log("result", point, name, verdict, done, latency, correlationId, unscreened);
+        return taken;
+    }
+
+    // Only the person's explicit accept lets a flagged result through. A decline, a cancel, an answer the protocol does
+    // not define or a failed request withholds it, and none of them falls back to the mapping. The dialog carries the
+    // operator's text and the tool's name and never the result: a server's text in a dialog the person trusts as the
+    // host's would be the server talking the person into accepting it. Of the answer only its action is read; whatever
+    // the person entered is left unread.
+    //
+    // A host that cannot show a form gets the fallback and is never sent a request. The SDK reads an elicitation
+    // capability that names no mode, as a host on this revision declares it, as form.
+    private static async Task<(MappedAction Taken, string Done)> AskAsync(
+        McpServer host,
+        string name,
+        MappedAction ask,
+        CancellationToken cancellationToken)
+    {
+        if (host.ClientCapabilities?.Elicitation?.Form is null)
+        {
+            MappedAction fallback = ask.Fallback!;
+            return (fallback, $"ask:fallback:{Name(fallback.Action)}");
+        }
+
+        string answer;
+        try
+        {
+            ElicitResult result = await host.ElicitAsync(
+                new ElicitRequestParams
+                {
+                    Message = $"{ask.Message}\n\nTool: {name}",
+
+                    // A yes or no needs no field, and Claude Code shows a form with none as a plain accept or decline.
+                    RequestedSchema = new ElicitRequestParams.RequestSchema(),
+                },
+                cancellationToken).ConfigureAwait(false);
+            answer = result.Action is "accept" or "decline" or "cancel" ? result.Action : "failed";
+        }
+        catch (Exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            answer = "failed";
+        }
+
+        MappedAction taken = answer == "accept"
+            ? new MappedAction(GatewayAction.Pass, null)
+            : new MappedAction(GatewayAction.Withhold, ask.Withheld);
+        return (taken, $"ask:{answer}");
     }
 
     // The tool part a ToolCall's context carries: the name and, only when there is one, the description. It is built
@@ -365,13 +416,13 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
     };
 
     // One JSON object per line. The tool's name is the only thing in it the upstream wrote: never a result's text, a
-    // description, a schema or the rule's question.
+    // description, a schema, the rule's question or anything a person entered in answer to an ask.
     private void Log(
         string at,
         GatewayPoint point,
         string tool,
         PolicyVerdict? verdict,
-        GatewayAction action,
+        string action,
         TimeSpan? latency,
         string correlationId,
         bool? unscreened)
@@ -389,7 +440,7 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
                 line.WriteString("evaluated", Name(verdict.Evaluated));
             }
 
-            line.WriteString("action", Name(action));
+            line.WriteString("action", action);
             if (latency is { } elapsed)
             {
                 line.WriteNumber("latencyMs", (long)Math.Round(elapsed.TotalMilliseconds));

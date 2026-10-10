@@ -18,8 +18,11 @@ tool guards already cover an MCP client's tools, and now have tests that show it
   `dnx SemanticPolicy.Mcp.Gateway --prerelease -- --gateway <file> -- <server command>`, sits
   between the host and one stdio MCP server, on MCP revision 2025-06-18 on both sides. It asks a
   policy about each tool result, each error a server answers a call with, and each tool definition,
-  and its gateway file maps every verdict but allow to an action: `pass`, `annotate` or `withhold`
-  for a result, `pass` or `hide` for a definition. It reads the evaluation CLI's providers file
+  and its gateway file maps every verdict but allow to an action: `pass`, `annotate`, `withhold` or
+  `ask` for a result, `pass` or `hide` for a definition. `ask` asks the person, in a dialog the host
+  shows with the operator's text and the tool's name and none of the result, whether the result may
+  pass: only an accept lets it through, anything else withholds it, and a host that cannot show the
+  dialog gets the entry's fallback action. It reads the evaluation CLI's providers file
   with the same code, builds every provider its policies bind when it starts, and refuses `timeout`
   there, because a policy's `budget` limits each check. It starts the server without the variables
   that hold the providers' keys and drops the server's stderr. It writes one line of metadata per

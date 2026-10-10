@@ -16,6 +16,8 @@ internal static class GatewayFile
     private const string _allow = "allow";
     private const string _action = "action";
     private const string _message = "message";
+    private const string _withheld = "withheld";
+    private const string _fallback = "fallback";
 
     // In the order a point's mapping is checked, so the first one missing is the one a refusal names.
     private static readonly string[] _verdicts = ["warn", "escalate", "deny", "abstain"];
@@ -26,14 +28,18 @@ internal static class GatewayFile
         ["annotate"] = GatewayAction.Annotate,
         ["withhold"] = GatewayAction.Withhold,
         ["hide"] = GatewayAction.Hide,
+        ["ask"] = GatewayAction.Ask,
     };
 
-    // A tool result can be annotated or withheld, never hidden; a tool definition can only be hidden.
+    // A tool result can be annotated, withheld or asked about, never hidden; a tool definition can only be hidden.
     private static readonly Dictionary<string, GatewayAction[]> _takes = new(StringComparer.Ordinal)
     {
-        [_results] = [GatewayAction.Pass, GatewayAction.Annotate, GatewayAction.Withhold],
+        [_results] = [GatewayAction.Pass, GatewayAction.Annotate, GatewayAction.Withhold, GatewayAction.Ask],
         [_definitions] = [GatewayAction.Pass, GatewayAction.Hide],
     };
+
+    // What an ask does when the host cannot ask: any result action but another ask.
+    private static readonly GatewayAction[] _fallbacks = [GatewayAction.Pass, GatewayAction.Annotate, GatewayAction.Withhold];
 
     /// <summary>Reads and checks the file's shape and its mapping.</summary>
     /// <param name="path">The gateway file, as given on the command line.</param>
@@ -148,14 +154,14 @@ internal static class GatewayFile
             ? where.Resolve($"{name}.{_policy}", policyValue)
             : throw where.Refuse($"{name}.{_policy} is missing.");
         MappedAction[] mapped = [.. _verdicts.Select(verdict => entries.TryGetValue(verdict, out JsonElement entry)
-            ? ReadAction(where, name, verdict, entry)
+            ? ReadAction(where, name, $"{name}.{verdict}", entry, isFallback: false)
             : throw where.Refuse($"{name}.{verdict} is missing."))];
         return new PointEntry(name, policyPath, new VerdictMapping(mapped[0], mapped[1], mapped[2], mapped[3]));
     }
 
-    private static MappedAction ReadAction(Where where, string point, string verdict, JsonElement entry)
+    // A verdict's entry, or an ask's fallback when isFallback is set. at is the key a refusal names.
+    private static MappedAction ReadAction(Where where, string point, string at, JsonElement entry, bool isFallback)
     {
-        string at = $"{point}.{verdict}";
         if (entry.ValueKind != JsonValueKind.Object)
         {
             throw where.Refuse($"{at} is not an object with '{_action}' and '{_message}'.");
@@ -163,6 +169,8 @@ internal static class GatewayFile
 
         JsonElement? action = null;
         JsonElement? message = null;
+        JsonElement? withheld = null;
+        JsonElement? fallback = null;
         foreach (JsonProperty property in entry.EnumerateObject())
         {
             switch (property.Name)
@@ -173,26 +181,51 @@ internal static class GatewayFile
                 case _message when message is null:
                     message = property.Value;
                     break;
-                case _action or _message:
+                case _withheld when withheld is null:
+                    withheld = property.Value;
+                    break;
+                case _fallback when fallback is null:
+                    fallback = property.Value;
+                    break;
+                case _action or _message or _withheld or _fallback:
                     throw where.Refuse($"{at}.{property.Name} is given twice.");
                 default:
                     throw where.Refuse(
-                        $"{at}.{property.Name} is not a property of an action; an action has '{_action}' and '{_message}'.");
+                        $"{at}.{property.Name} is not a property of an action; an action has '{_action}' and '{_message}', and {Name(GatewayAction.Ask)} also '{_withheld}' and '{_fallback}'.");
             }
         }
 
-        GatewayAction[] takes = _takes[point];
         if (action is not { } actionValue)
         {
             throw where.Refuse($"{at}.{_action} is missing.");
         }
 
-        if (actionValue.ValueKind != JsonValueKind.String
-            || !_actions.TryGetValue(actionValue.GetString()!, out GatewayAction taken)
-            || !takes.Contains(taken))
+        GatewayAction[] takes = isFallback ? _fallbacks : _takes[point];
+        GatewayAction? named = actionValue.ValueKind == JsonValueKind.String && _actions.TryGetValue(actionValue.GetString()!, out GatewayAction known)
+            ? known
+            : null;
+        if (named == GatewayAction.Ask && isFallback)
         {
             throw where.Refuse(
-                $"{at}.{_action} is not an action the {point} point takes; it takes {Listed(takes.Select(Name))}.");
+                $"{at}.{_action} is refused: a fallback is what happens when the host cannot ask; it takes {Listed(takes.Select(Name))}.");
+        }
+
+        if (named == GatewayAction.Ask && !takes.Contains(GatewayAction.Ask))
+        {
+            throw where.Refuse(
+                $"{at}.{_action} is refused: the protocol lets a server ask the person during a tool call, never while tools are listed; the {point} point takes {Listed(takes.Select(Name))}.");
+        }
+
+        if (named is not { } taken || !takes.Contains(taken))
+        {
+            throw where.Refuse(isFallback
+                ? $"{at}.{_action} is not an action a fallback takes; it takes {Listed(takes.Select(Name))}."
+                : $"{at}.{_action} is not an action the {point} point takes; it takes {Listed(takes.Select(Name))}.");
+        }
+
+        if (taken != GatewayAction.Ask && (withheld is not null ? _withheld : fallback is not null ? _fallback : null) is { } askOnly)
+        {
+            throw where.Refuse($"{at}.{askOnly} is refused: only {Name(GatewayAction.Ask)} takes it.");
         }
 
         if (taken == GatewayAction.Pass)
@@ -202,17 +235,28 @@ internal static class GatewayFile
                 : throw where.Refuse($"{at}.{_message} is refused: {Name(taken)} shows nothing.");
         }
 
-        // The model is shown the operator's text and nothing of the gateway's own, so an action that shows something
-        // has to be given it.
-        if (message is not { } messageValue)
+        // The model and the person are shown the operator's text and nothing of the gateway's own, so an action that
+        // shows something has to be given it.
+        if (taken != GatewayAction.Ask)
         {
-            throw where.Refuse($"{at}.{_message} is missing; {Name(taken)} shows it to the model.");
+            return new MappedAction(taken, Text(where, at, _message, message, $"{Name(taken)} shows it to the model"));
         }
 
-        return messageValue.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(messageValue.GetString())
-            ? new MappedAction(taken, messageValue.GetString())
-            : throw where.Refuse($"{at}.{_message} is not a text; {Name(taken)} shows it to the model.");
+        string dialog = Text(where, at, _message, message, $"{Name(taken)} shows it to the person");
+        string withheldText = Text(where, at, _withheld, withheld, $"{Name(taken)} shows it to the model when the person does not accept");
+        MappedAction instead = fallback is { } fallbackValue
+            ? ReadAction(where, point, $"{at}.{_fallback}", fallbackValue, isFallback: true)
+            : throw where.Refuse($"{at}.{_fallback} is missing; {Name(taken)} takes it when the host cannot ask.");
+        return new MappedAction(taken, dialog) { Withheld = withheldText, Fallback = instead };
     }
+
+    // One of the operator's texts: given, a string, and not blank.
+    private static string Text(Where where, string at, string key, JsonElement? value, string shownBy) =>
+        value is not { } given
+            ? throw where.Refuse($"{at}.{key} is missing; {shownBy}.")
+            : given.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(given.GetString())
+                ? given.GetString()!
+                : throw where.Refuse($"{at}.{key} is not a text; {shownBy}.");
 
     private static string Name(GatewayAction action) => _actions.First(known => known.Value == action).Key;
 
