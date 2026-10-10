@@ -42,6 +42,8 @@ belongs here.
   that only reports, such as a validation rule, may map the verdict by default.
   [0022](0022-guard-types-in-core-and-guards-on-the-function-invoking-loop.md) narrows it: the
   subjects, outcomes and handlers live in Core, and the machinery is shared source.
+  [0024](0024-mcp-gateway-acts-through-the-operators-mapping.md) narrows it: the MCP gateway's
+  handler is its operator's mapping file, and its result context has no `user_request`.
 - [0013](0013-evaluation-records-answers-and-replays-them-through-core.md) — The evaluation tool
   records provider answers once and replays them through Core.
   [0018](0018-evaluation-tool-reads-providers-from-a-file.md) narrows it: `run` can name its
@@ -79,6 +81,9 @@ belongs here.
 - [0023](0023-evaluation-tool-fits-a-calibration-into-a-new-policy.md) — The evaluation tool fits a
   Platt calibration on tune, reports it on test, and writes it into a new policy in which no
   recorded row changes its verdict.
+- [0024](0024-mcp-gateway-acts-through-the-operators-mapping.md) — The MCP gateway proxies one stdio
+  server at one MCP revision, screens its tool results and definitions, acts only through its
+  operator's mapping, and writes no content.
 
 ## Format
 
