@@ -288,12 +288,17 @@ three texts and a fallback:
 
 - **The dialog.** The host shows the person `message` and the tool's name, and nothing of the
   result: a server's text in a dialog the person trusts as the host's would be the server arguing
-  its own case. Write `message` to the person, and word it as what it is: a check raised a signal,
-  which can be wrong either way, not a finding that the result is malicious.
+  its own case. The name is the server's text too, so it is shown only when it is a plain
+  identifier, 1 to 128 ASCII letters, digits, `_`, `-` and `.`, as the protocol's `2025-11-25`
+  revision recommends tool names to be; any other name is replaced by a note that it is not shown.
+  Write `message` to the person, and word it as what it is: a check raised a signal, which can be
+  wrong either way, not a finding that the result is malicious.
 - **The answer.** Only an accept lets the result through, unchanged. A decline, a dismissed dialog,
   or a request the host fails or refuses withholds it: the model gets `withheld` as `withhold` would
   give it, and on an error, `withheld` in place of the error's message, under the error's code.
   Nothing of an answer falls back to the mapping, and nothing the person enters is read or logged.
+  When the host cancels the call while the person is being asked, the gateway withdraws the
+  question, so the host can close the dialog, and the call ends cancelled.
 - **Hosts that cannot ask.** A host that did not declare form elicitation when it connected gets
   `fallback` instead, which is `pass`, `annotate` or `withhold` with its own message, and is sent no
   question. `fallback` is required, so every host gets an answer the operator chose.
@@ -363,7 +368,7 @@ it to `mcp-server-<name>.log`. A line for a result looks like this:
 | `tool` | The tool's name: the one thing in the line the server wrote. |
 | `effective` | The verdict the gateway acted on. Always `allow` in Shadow. |
 | `evaluated` | The policy's own verdict: what it would act on in Enforce. |
-| `action` | What the gateway did: `pass`, `annotate`, `withhold` or `hide`. For an ask, how it ended: `ask:accept`, `ask:decline`, `ask:cancel`, `ask:failed`, or `ask:fallback:` and the fallback's action, such as `ask:fallback:withhold`. |
+| `action` | What the gateway did: `pass`, `annotate`, `withhold` or `hide`. For an ask, how it ended: `ask:accept`, `ask:decline`, `ask:cancel`, `ask:failed`, `ask:abandoned` when the host cancelled the call before the person answered, or `ask:fallback:` and the fallback's action, such as `ask:fallback:withhold`. |
 | `latencyMs` | How long the check took, in milliseconds. An ask's wait for the person is not part of it. |
 | `correlationId` | The host's JSON-RPC id of the request, to find it in the host's own log. |
 | `unscreened` | Results only: `true` when the result held content the gateway does not read. |

@@ -22,6 +22,9 @@ namespace SemanticPolicy.Mcp.Gateway;
 // newer definition. A page is not the whole catalogue: a name missing from one keeps its state.
 internal sealed class ToolScreening(GatewayComposition composition, TextWriter log, Action<string>? callWaiting, CancellationToken lifetime)
 {
+    // What the dialog shows in place of a tool name that is not a plain identifier.
+    private const string _unshownName = "(not shown: the server gave it a name that is not a plain identifier)";
+
     // Guards both maps, so a call's admission and a page's publication happen in one order.
     private readonly Lock _lock = new();
     private readonly Lock _logLock = new();
@@ -34,6 +37,8 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
     // The definition each name was most recently listed with: what names a tool in a result's context, and what admits a
     // call to it.
     private readonly Dictionary<string, Listed> _current = new(StringComparer.Ordinal);
+
+    private long _lastAskId;
 
     public McpRequestHandler<ListToolsRequestParams, ListToolsResult> List(McpRequestHandler<ListToolsRequestParams, ListToolsResult> forward) =>
         async (request, cancellationToken) =>
@@ -278,22 +283,42 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
         SemanticContext context = new([ToolPart(name, description), result], correlationId);
         (PolicyVerdict verdict, TimeSpan latency) = await EvaluateAsync(point, context, cancellationToken).ConfigureAwait(false);
         MappedAction action = Act(point, verdict.Effective);
-        (MappedAction taken, string done) = action.Action == GatewayAction.Ask
-            ? await AskAsync(host, name, action, cancellationToken).ConfigureAwait(false)
-            : (action, Name(action.Action));
-        Log("result", point, name, verdict, done, latency, correlationId, unscreened);
-        return taken;
+        void Settle(string done) => Log("result", point, name, verdict, done, latency, correlationId, unscreened);
+        if (action.Action != GatewayAction.Ask)
+        {
+            Settle(Name(action.Action));
+            return action;
+        }
+
+        try
+        {
+            (MappedAction taken, string done) = await AskAsync(host, name, action, cancellationToken).ConfigureAwait(false);
+            Settle(done);
+            return taken;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The call was cancelled while the person was being asked. The verdict was reached, so it has its line.
+            Settle("ask:abandoned");
+            throw;
+        }
     }
 
     // Only the person's explicit accept lets a flagged result through. A decline, a cancel, an answer the protocol does
     // not define or a failed request withholds it, and none of them falls back to the mapping. The dialog carries the
     // operator's text and the tool's name and never the result: a server's text in a dialog the person trusts as the
-    // host's would be the server talking the person into accepting it. Of the answer only its action is read; whatever
-    // the person entered is left unread.
+    // host's would be the server talking the person into accepting it. The name is the server's text too, so it is shown
+    // only when it is a plain identifier. Of the answer only its action is read; whatever the person entered is left
+    // unread.
     //
     // A host that cannot show a form gets the fallback and is never sent a request. The SDK reads an elicitation
     // capability that names no mode, as a host on this revision declares it, as form.
-    private static async Task<(MappedAction Taken, string Done)> AskAsync(
+    //
+    // A call the host cancels while the person is being asked withdraws the question. The SDK stops waiting for a
+    // cancelled request without telling the host, which would keep the dialog up for an answer nobody reads, so the
+    // request goes under an id of the gateway's own and the gateway tells the host; were the SDK to start telling it
+    // too, the protocol has the host ignore the second notice.
+    private async Task<(MappedAction Taken, string Done)> AskAsync(
         McpServer host,
         string name,
         MappedAction ask,
@@ -305,19 +330,38 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
             return (fallback, $"ask:fallback:{Name(fallback.Action)}");
         }
 
+        RequestId id = new($"gateway-ask-{Interlocked.Increment(ref _lastAskId)}");
         string answer;
         try
         {
-            ElicitResult result = await host.ElicitAsync(
+            ElicitResult result = await host.SendRequestAsync<ElicitRequestParams, ElicitResult>(
+                RequestMethods.ElicitationCreate,
                 new ElicitRequestParams
                 {
-                    Message = $"{ask.Message}\n\nTool: {name}",
+                    Message = $"{ask.Message}\n\nTool: {(IsPlainName(name) ? name : _unshownName)}",
 
                     // A yes or no needs no field, and Claude Code shows a form with none as a plain accept or decline.
                     RequestedSchema = new ElicitRequestParams.RequestSchema(),
                 },
-                cancellationToken).ConfigureAwait(false);
+                requestId: id,
+                cancellationToken: cancellationToken).ConfigureAwait(false);
             answer = result.Action is "accept" or "decline" or "cancel" ? result.Action : "failed";
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await host.SendNotificationAsync(
+                    NotificationMethods.CancelledNotification,
+                    new CancelledNotificationParams { RequestId = id },
+                    cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            }
+            catch (IOException)
+            {
+                // A host that has gone cannot be told, and has no dialog left to close.
+            }
+
+            throw;
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
         {
@@ -329,6 +373,11 @@ internal sealed class ToolScreening(GatewayComposition composition, TextWriter l
             : new MappedAction(GatewayAction.Withhold, ask.Withheld);
         return (taken, $"ask:{answer}");
     }
+
+    // A tool name as the protocol's 2025-11-25 revision recommends one: 1 to 128 ASCII letters, digits, '_', '-' and '.'.
+    // No line break, no space and no length to carry a sentence.
+    private static bool IsPlainName(string name) =>
+        name.Length is >= 1 and <= 128 && name.All(character => char.IsAsciiLetterOrDigit(character) || character is '_' or '-' or '.');
 
     // The tool part a ToolCall's context carries: the name and, only when there is one, the description. It is built
     // here because a ToolCall refuses a blank name, which an upstream can list and a host can call.
