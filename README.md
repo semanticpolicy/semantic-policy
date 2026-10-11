@@ -154,7 +154,11 @@ rules, and returns a probability for the policy to threshold.
 ```csharp
 ServiceCollection services = new(); // or the host's builder.Services
 services.AddSemanticPolicy()
-    .AddTypeSafeJev("jev", o => o.Route = TypeSafeJevRoute.OpenRouter) // reads OPENROUTER_API_KEY
+    .AddTypeSafeJev("jev", o =>
+    {
+        o.Route = TypeSafeJevRoute.OpenRouter; // reads OPENROUTER_API_KEY
+        o.RequestZeroDataRetention = true;     // asks for zero-retention endpoints; see the table below
+    })
     .AddPolicy(policy);
 ```
 
@@ -171,6 +175,7 @@ the factory creates the `HttpClient` under it, and every verdict reports it as t
 | `o.ApiKey` | The key. Leave it unset and it is read from the environment variable the route names — `TYPESAFE_API_KEY` or `OPENROUTER_API_KEY` — or from the one `o.ApiKeyVariable` names. Read once, when the evaluator is first resolved. |
 | `o.Model` | Overrides the model the route pins. A route pins a named version rather than a floating alias, because a threshold is measured against one model: `jev-1.13.0` direct, `typesafe/jev-1.13` through the gateway. |
 | `o.Timeout` | How long one call may take, ten seconds by default. Past it the provider reports a timeout, and the policy's `OnFailure` decides what that means. |
+| `o.RequestZeroDataRetention` | `false` by default. Set, every call asks OpenRouter, in the body's `provider.zdr` field, to route it only to endpoints OpenRouter lists as zero data retention. The field is OpenRouter's: TypeSafe's own endpoint does not promise to honour it, and the library checks none of it ([`SECURITY.md`][security]). |
 
 Every call goes through the named `HttpClient`, so `services.AddHttpClient("jev")` is where a proxy
 or a resilience handler of your own belongs. Leave that client's own `Timeout` infinite and use
@@ -228,6 +233,7 @@ same treatment: loggers stripped, redirects off, its own timeout infinite, `o.Ti
 | `o.MaxContextLength` | Off by default. A context longer than this many characters is not sent, below. |
 | `o.Path` | `/v1/systemone` by default. |
 | `o.Timeout` | Ten seconds by default, as for TypeSafe. |
+| `o.RequestZeroDataRetention` | `false` by default. For OpenRouter; see **Other models through OpenRouter**, below. |
 
 Every call asks the rule's question under the key `decision`, so a server that matches a question to
 a head it trained by name answers only from a head named `decision`.
@@ -264,6 +270,13 @@ ROC-AUC of 0.998 and 0.995; Jev's recorded run scores 1.000. On 10 October, Open
 which scored 0.998 on the same set. On 94 rows that shows the route works, not which model is better.
 OpenRouter retires model names, so look up the current one under
 `https://openrouter.ai/api/v1/models?output_modalities=decisions` before you pin it.
+
+`o.RequestZeroDataRetention = true` applies here as it does for Jev: every call asks OpenRouter to
+route it only to endpoints it lists as zero data retention, and the library checks none of it. Not
+every decision model has such an endpoint (`https://openrouter.ai/api/v1/endpoints/zdr` lists the
+ones that do), so with the setting on, a 404 means the model has no zero-retention endpoint or is
+gone. Either way it is a rejected input, with OpenRouter's answer on the failed attempt's
+`Result.Raw`, and the policy's `OnFailure` decides what follows. A local server ignores the setting.
 
 **Plain `http`.** Off loopback it sends your content, and your key if there is one, across the
 network in clear text. `o.AllowInsecureHttp = true` says in code that someone decided that, for a

@@ -6,16 +6,20 @@ namespace SemanticPolicy.Providers.SystemOne;
 
 /// <summary>
 /// Writes a <see cref="DecisionRequest"/> as a System One body: the model, the context exactly as it is
-/// under <c>state</c>, and one question under a fixed key. The property names are the wire's, spelled
-/// here and nowhere else.
+/// under <c>state</c>, one question under a fixed key and, when asked for, OpenRouter's zero data
+/// retention preference. The property names are the wire's, spelled here and nowhere else.
 /// </summary>
 internal static class SystemOneRequest
 {
     /// <summary>The key the single question is sent under and its answer is read from.</summary>
     public const string QuestionKey = "decision";
 
-    /// <summary>The body as UTF-8.</summary>
-    public static byte[] Write(DecisionRequest request, string model)
+    /// <summary>
+    /// The body as UTF-8. With <paramref name="requestZeroDataRetention"/> it ends in
+    /// <c>"provider":{"zdr":true}</c>; without it there is no <c>provider</c> member at all, because
+    /// <c>zdr: false</c> could not switch off what an OpenRouter account or key enforces.
+    /// </summary>
+    public static byte[] Write(DecisionRequest request, string model, bool requestZeroDataRetention)
     {
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))
@@ -31,6 +35,13 @@ internal static class SystemOneRequest
             WriteCriteria(writer, request);
             writer.WriteEndObject();
             writer.WriteEndObject();
+            if (requestZeroDataRetention)
+            {
+                writer.WriteStartObject("provider");
+                writer.WriteBoolean("zdr", true);
+                writer.WriteEndObject();
+            }
+
             writer.WriteEndObject();
         }
 

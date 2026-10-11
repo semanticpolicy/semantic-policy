@@ -43,6 +43,14 @@ tool guards already cover an MCP client's tools, and now have tests that show it
   the test process: a refused call never reaches the server, and a replaced result is what the model
   receives. The package's README says what `ToolResult.Value` holds for a plain, a structured and an
   error result. Nothing in the API changes.
+- **`SemanticPolicy.Providers.TypeSafe` and `SemanticPolicy.Providers.SystemOne`.**
+  `RequestZeroDataRetention`, on `TypeSafeJevOptions` and `SystemOneOptions` and off by default,
+  asks OpenRouter to route each call only to endpoints it lists as zero data retention, by adding
+  `"provider":{"zdr":true}` to the body; off, the body is unchanged. The library checks none of it,
+  and a server other than OpenRouter may ignore the member. OpenRouter refuses a model with no such
+  endpoint with a 404, which reaches the policy as a rejected input like any other. The evaluation
+  CLI's providers file, and so the gateway's, takes `requestZeroDataRetention` in a `systemone` or
+  `typesafe-jev` entry.
 
 ## 0.1.0-alpha.3 - 2026-10-03
 

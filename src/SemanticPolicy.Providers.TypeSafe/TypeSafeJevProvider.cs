@@ -36,6 +36,7 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
     private readonly string _model;
     private readonly string _apiKey;
     private readonly TimeSpan _timeout;
+    private readonly bool _requestZeroDataRetention;
 
     /// <summary>
     /// Builds the provider on a client the caller owns. The client's <see cref="HttpClient.Timeout"/>
@@ -79,6 +80,7 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
         _model = options.Model ?? route.Model;
         _apiKey = options.ApiKey;
         _timeout = options.Timeout;
+        _requestZeroDataRetention = options.RequestZeroDataRetention;
         Id = options.Id;
     }
 
@@ -118,7 +120,7 @@ public sealed class TypeSafeJevProvider : IDecisionProvider
     {
         HttpRequestMessage message = new(HttpMethod.Post, _endpoint)
         {
-            Content = new ByteArrayContent(SystemOneRequest.Write(request, _model)),
+            Content = new ByteArrayContent(SystemOneRequest.Write(request, _model, _requestZeroDataRetention)),
         };
         message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 

@@ -77,6 +77,7 @@ public static class SystemOneBuilderExtensions
             Evidence = source.Evidence,
             MaxContextLength = source.MaxContextLength,
             Timeout = source.Timeout,
+            RequestZeroDataRetention = source.RequestZeroDataRetention,
             Id = source.Id,
         };
 }

@@ -40,3 +40,10 @@ evidence values, verdicts and durations, never the text that was judged.
 A provider sends the content it evaluates to whatever endpoint it is configured with. Which provider
 runs a rule is therefore a data-residency decision as much as a cost decision, and the library will
 not make it for you.
+
+`RequestZeroDataRetention`, on the TypeSafe and System One providers, asks OpenRouter to route each
+call only to endpoints it lists as zero data retention. It is a request, and the library checks none
+of it: neither OpenRouter's list nor what an endpoint keeps. A local System One server ignores the
+member that carries it. The enforcement that holds is the zero data retention setting of your
+OpenRouter account or API key, which applies to every call made with them and which no request can
+switch off.
