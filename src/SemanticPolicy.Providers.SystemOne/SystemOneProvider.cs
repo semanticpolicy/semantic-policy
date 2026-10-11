@@ -32,6 +32,7 @@ public sealed class SystemOneProvider : IDecisionProvider
     private readonly EvidenceKind _evidence;
     private readonly int? _maxContextLength;
     private readonly TimeSpan _timeout;
+    private readonly bool _requestZeroDataRetention;
 
     /// <summary>
     /// Builds the provider on a client the caller owns. The client's <see cref="HttpClient.Timeout"/>
@@ -81,6 +82,7 @@ public sealed class SystemOneProvider : IDecisionProvider
         _evidence = options.Evidence;
         _maxContextLength = options.MaxContextLength;
         _timeout = options.Timeout;
+        _requestZeroDataRetention = options.RequestZeroDataRetention;
         Id = options.Id;
         Capabilities = new ProviderCapabilities(
             new HashSet<DecisionType> { DecisionType.Boolean, DecisionType.Choice, DecisionType.Score },
@@ -141,7 +143,7 @@ public sealed class SystemOneProvider : IDecisionProvider
     {
         HttpRequestMessage message = new(HttpMethod.Post, _endpoint)
         {
-            Content = new ByteArrayContent(SystemOneRequest.Write(request, _model)),
+            Content = new ByteArrayContent(SystemOneRequest.Write(request, _model, _requestZeroDataRetention)),
         };
         message.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 

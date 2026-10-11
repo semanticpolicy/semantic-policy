@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using SemanticPolicy.Evaluation;
 using SemanticPolicy.Protocol;
@@ -9,6 +10,10 @@ namespace SemanticPolicy.Providers.ContractTests.SystemOne;
 
 public sealed class SystemOneRegistrationTests
 {
+    // OpenRouter's public error when no endpoint of the model is on its zero data retention list.
+    private const string _zeroDataRetentionRefusal =
+        """{"error":{"message":"No endpoints found matching your data policy (Zero data retention). Configure: https://openrouter.ai/settings/privacy","code":404,"metadata":{"routing_funnel":[{"step":"Initial Endpoints","endpoint_count":1}],"failed_routing_step":"Filter by Data Policy"}}}""";
+
     private static readonly SemanticContext _context = SemanticContext.FromText("a synthetic context");
 
     [Theory]
@@ -210,6 +215,53 @@ public sealed class SystemOneRegistrationTests
             .EvaluateAsync("p", _context, TestContext.Current.CancellationToken);
 
         verdict.Evaluated.Should().Be(expected);
+    }
+
+    // A refusal is an ordinary 404 to the adapter, read through the same status table as every server's,
+    // with nothing in the body singled out: the reason stays on Raw, and the policy's failure behaviour
+    // moves on to the next binding as it would for any other failure.
+    [Fact]
+    public async Task Zero_Data_Retention_Refusal_Is_Rejected_Input_And_The_Next_Binding_Decides()
+    {
+        ScriptedHttpMessageHandler refusing = new();
+        refusing.Respond(HttpStatusCode.NotFound, _zeroDataRetentionRefusal);
+        ScriptedHttpMessageHandler answering = Answering(0.3);
+        ServiceCollection services = new();
+        services.AddSemanticPolicy()
+            .AddSystemOne("zero-retention", options =>
+            {
+                Loopback(options);
+                options.RequestZeroDataRetention = true;
+            })
+            .AddSystemOne("next", Loopback)
+            .AddPolicy(Policy.Define("p")
+                .Enforce()
+                .Rule(Policy.Rule("r").Boolean("Does the context mention a synthetic marker?").WhenTrue(Verdict.Warn, Verdict.Deny))
+                .Using("zero-retention", b => b.WarnAboveScore(0.6).DenyAboveScore(0.9))
+                .Using("next", b => b.WarnAboveScore(0.6).DenyAboveScore(0.9))
+                .OnFailure(FailureBehavior.Fallback(Verdict.Deny))
+                .Build());
+        services.AddHttpClient("zero-retention").ConfigurePrimaryHttpMessageHandler(() => refusing);
+        services.AddHttpClient("next").ConfigurePrimaryHttpMessageHandler(() => answering);
+
+        await using ServiceProvider container = services.BuildServiceProvider();
+        PolicyVerdict verdict = await container.GetRequiredService<IPolicyEvaluator>()
+            .EvaluateAsync("p", _context, TestContext.Current.CancellationToken);
+
+        RuleVerdict rule = verdict.Rules.Should().ContainSingle().Which;
+        rule.DecidingBinding.Should().Be(1);
+        rule.Verdict.Should().Be(Verdict.Allow);
+        ProviderResult refused = rule.Attempts.Should().Contain(attempt => attempt.BindingIndex == 0).Which.Result;
+        refused.Outcome.Status.Should().Be(OutcomeStatus.Failure);
+        refused.Outcome.Kind.Should().Be(FailureKind.RejectedInput);
+        JsonElement.DeepEquals(refused.Raw!.Value, JsonSerializer.Deserialize<JsonElement>(_zeroDataRetentionRefusal))
+            .Should().BeTrue();
+        refusing.RequestCount.Should().Be(1);
+        JsonSerializer.Deserialize<JsonElement>(refusing.LastRequest.Body!).GetProperty("provider").GetRawText()
+            .Should().Be("""{"zdr":true}""");
+        answering.RequestCount.Should().Be(1);
+        JsonSerializer.Deserialize<JsonElement>(answering.LastRequest.Body!).TryGetProperty("provider", out _)
+            .Should().BeFalse();
     }
 
     [Fact]

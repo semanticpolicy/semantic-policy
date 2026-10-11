@@ -231,6 +231,46 @@ public sealed class ProvidersFileTests
         }
     }
 
+    // The reader binds the option by its property name like any other, so a recording through OpenRouter can ask for
+    // zero data retention as production does; off sends no member at all.
+    [Theory]
+    [InlineData("systemone", true)]
+    [InlineData("typesafe-jev", true)]
+    [InlineData("systemone", false)]
+    public async Task Providers_File_Request_Zero_Data_Retention_Reaches_The_Adapter_Request(string kind, bool requested)
+    {
+        string variable = TestVariable();
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, "test-key-not-a-credential");
+            string setting = requested ? "true" : "false";
+            string options = kind == "systemone"
+                ? $$"""{ "baseUrl": "http://127.0.0.1:8000", "model": "von-1.2.2", "requestZeroDataRetention": {{setting}} }"""
+                : $$"""{ "route": {{OpenRouterRoute("", variable)}}, "requestZeroDataRetention": {{setting}} }""";
+            using TempFile file = TempFile.Write(Holding($$"""{ "entry": { "kind": "{{kind}}", "options": {{options}} } }"""), ".json");
+            Action<ISemanticPolicyBuilder> fromFile = ProvidersFile.Read(file.Path);
+            AnsweringHandler handler = new();
+
+            IReadOnlyDictionary<string, IDecisionProvider> providers = Cli.Providers.Resolve(
+                builder =>
+                {
+                    fromFile(builder);
+                    builder.Services.AddHttpClient("entry").ConfigurePrimaryHttpMessageHandler(() => handler);
+                },
+                Samples.Guard(FailureBehavior.Fallback(Verdict.Escalate), ["entry"], [Samples.Flagged()]));
+            ProviderResult result = await providers["entry"].DecideAsync(
+                Samples.Flagged().CreateRequest(SemanticContext.FromText("synthetic context")),
+                TestContext.Current.CancellationToken);
+
+            result.Outcome.Should().Be(ProviderOutcome.Success);
+            handler.Provider.Should().Be(requested ? """{"zdr":true}""" : null);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+        }
+    }
+
     // A key pasted where its variable's name belongs. A bound Jev entry would otherwise reach the adapter, whose message
     // for an unset variable names the variable; the System One entry is left unbound, so no run calls a server.
     [Theory]
@@ -315,6 +355,9 @@ public sealed class ProvidersFileTests
 
         public string? Model { get; private set; }
 
+        /// <summary>The body's <c>provider</c> member as sent, or <see langword="null"/> when it has none.</summary>
+        public string? Provider { get; private set; }
+
         public string? Authorization { get; private set; }
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -324,6 +367,7 @@ public sealed class ProvidersFileTests
             Authorization = request.Headers.Authorization?.ToString();
             using JsonDocument body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
             Model = body.RootElement.TryGetProperty("model", out JsonElement model) ? model.GetString() : null;
+            Provider = body.RootElement.TryGetProperty("provider", out JsonElement provider) ? provider.GetRawText() : null;
             bool v0 = body.RootElement.TryGetProperty("protocol", out JsonElement protocol) && protocol.ValueEquals(ProtocolVersion.V0);
             string answer = v0
                 ? """{"protocol":"semanticpolicy/v0","type":"boolean","outcome":{"status":"success"},"value":true,"evidence":[{"kind":"score","values":{"true":0.91,"false":0.09}}],"provider":{"id":"stub","latencyMs":3}}"""

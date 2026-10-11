@@ -91,6 +91,7 @@ public static class TypeSafeJevBuilderExtensions
             ApiKey = source.ApiKey,
             ApiKeyVariable = source.ApiKeyVariable,
             Timeout = source.Timeout,
+            RequestZeroDataRetention = source.RequestZeroDataRetention,
             Id = source.Id,
         };
 }

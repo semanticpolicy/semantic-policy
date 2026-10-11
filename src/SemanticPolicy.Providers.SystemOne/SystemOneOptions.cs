@@ -79,6 +79,16 @@ public sealed class SystemOneOptions
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
+    /// Whether every call asks OpenRouter, through the body's <c>provider.zdr</c> field, to route it only
+    /// to endpoints OpenRouter lists as zero data retention. False by default, and the body then carries
+    /// no <c>provider</c> member. The library verifies none of it — the list is OpenRouter's and the
+    /// retention each endpoint's own — and a server other than OpenRouter may ignore the field. A call
+    /// OpenRouter refuses for want of such an endpoint comes back as a failure, which the policy's
+    /// failure behaviour handles.
+    /// </summary>
+    public bool RequestZeroDataRetention { get; set; }
+
+    /// <summary>
     /// The id the provider reports on every verdict, as <c>ProviderMetadata.Id</c>. It is not what a
     /// policy binds to — a binding names the registration — so <c>AddSystemOne</c> defaults this to the
     /// registration's name, and only a provider built directly falls back to <see cref="DefaultId"/>.

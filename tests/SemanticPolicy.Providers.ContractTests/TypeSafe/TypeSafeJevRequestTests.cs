@@ -81,6 +81,43 @@ public sealed class TypeSafeJevRequestTests
         }
     }
 
+    // The member is OpenRouter's, but nothing in the adapter switches on the route: TypeSafe's own endpoint
+    // is sent it too, whatever it makes of it. Off adds nothing rather than `zdr: false`.
+    [Theory]
+    [InlineData("openrouter", true)]
+    [InlineData("openrouter", false)]
+    [InlineData("typesafe", true)]
+    public async Task Request_Body_Carries_Provider_Zdr_Only_When_Zero_Data_Retention_Is_Requested(string preset, bool requested)
+    {
+        TypeSafeJevHarness harness = new(options =>
+        {
+            options.Route = RouteFor(preset);
+            options.RequestZeroDataRetention = requested;
+        });
+        TypeSafeJevHarness defaults = new(options => options.Route = RouteFor(preset));
+        DecisionRequest request = harness.CreateRequest(DecisionType.Boolean, ProviderHarness.Marker);
+        harness.ScriptSuccess(DecisionType.Boolean);
+        defaults.ScriptSuccess(DecisionType.Boolean);
+
+        await harness.Provider.DecideAsync(request, TestContext.Current.CancellationToken);
+        await defaults.Provider.DecideAsync(request, TestContext.Current.CancellationToken);
+
+        JsonElement body = harness.LastBody;
+        body.TryGetProperty("provider", out JsonElement provider).Should().Be(requested);
+        if (requested)
+        {
+            provider.GetRawText().Should().Be("""{"zdr":true}""");
+        }
+
+        JsonElement unchanged = defaults.LastBody;
+        body.EnumerateObject().Select(member => member.Name).Where(name => name != "provider")
+            .Should().Equal(unchanged.EnumerateObject().Select(member => member.Name));
+        foreach (JsonProperty member in unchanged.EnumerateObject())
+        {
+            JsonElement.DeepEquals(body.GetProperty(member.Name), member.Value).Should().BeTrue(member.Name);
+        }
+    }
+
     [Theory]
     [InlineData(null, null)]
     [InlineData("it names a person", null)]

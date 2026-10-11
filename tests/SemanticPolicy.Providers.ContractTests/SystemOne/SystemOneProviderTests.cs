@@ -27,6 +27,43 @@ public sealed class SystemOneProviderTests
         harness.LastBody.GetProperty("model").GetString().Should().Be(SystemOneHarness.Model);
     }
 
+    // The member goes wherever the options point, a local server included, which ignores it. Off adds
+    // nothing rather than `zdr: false`, which could not switch off what an OpenRouter account enforces.
+    [Theory]
+    [InlineData("https://openrouter.ai/api", true)]
+    [InlineData("https://openrouter.ai/api", false)]
+    [InlineData("http://127.0.0.1:8000", true)]
+    public async Task Request_Body_Carries_Provider_Zdr_Only_When_Zero_Data_Retention_Is_Requested(string baseUrl, bool requested)
+    {
+        SystemOneHarness harness = new(options =>
+        {
+            options.BaseUrl = new Uri(baseUrl);
+            options.RequestZeroDataRetention = requested;
+        });
+        SystemOneHarness defaults = new();
+        DecisionRequest request = harness.CreateRequest(DecisionType.Boolean, ProviderHarness.Marker);
+        harness.ScriptSuccess(DecisionType.Boolean);
+        defaults.ScriptSuccess(DecisionType.Boolean);
+
+        await harness.Provider.DecideAsync(request, TestContext.Current.CancellationToken);
+        await defaults.Provider.DecideAsync(request, TestContext.Current.CancellationToken);
+
+        JsonElement body = harness.LastBody;
+        body.TryGetProperty("provider", out JsonElement provider).Should().Be(requested);
+        if (requested)
+        {
+            provider.GetRawText().Should().Be("""{"zdr":true}""");
+        }
+
+        JsonElement unchanged = defaults.LastBody;
+        body.EnumerateObject().Select(member => member.Name).Where(name => name != "provider")
+            .Should().Equal(unchanged.EnumerateObject().Select(member => member.Name));
+        foreach (JsonProperty member in unchanged.EnumerateObject())
+        {
+            JsonElement.DeepEquals(body.GetProperty(member.Name), member.Value).Should().BeTrue(member.Name);
+        }
+    }
+
     // A provider built by hand never reads the environment, so options that name only a variable would
     // send no bearer and report no error; the constructor refuses them instead.
     [Fact]
