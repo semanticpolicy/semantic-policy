@@ -1,0 +1,5 @@
+{
+  "merge_default_branch": true,
+  "integration_branches": "epic/",
+  "no_ci_paths": []
+}
