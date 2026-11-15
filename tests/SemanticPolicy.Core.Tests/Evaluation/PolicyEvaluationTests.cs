@@ -383,6 +383,20 @@ public sealed class PolicyEvaluationTests
         JsonNode.Parse(json)!["rules"]![0]!["attempts"]![0]!["result"]!["value"]!.GetValue<string>().Should().Be("warn");
     }
 
+    [Fact]
+    public void Verdict_Carries_The_Digest_Of_The_Policy_It_Evaluated()
+    {
+        Policy policy = Define(FailureBehavior.Deny, ["local"], [Flagged()]);
+        PolicyVerdict verdict = PolicyEvaluation.Evaluate(policy, Attempts((_rule, 0, BooleanAnswer(0.95)))).Verdict!;
+
+        string json = JsonSerializer.Serialize(verdict, SemanticPolicyJson.Options);
+        string withoutDigest = JsonSerializer.Serialize(verdict with { PolicyDigest = null }, SemanticPolicyJson.Options);
+
+        verdict.PolicyDigest.Should().Be(policy.Digest).And.StartWith("sha256:");
+        JsonNode.Parse(json)!["policyDigest"]!.GetValue<string>().Should().Be(policy.Digest);
+        JsonNode.Parse(withoutDigest)!.AsObject().Should().NotContainKey("policyDigest");
+    }
+
     [Theory]
     [InlineData("harmless", 0, Verdict.Allow, null)]
     [InlineData("minor", 1, Verdict.Allow, null)]

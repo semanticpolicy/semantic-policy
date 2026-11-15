@@ -200,6 +200,7 @@ public sealed class PolicyEvaluator : IPolicyEvaluator
         if (evaluation is not null)
         {
             evaluation.SetTag(PolicyIdTag, policy.Id);
+            evaluation.SetTag(PolicyDigestTag, policy.Digest);
             evaluation.SetTag(PolicyModeTag, Name(policy.Mode));
             if (context.CorrelationId is { } correlationId)
             {

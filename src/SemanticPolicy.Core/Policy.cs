@@ -1,4 +1,9 @@
+using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using SemanticPolicy.Evaluation;
 using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy;
@@ -52,6 +57,35 @@ public sealed record Policy(
     /// policy and fail the evaluator at its first use, so <see cref="Validate"/> rejects it here.
     /// </summary>
     public static TimeSpan MaxBudget { get; } = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
+
+    // Keyed by identity and held outside the record's fields, so a with copy starts without a digest and
+    // the generated Equals, GetHashCode and ToString see the same members as before.
+    private static readonly ConditionalWeakTable<Policy, string> _digests = new();
+
+    /// <summary>
+    /// A name for exactly this policy: <c>sha256:</c> followed by 64 lowercase hex digits, the SHA-256 of
+    /// the RFC 8785 canonical form of the JSON <see cref="SemanticPolicyJson.Options"/> writes for it. It
+    /// covers the whole policy — its id, mode, failure behaviour and budget, every rule with its question,
+    /// criteria and option descriptions, every binding with its thresholds, gates and calibrations — so
+    /// changing any part gives another digest, while the same content has the same digest in any process,
+    /// on any machine and under any version of the library. A change to how the digest is made comes with
+    /// a new prefix, never under <c>sha256:</c>. A verdict carries it as
+    /// <see cref="PolicyVerdict.PolicyDigest"/> and the evaluation's activity as a tag, so a stored verdict
+    /// or a trace names the exact policy that produced it.
+    /// </summary>
+    /// <remarks>
+    /// The digest is a hash of the policy's own text, which is configuration and not what a provider judged,
+    /// but it is a hash of that text all the same: an application that builds questions or options from what
+    /// a user typed sends a hash of that text to its traces. It is computed on first read and kept for this
+    /// instance; a <c>with</c> copy is another instance and has the digest of its own content. It is not
+    /// serialized, and reading it does not validate the policy: <see cref="Validate"/> does that.
+    /// </remarks>
+    /// <exception cref="PolicyConfigurationException">
+    /// A threshold, gate, slope or intercept is NaN or infinite, which JSON has no form for. The message names
+    /// the policy id and nothing the policy's author wrote.
+    /// </exception>
+    [JsonIgnore]
+    public string Digest => _digests.GetValue(this, static policy => policy.ComputeDigest());
 
     /// <summary>Starts a rule: <c>Policy.Rule("id").Boolean("...").WhenTrue(Verdict.Warn, Verdict.Deny)</c>.</summary>
     /// <param name="id">The rule's id, distinct within the policy it goes into.</param>
@@ -531,6 +565,23 @@ public sealed record Policy(
 
     private const string _calibratedGateKind =
         "a calibrated operating point's gate reads the provider's own evidence, so it must be on the calibration's source kind.";
+
+    private string ComputeDigest()
+    {
+        JsonNode? json;
+        try
+        {
+            json = JsonSerializer.SerializeToNode(this, SemanticPolicyJson.Options);
+        }
+        catch (ArgumentException)
+        {
+            // The serializer refuses NaN and the infinities. Its message speaks of the value, so it is not
+            // carried over: the exception names the policy and the error, nothing the policy holds.
+            throw Fail("a number in the policy is not finite, so the policy has no JSON form and no digest.");
+        }
+
+        return "sha256:" + Convert.ToHexStringLower(SHA256.HashData(CanonicalJson.ToUtf8Bytes(json)));
+    }
 
     private PolicyConfigurationException Fail(string error, string? ruleId = null, string? providerId = null) =>
         PolicyConfigurationException.For(Id, error, ruleId, providerId);

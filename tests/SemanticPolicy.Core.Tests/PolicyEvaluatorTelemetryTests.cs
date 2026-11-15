@@ -30,6 +30,7 @@ public sealed class PolicyEvaluatorTelemetryTests
 
         verdict.Effective.Should().Be(Verdict.Allow);
         verdict.Evaluated.Should().Be(Verdict.Deny);
+        verdict.PolicyDigest.Should().Be(policy.Digest);
         Activity parent = recorder.Stopped.Should().ContainSingle(activity =>
             activity.OperationName == EvaluateActivity && Equals(activity.GetTagItem(PolicyIdTag), "tel-activities"))
             .Subject;
@@ -38,6 +39,7 @@ public sealed class PolicyEvaluatorTelemetryTests
         Tags(parent).Should().Equal(new Dictionary<string, object?>
         {
             [PolicyIdTag] = "tel-activities",
+            [PolicyDigestTag] = policy.Digest,
             [PolicyModeTag] = "shadow",
             [EffectiveVerdictTag] = "allow",
             [EvaluatedVerdictTag] = "deny",

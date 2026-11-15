@@ -554,7 +554,7 @@ collector. An application that already configures OpenTelemetry needs only the `
 
 | Name | What it is | Tags |
 |---|---|---|
-| `semanticpolicy.evaluate` | an activity per evaluation | the policy's id and mode, the effective and evaluated verdicts, and the correlation id when the context carries one |
+| `semanticpolicy.evaluate` | an activity per evaluation | the policy's id, digest and mode, the effective and evaluated verdicts, and the correlation id when the context carries one |
 | `semanticpolicy.attempt` | an activity per provider call, a child of the evaluation | the rule, the provider and its model, the decision type, the outcome and the failure kind; on the attempt that decided the rule, the evidence kind and value and the threshold crossed; the margin, the calibration and the fallback where they apply |
 | `semanticpolicy.evaluations` | a counter of the evaluations that reached a verdict | the policy's id and mode, the evaluated verdict |
 | `semanticpolicy.attempts` | a counter of provider attempts | the provider, the decision type, the outcome and the failure kind |
@@ -565,7 +565,12 @@ packages declare no source or meter of their own, so these two names cover the w
 
 A tag holds an identifier, a number or a word from the policy's own vocabulary, such as a verdict or
 a mode, and never content: not the rule's question, not the text or tool call that was judged, not
-the provider's response ([ADR 0008][adr-0008]). The correlation id is the one way from a span back
+the provider's response ([ADR 0008][adr-0008]). The policy's digest, `Policy.Digest`, is a hash of
+the policy, which is configuration, never of what was judged: it names the exact policy behind a
+verdict, and stays the same for an unchanged policy across processes, machines and library versions.
+It covers the whole policy, its questions, criteria and option descriptions included, so an
+application that builds options from what a user typed sends a hash of that text to its traces. A
+verdict carries the same digest as `PolicyDigest`. The correlation id is the one way from a span back
 to what it judged. It is whatever your application put on the context, as in
 `SemanticContext.FromText(input, correlationId)`; the runtime never derives one from the content,
 and it is on the span only, never on a metric.
