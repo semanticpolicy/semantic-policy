@@ -59,8 +59,9 @@ tool guards already cover an MCP client's tools, and now have tests that show it
   the `semanticpolicy.evaluate` activity as the tag `semanticpolicy.policy.digest`; no metric gains
   it. `PolicyDigest` is a body property, so the constructor, `Deconstruct` and the existing members
   of a serialized verdict are as before, and a verdict read from JSON written without it has none.
-  The digest is not part of the policy's JSON. Reading it on a policy that holds a NaN or infinite
-  number throws `PolicyConfigurationException`.
+  The digest is not part of the policy's JSON. Reading it on a policy that has no JSON form — one
+  that holds a NaN or infinite number, a rule outside the Boolean, Choice and Score rules, or an enum
+  value its enum does not define — throws `PolicyConfigurationException`.
 
 ## 0.1.0-alpha.3 - 2026-10-03
 

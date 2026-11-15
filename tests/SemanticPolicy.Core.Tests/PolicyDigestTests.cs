@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy.Core.Tests;
@@ -304,6 +306,28 @@ public sealed class PolicyDigestTests
             .And.NotMatchRegex(@"\d");
     }
 
+    // The serializer's other refusals: a rule it has no discriminator for, which Validate rejects, and an enum
+    // value with no name, which on the mode passes Validate, so a registered policy can hold one.
+    [Theory]
+    [InlineData("rule")]
+    [InlineData("mode")]
+    public void Digest_Of_A_Policy_With_An_Unknown_Rule_Or_Undefined_Enum_Throws_Policy_Configuration_Exception(
+        string part)
+    {
+        Policy pinned = Pinned() with { Id = "digest-unwritable" };
+        Policy policy = part == "rule"
+            ? pinned with { Rules = [.. pinned.Rules, new UnregisteredRule("rule-marker", "question-marker")] }
+            : pinned with { Mode = (PolicyMode)7 };
+
+        Func<string> read = () => policy.Digest;
+
+        PolicyConfigurationException error = read.Should().Throw<PolicyConfigurationException>().Which;
+        error.PolicyId.Should().Be("digest-unwritable");
+        error.Message.Should().Contain("digest-unwritable")
+            .And.NotContainAny("rule-marker", "question-marker", nameof(UnregisteredRule), "finite")
+            .And.NotMatchRegex(@"\d");
+    }
+
     // Every kind of rule, of binding (uncalibrated on two evidence kinds, calibrated from each source kind),
     // of gate and of calibration transform; a full and a partial provenance, a budget, text outside ASCII and
     // characters the serializer escapes, a negative zero, a threshold below 1e-4 and a gate below 1e-6.
@@ -425,5 +449,14 @@ public sealed class PolicyDigestTests
             [local, jev, fallback],
             FailureBehavior.Fallback(Verdict.Escalate),
             TimeSpan.FromMilliseconds(2500));
+    }
+
+    // A kind of rule the library does not know. Rule is public and abstract, so code outside it can write one.
+    private sealed record UnregisteredRule(string Id, string Question) : Rule(Id, Question)
+    {
+        [JsonIgnore]
+        public override DecisionType Type => DecisionType.Boolean;
+
+        public override DecisionRequest CreateRequest(SemanticContext context) => throw new UnreachableException();
     }
 }

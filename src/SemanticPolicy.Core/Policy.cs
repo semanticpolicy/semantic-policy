@@ -81,8 +81,10 @@ public sealed record Policy(
     /// serialized, and reading it does not validate the policy: <see cref="Validate"/> does that.
     /// </remarks>
     /// <exception cref="PolicyConfigurationException">
-    /// A threshold, gate, slope or intercept is NaN or infinite, which JSON has no form for. The message names
-    /// the policy id and nothing the policy's author wrote.
+    /// The policy has no JSON form: a threshold, gate, slope or intercept is NaN or infinite, which JSON has no
+    /// form for; a rule is not a <see cref="BooleanRule"/>, <see cref="ChoiceRule"/> or <see cref="ScoreRule"/>;
+    /// or an enum member, such as <see cref="Mode"/>, holds a value its enum does not define, which has no name
+    /// to be written as. The message names the policy id and nothing the policy's author wrote.
     /// </exception>
     [JsonIgnore]
     public string Digest => _digests.GetValue(this, static policy => policy.ComputeDigest());
@@ -573,11 +575,23 @@ public sealed record Policy(
         {
             json = JsonSerializer.SerializeToNode(this, SemanticPolicyJson.Options);
         }
+        // The serializer's messages speak of the value or the type it refused, so none is carried over: the
+        // exception names the policy and the error, nothing the policy holds.
         catch (ArgumentException)
         {
-            // The serializer refuses NaN and the infinities. Its message speaks of the value, so it is not
-            // carried over: the exception names the policy and the error, nothing the policy holds.
+            // NaN and the infinities.
             throw Fail("a number in the policy is not finite, so the policy has no JSON form and no digest.");
+        }
+        catch (NotSupportedException)
+        {
+            // Rule is the one polymorphic type in a policy, and the serializer knows its three derived types only.
+            throw Fail(
+                "a rule is not a Boolean, Choice or Score rule, so the policy has no JSON form and no digest.");
+        }
+        catch (JsonException)
+        {
+            // Enums are written by name only, so a value the enum does not define has nothing to be written as.
+            throw Fail("an enum holds a value it does not define, so the policy has no JSON form and no digest.");
         }
 
         return "sha256:" + Convert.ToHexStringLower(SHA256.HashData(CanonicalJson.ToUtf8Bytes(json)));
