@@ -67,7 +67,11 @@ public static class PolicyEvaluation
         }
 
         Verdict effective = policy.Mode == PolicyMode.Enforce ? evaluated : Verdict.Allow;
-        return new EvaluationStep(new PolicyVerdict(policy.Id, policy.Mode, effective, evaluated, verdicts), []);
+        PolicyVerdict concluded = new(policy.Id, policy.Mode, effective, evaluated, verdicts)
+        {
+            PolicyDigest = policy.Digest,
+        };
+        return new EvaluationStep(concluded, []);
     }
 
     private static void RejectStrayKeys(Policy policy, IReadOnlyDictionary<AttemptKey, ProviderResult> attempts)

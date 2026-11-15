@@ -21,4 +21,16 @@ public sealed record PolicyVerdict(
     PolicyMode Mode,
     Verdict Effective,
     Verdict Evaluated,
-    IReadOnlyList<RuleVerdict> Rules);
+    IReadOnlyList<RuleVerdict> Rules)
+{
+    /// <summary>
+    /// The <see cref="Policy.Digest"/> of the policy that produced the verdict, so a stored verdict names the
+    /// exact policy behind it, not only its id: <c>sha256:</c> followed by 64 lowercase hex digits, stable for
+    /// an unchanged policy across processes, machines and library versions. It covers the whole policy, its
+    /// questions, criteria and option descriptions included, so an application that builds options from what a
+    /// user typed stores a hash of that text with the verdict. Every verdict evaluation returns carries it,
+    /// live and in replay alike; it is <see langword="null"/> on a verdict read from JSON written without it.
+    /// It serializes as <c>policyDigest</c>, and not at all when null.
+    /// </summary>
+    public string? PolicyDigest { get; init; }
+}

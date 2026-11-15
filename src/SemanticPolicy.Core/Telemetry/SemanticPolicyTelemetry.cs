@@ -4,9 +4,10 @@ namespace SemanticPolicy.Telemetry;
 /// The names the runtime reports under: one activity source and one meter, an activity per evaluation
 /// with a child per provider attempt, three instruments, and the tag on each. Every value a tag
 /// carries is an identifier, a number or a name from the policy's own vocabulary — a verdict, a mode,
-/// a decision type, an evidence kind, an option key — and never the question, a context part, a
-/// provider's raw response or its message. A verdict reported here is a semantic signal, not an
-/// authorization: what the application did with it is not recorded, because the runtime does not know.
+/// a decision type, an evidence kind — or the policy's digest, a hash of the policy itself, and never
+/// the question, a context part, a provider's raw response or its message. A verdict reported here is a
+/// semantic signal, not an authorization: what the application did with it is not recorded, because the
+/// runtime does not know.
 /// </summary>
 public static class SemanticPolicyTelemetry
 {
@@ -36,6 +37,17 @@ public static class SemanticPolicyTelemetry
 
     /// <summary>The policy's id.</summary>
     public const string PolicyIdTag = "semanticpolicy.policy.id";
+
+    /// <summary>
+    /// The policy's <see cref="Policy.Digest"/>, on the evaluation's activity only: <c>sha256:</c> followed
+    /// by 64 lowercase hex digits, the same for an unchanged policy across processes, machines and library
+    /// versions, so a trace names the exact policy behind its verdict. No instrument carries it; metrics
+    /// stay keyed by policy id. It is a hash of the policy, which is configuration, never of what was
+    /// judged — but it covers the whole policy, its questions, criteria and option descriptions included,
+    /// so an application that builds options from what a user typed sends a hash of that text to its
+    /// traces.
+    /// </summary>
+    public const string PolicyDigestTag = "semanticpolicy.policy.digest";
 
     /// <summary>The policy's mode: <c>shadow</c> or <c>enforce</c>.</summary>
     public const string PolicyModeTag = "semanticpolicy.policy.mode";

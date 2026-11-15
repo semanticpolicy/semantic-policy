@@ -51,6 +51,17 @@ tool guards already cover an MCP client's tools, and now have tests that show it
   endpoint with a 404, which reaches the policy as a rejected input like any other. The evaluation
   CLI's providers file, and so the gateway's, takes `requestZeroDataRetention` in a `systemone` or
   `typesafe-jev` entry.
+- **`SemanticPolicy.Core`.** `Policy.Digest` names exactly one policy: `sha256:` and 64 lowercase hex
+  digits, the SHA-256 of the RFC 8785 canonical form of the policy's JSON. It covers the whole
+  policy, its questions, criteria and option descriptions included, and is the same for an unchanged
+  policy in any process, on any machine and under later versions of the library. Every verdict
+  carries it as `PolicyVerdict.PolicyDigest`, serialized as `policyDigest`, live and in replay, and
+  the `semanticpolicy.evaluate` activity as the tag `semanticpolicy.policy.digest`; no metric gains
+  it. `PolicyDigest` is a body property, so the constructor, `Deconstruct` and the existing members
+  of a serialized verdict are as before, and a verdict read from JSON written without it has none.
+  The digest is not part of the policy's JSON. Reading it on a policy that has no JSON form — one
+  that holds a NaN or infinite number, a rule outside the Boolean, Choice and Score rules, or an enum
+  value its enum does not define — throws `PolicyConfigurationException`.
 
 ## 0.1.0-alpha.3 - 2026-10-03
 
