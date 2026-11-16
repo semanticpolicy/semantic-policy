@@ -50,6 +50,9 @@ belongs here.
   providers in a file whose entries are the adapters' own options.
   [0020](0020-evaluation-tool-retries-resumes-and-gates-a-build.md) extends it: the recording and
   the result gain only optional members and stay `v0`.
+  [0026](0026-evaluation-formats-are-a-package-and-a-recording-may-be-an-export.md) extends it: a
+  dataset row may carry its own Choice options, and a replay fails only on an attempt Core asks for
+  and the row lacks.
 - [0014](0014-evaluation-tool-records-live-once-and-ci-replays.md) — The evaluation tool calls a
   provider once, commits what it recorded, and CI only replays it.
   [0020](0020-evaluation-tool-retries-resumes-and-gates-a-build.md) extends it: a committed
@@ -72,6 +75,8 @@ belongs here.
 - [0020](0020-evaluation-tool-retries-resumes-and-gates-a-build.md) — The evaluation tool calls an
   `unavailable` answer again, resumes a run cut short, puts a Wilson interval on every proportion,
   and gates a build on the exact value.
+  [0026](0026-evaluation-formats-are-a-package-and-a-recording-may-be-an-export.md) extends it:
+  `--resume` refuses an export, and a header without `timeout`.
 - [0021](0021-validation-rules-report-flagged-verdicts-as-failures.md) — A validation rule reports a
   flagged verdict as a failure by default, `Deny` an error and `Escalate` a warning, and the
   application decides what a failure means.
@@ -84,6 +89,10 @@ belongs here.
 - [0024](0024-mcp-gateway-acts-through-the-operators-mapping.md) — The MCP gateway proxies one stdio
   server at one MCP revision, screens its tool results and definitions, acts only through its
   operator's mapping, and writes no content.
+- [0026](0026-evaluation-formats-are-a-package-and-a-recording-may-be-an-export.md) — The
+  evaluation formats ship as the `SemanticPolicy.Evals.Format` package and stay `v0`; a dataset row
+  may carry its own Choice options, and a recording exported from stored verdicts names its source,
+  keeps only the attempts made and is never resumed.
 
 ## Format
 
