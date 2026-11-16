@@ -33,10 +33,12 @@ them under the policy that made them, or under a candidate. Three things stood i
    It sits under `src/`, references Core, and ships with the other packages at one version. Its
    public surface has four parts and no more:
    - the records of a dataset row and of a recording;
-   - `DatasetWriter`, which appends rows as a stream and returns the SHA-256 of the bytes it wrote,
-     equal to the digest the reader computes;
+   - the writers: `DatasetWriter`, which appends rows as a stream and returns the SHA-256 of the
+     bytes it wrote, equal to the digest the reader computes, and `RecordingWriter`, which writes the
+     header and then each row;
    - the readers, with the tool's validation and its messages;
-   - the conversion of a `PolicyVerdict` into a recorded row.
+   - the conversion of a `PolicyVerdict` into a recorded row, and `RecordingHeader.ForExport`, the
+     header of a recording made that way.
 
    Metrics, replay, sweeps and calibration stay in the tool. The package throws its own
    `EvalsFormatException`, which carries a message only, and the tool maps it to its usage-or-data
