@@ -27,7 +27,7 @@ public static class ReportPipeline
     /// <param name="force">Replay even though a dataset's digest differs from the recorded one.</param>
     /// <exception cref="EvalsException">
     /// The recording does not fit the inputs: a digest differs without <paramref name="force"/>, the rule asks a
-    /// different question, or a binding has no recorded attempt on a selected row.
+    /// different question, or the chain reaches a binding with no recorded attempt on a selected row.
     /// </exception>
     public static EvalsResult Build(string verb, LoadedInputs inputs, Recording recording, bool force)
     {
@@ -128,7 +128,8 @@ public static class ReportPipeline
             Names.Camel(splits.Source),
             tune,
             test,
-            recording.TornLine);
+            recording.TornLine,
+            set.DistinctPolicies);
     }
 
     private static List<string> Notes(

@@ -25,13 +25,20 @@ public sealed record ReplayRow(
 /// </summary>
 public sealed class ReplaySet
 {
-    private ReplaySet(RecordingHeader header, Policy policy, Rule rule, IReadOnlyList<ReplayRow> rows, int datasetRowCount)
+    private ReplaySet(
+        RecordingHeader header,
+        Policy policy,
+        Rule rule,
+        IReadOnlyList<ReplayRow> rows,
+        int datasetRowCount,
+        int? distinctPolicies)
     {
         Header = header;
         Policy = policy;
         Rule = rule;
         Rows = rows;
         DatasetRowCount = datasetRowCount;
+        DistinctPolicies = distinctPolicies;
     }
 
     /// <summary>The header of the recording that was read.</summary>
@@ -51,6 +58,12 @@ public sealed class ReplaySet
 
     /// <summary>How many rows were selected: the M of "N of M rows".</summary>
     public int DatasetRowCount { get; }
+
+    /// <summary>
+    /// How many distinct <c>policyDigest</c> values the rows of <see cref="Rows"/> name, counted as written and never
+    /// compared with any policy; <see langword="null"/> when none of them names one, as in a run's recording.
+    /// </summary>
+    public int? DistinctPolicies { get; }
 
     /// <summary>Joins a recording to the loaded inputs.</summary>
     /// <param name="recording">The recording, as read.</param>
@@ -83,6 +96,7 @@ public sealed class ReplaySet
         }
 
         List<ReplayRow> rows = [];
+        HashSet<string> digests = new(StringComparer.Ordinal);
         HashSet<string> selectedIds = new(inputs.Selected.Count, StringComparer.Ordinal);
         foreach (DatasetRow row in inputs.Selected)
         {
@@ -99,10 +113,20 @@ public sealed class ReplaySet
             if (byId.TryGetValue(row.Id, out RecordedRow? recorded))
             {
                 rows.Add(new ReplayRow(row, AttemptsFor(recorded, inputs.Rule.Id), RetriesFor(recorded, inputs.Rule.Id)));
+                if (recorded.PolicyDigest is { } digest)
+                {
+                    digests.Add(digest);
+                }
             }
         }
 
-        return new ReplaySet(recording.Header, inputs.Policy, inputs.Rule, rows, inputs.Selected.Count);
+        return new ReplaySet(
+            recording.Header,
+            inputs.Policy,
+            inputs.Rule,
+            rows,
+            inputs.Selected.Count,
+            digests.Count == 0 ? null : digests.Count);
     }
 
     private static void CheckDatasets(Recording recording, LoadedInputs inputs, bool force)
@@ -170,8 +194,10 @@ public sealed class ReplaySet
     /// </summary>
     /// <param name="variant">The policy to evaluate at; it must carry the selected rule.</param>
     /// <exception cref="EvalsException">
-    /// A binding's provider has no recorded attempt for the rule on some row; the message names the rule, the
-    /// provider and the row. A missing result is never turned into a failure.
+    /// The variant's chain reaches, on some row, a binding whose provider has no recorded attempt for the rule; the
+    /// message names the rule, the provider and the row. A row the chain decides before that binding replays, so an
+    /// export that holds only the attempts its evaluator made replays under its own policy. A missing result is
+    /// never turned into a failure.
     /// </exception>
     public IReadOnlyList<EvaluatedRow> Evaluate(Policy variant)
     {
@@ -230,24 +256,25 @@ public sealed class ReplaySet
         Dictionary<AttemptKey, ProviderResult> attempts = new(narrowed.Bindings.Count);
         for (int index = 0; index < narrowed.Bindings.Count; index++)
         {
-            string providerId = narrowed.Bindings[index].ProviderId;
-            if (!row.AttemptsByProvider.TryGetValue(providerId, out ProviderResult? result) || result is null)
+            if (row.AttemptsByProvider.TryGetValue(narrowed.Bindings[index].ProviderId, out ProviderResult? result)
+                && result is not null)
             {
-                throw new EvalsException(
-                    $"Rule '{Rule.Id}' has no recorded attempt from provider '{providerId}' on row '{row.Row.Id}'. "
-                    + "Record the run again with that provider in the chain: what a provider never answered "
-                    + "cannot be counted as a failure.");
+                attempts[new AttemptKey(Rule.Id, index)] = result;
             }
-
-            attempts[new AttemptKey(Rule.Id, index)] = result;
         }
 
         EvaluationStep step = PolicyEvaluation.Evaluate(narrowed, attempts);
+        if (step.Verdict is { } verdict)
+        {
+            return verdict.Rules.Single();
+        }
 
-        // Every binding of the one rule was just supplied, so the step is complete unless the step function
-        // stopped asking along a chain it should have walked; that would be a bug, not a verdict.
-        return step.Verdict?.Rules.Single()
-            ?? throw new InvalidOperationException(
-                $"The step function asked for more attempts on rule '{Rule.Id}' although every binding was supplied.");
+        // Every attempt the row has was supplied, so whatever the step still requires is one the recording lacks: a
+        // binding the chain reaches on this row that was never asked, as in an export whose cascade stopped earlier.
+        string providerId = narrowed.Bindings[step.Required[0].BindingIndex].ProviderId;
+        throw new EvalsException(
+            $"Rule '{Rule.Id}' needs an attempt from provider '{providerId}' on row '{row.Row.Id}', and the recording has "
+            + "none: the chain reaches that binding there. What a provider never answered cannot be counted as a "
+            + "failure, so record the row with that provider, or replay at a chain that stops before it.");
     }
 }

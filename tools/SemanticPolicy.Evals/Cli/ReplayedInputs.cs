@@ -56,7 +56,8 @@ internal sealed record ReplayedInputs(
             Names.Camel(Inputs.Splits.Source),
             Tune.Count,
             Test.Count,
-            TornLine);
+            TornLine,
+            Set.DistinctPolicies);
 
     // The binding --provider names; with no --provider, the only one. A policy with several bindings has no
     // binding a sweep or a fit could take by default, since the order of a chain says nothing about which to

@@ -94,12 +94,21 @@ public static class ReportRenderer
         {
             output.WriteLine(TornLineNote(line));
         }
+
+        if (rows.DistinctPolicies is { } policies)
+        {
+            output.WriteLine(DistinctPoliciesNote(policies));
+        }
     }
 
     // Shared with sweep and compare, which print their rows section in a form of their own.
     internal static string TornLineNote(int line) =>
         $"line {Count(line)} of the recording skipped: not valid JSON, as a run cut short leaves its last line; "
         + "its row counts as not recorded";
+
+    // Shared like the torn-line note. The digests are counted as recorded, never checked against the policy loaded.
+    internal static string DistinctPoliciesNote(int policies) =>
+        $"the rows name {Count(policies)} distinct {(policies == 1 ? "policy" : "policies")} by their recorded policyDigest";
 
     private static void Outcomes(OutcomeCounts outcomes, TextWriter output)
     {
