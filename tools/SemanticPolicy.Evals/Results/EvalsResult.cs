@@ -99,6 +99,11 @@ public sealed record RowSelection(
 /// calibration was fitted on; a result that names no model is never marked. <see langword="null"/> when no binding
 /// carries a calibration for the rule, so the report of an uncalibrated policy has no such member.
 /// </param>
+/// <param name="OptionSets">
+/// How many distinct option sets the rows of a Choice rule were shown, when there is more than one; the classes are
+/// then the keys the rows used. <see langword="null"/> otherwise, so a report whose rows share one set has no such
+/// member.
+/// </param>
 public sealed record ReportSection(
     OutcomeCounts Outcomes,
     IReadOnlyDictionary<string, int> Verdicts,
@@ -109,7 +114,8 @@ public sealed record ReportSection(
     IReadOnlyList<ProviderStats> Providers,
     IReadOnlyList<string> Notes,
     string? SweptProvider = null,
-    int? CalibrationModelMismatchRows = null);
+    int? CalibrationModelMismatchRows = null,
+    int? OptionSets = null);
 
 /// <summary>One rung's discrimination, paired with the rung it was measured on.</summary>
 /// <param name="Rung">The ladder rung.</param>

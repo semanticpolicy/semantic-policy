@@ -1,4 +1,6 @@
+using System.Text.Json.Serialization;
 using SemanticPolicy.Evals.Counting;
+using SemanticPolicy.Evals.Replay;
 
 namespace SemanticPolicy.Evals.Metrics;
 
@@ -22,9 +24,10 @@ public sealed record ClassMetrics(
 /// <summary>
 /// The full answer-against-label table of a Choice or Score rule, with the per-class rates read off it.
 /// Classes keep the rule's declared order — the options as written, the scale from lowest to highest — so
-/// two runs of one rule produce tables that can be compared row by row.
+/// two runs of one rule produce tables that can be compared row by row. The one exception is a Choice rule whose
+/// rows were shown different option sets, where the classes are the keys the rows used, in ordinal order.
 /// </summary>
-/// <param name="Classes">The rule's answers, in declared order.</param>
+/// <param name="Classes">The rule's answers, in declared order, or the keys the rows used, in ordinal order.</param>
 /// <param name="Counts">How often each labelled class was answered as each class: <c>[actual][predicted]</c>.</param>
 /// <param name="Accuracy">The share of classified rows answered correctly.</param>
 /// <param name="PerClass">The per-class rates, in the same order as <paramref name="Classes"/>.</param>
@@ -47,13 +50,51 @@ public sealed record MulticlassConfusion(
 
     internal int Counted => Counts.Values.Sum(answered => answered.Values.Sum());
 
-    /// <summary>The table of a Choice rule, with the options as its classes.</summary>
+    /// <summary>
+    /// How many distinct option sets the rows were shown: 1 when every row was shown the same options, whether the
+    /// rule's or a set of their own, and for a Score rule. Not part of the table's JSON shape; the report carries it.
+    /// </summary>
+    [JsonIgnore]
+    public int DistinctOptionSets { get; init; } = 1;
+
+    /// <summary>
+    /// The table of a Choice rule. When every row was shown one option set, the classes are its keys in declared
+    /// order. When the rows carry different sets, no one set lists every answer, so the classes are the keys seen as a
+    /// label on any row or as the answer of a classified row, in ordinal order.
+    /// </summary>
     /// <param name="rows">The bucketed rows of the selection; only classified ones are counted.</param>
-    /// <param name="rule">The rule whose options are the classes.</param>
+    /// <param name="rule">The rule whose options, or the rows' own, are the classes.</param>
     public static MulticlassConfusion Compute(IReadOnlyList<RowOutcome> rows, ChoiceRule rule)
     {
+        ArgumentNullException.ThrowIfNull(rows);
         ArgumentNullException.ThrowIfNull(rule);
-        return Tabulate(rows, [.. rule.Options.Select(option => option.Key)]);
+        HashSet<IReadOnlyList<ChoiceOption>> sets = new(OptionSets.Comparer);
+        foreach (RowOutcome row in rows)
+        {
+            sets.Add(OptionSets.Of(row.Row.Row, rule));
+        }
+
+        if (sets.Count <= 1)
+        {
+            IReadOnlyList<ChoiceOption> only = sets.FirstOrDefault() ?? rule.Options;
+            return Tabulate(rows, [.. only.Select(option => option.Key)]);
+        }
+
+        SortedSet<string> seen = new(StringComparer.Ordinal);
+        foreach (RowOutcome row in rows)
+        {
+            if (row.Row.Row.Label is { Kind: RowLabelKind.Answer, Answer: { } label })
+            {
+                seen.Add(label);
+            }
+
+            if (row is { Bucket: RowBucket.Classified, PredictedAnswer: { } predicted })
+            {
+                seen.Add(predicted);
+            }
+        }
+
+        return Tabulate(rows, [.. seen]) with { DistinctOptionSets = sets.Count };
     }
 
     /// <summary>The table of a Score rule, with the levels as its classes, lowest first.</summary>

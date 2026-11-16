@@ -6,9 +6,10 @@ using System.Text.Json;
 namespace SemanticPolicy.Evals.Format;
 
 /// <summary>
-/// Reads dataset schema v0: one JSON object per line with <c>id</c>, <c>input</c>, <c>label</c> and an
-/// optional <c>metadata</c> object. Every error names the path, the line and, once it is known, the id, and
-/// never the input, because the message is printed as it is.
+/// Reads dataset schema v0: one JSON object per line with <c>id</c>, <c>input</c>, <c>label</c>, an
+/// optional <c>metadata</c> object and an optional <c>options</c> object. Every error names the path, the line
+/// and, once it is known, the id, and never the input or an option's description, because the message is printed
+/// as it is.
 /// </summary>
 public static class DatasetReader
 {
@@ -18,6 +19,7 @@ public static class DatasetReader
         "input",
         "label",
         "metadata",
+        "options",
     };
 
     /// <summary>Reads the whole file. Blank lines are skipped but counted, so line numbers match an editor.</summary>
@@ -87,13 +89,14 @@ public static class DatasetReader
             {
                 if (!_rowProperties.Contains(property.Name))
                 {
-                    throw Fail(path, line, id, $"unknown property '{property.Name}'; a row has id, input, label and metadata.");
+                    throw Fail(path, line, id, $"unknown property '{property.Name}'; a row has id, input, label, metadata and options.");
                 }
             }
 
             return new DatasetRow(id, ReadInput(path, line, id, root), ReadLabel(path, line, id, root))
             {
                 Metadata = ReadMetadata(path, line, id, root),
+                Options = ReadOptions(path, line, id, root),
                 Line = line,
             };
         }
@@ -198,6 +201,102 @@ public static class DatasetReader
         }
 
         return values;
+    }
+
+    // The policy file's own option shape, so a row's options read as a rule's would. Whether they make a valid rule
+    // — enough options, distinct keys, a verdict a Choice rule may give — is Core's to say, in Dataset.ForPolicy.
+    private static IReadOnlyDictionary<string, IReadOnlyList<ChoiceOption>>? ReadOptions(
+        string path,
+        int line,
+        string id,
+        JsonElement root)
+    {
+        if (!root.TryGetProperty("options", out JsonElement options))
+        {
+            return null;
+        }
+
+        if (options.ValueKind != JsonValueKind.Object)
+        {
+            throw Fail(path, line, id, "'options' is an object mapping a Choice rule's id to the options the row was shown.");
+        }
+
+        Dictionary<string, IReadOnlyList<ChoiceOption>> byRule = new(StringComparer.Ordinal);
+        foreach (JsonProperty rule in options.EnumerateObject())
+        {
+            if (rule.Value.ValueKind != JsonValueKind.Array)
+            {
+                throw Fail(path, line, id, $"rule '{rule.Name}': its options are an array.");
+            }
+
+            List<ChoiceOption> list = [];
+            int index = 0;
+            foreach (JsonElement option in rule.Value.EnumerateArray())
+            {
+                list.Add(ReadOption(path, line, id, rule.Name, index, option));
+                index++;
+            }
+
+            if (!byRule.TryAdd(rule.Name, list))
+            {
+                throw Fail(path, line, id, $"'options' repeats rule '{rule.Name}'.");
+            }
+        }
+
+        return byRule;
+    }
+
+    private static ChoiceOption ReadOption(string path, int line, string id, string rule, int index, JsonElement option)
+    {
+        EvalsFormatException Invalid(string error) =>
+            Fail(path, line, id, $"rule '{rule}', option at index {index}: {error}");
+
+        if (option.ValueKind != JsonValueKind.Object)
+        {
+            throw Invalid("an option is an object with key, description and verdict.");
+        }
+
+        foreach (JsonProperty property in option.EnumerateObject())
+        {
+            if (property.Name is not ("key" or "description" or "verdict"))
+            {
+                throw Invalid($"unknown property '{property.Name}'; an option has key, description and verdict.");
+            }
+        }
+
+        string Text(string name) =>
+            option.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String
+                ? value.GetString()!
+                : throw Invalid($"'{name}' is a string.");
+
+        string key = Text("key");
+        string description = Text("description");
+        if (!option.TryGetProperty("verdict", out JsonElement verdict))
+        {
+            throw Invalid("'verdict' is missing.");
+        }
+
+        return new ChoiceOption(key, description, ReadVerdict(verdict) ?? throw Invalid(
+            "'verdict' is not a verdict name; an option's verdict is allow, warn, escalate or deny."));
+    }
+
+    // Read with the policy file's own serializer settings, so a row accepts exactly the verdict spellings a policy
+    // file does. The value itself is never quoted back.
+    private static Verdict? ReadVerdict(JsonElement verdict)
+    {
+        if (verdict.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        try
+        {
+            return verdict.Deserialize<Verdict>(SemanticPolicyJson.Options);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static EvalsFormatException Fail(string path, int line, string? id, string error)

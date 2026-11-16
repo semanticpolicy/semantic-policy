@@ -6,7 +6,7 @@ namespace SemanticPolicy.Evals.Replay;
 /// type, the question and whatever else the provider was shown — the criteria, the flagged answer and the
 /// ladder, the options, the levels and the rungs. Everything the policy decides for itself, the thresholds,
 /// the gates, the chain, the failure behaviour, the mode and the budget, is outside the question and may
-/// differ freely.
+/// differ freely. A Choice rule's options are part of the question only for a row that carries none of its own.
 /// </summary>
 public static class RuleShape
 {
@@ -17,15 +17,30 @@ public static class RuleShape
     /// The name of the first field that differs, as the policy file spells it, or <see langword="null"/> when
     /// the rules match. It is a field name and never a value, so it is safe to print.
     /// </param>
-    public static bool Matches(Rule recorded, Rule candidate, out string? differingField)
+    public static bool Matches(Rule recorded, Rule candidate, out string? differingField) =>
+        Matches(recorded, candidate, compareChoiceOptions: true, out differingField);
+
+    /// <summary>
+    /// Compares the two rules, leaving a Choice rule's options out when <paramref name="compareChoiceOptions"/> is
+    /// <see langword="false"/>: every row being replayed carries its own options for the rule, so the policy's
+    /// were never what a provider was shown, and the dataset's digest binds the recording to the rows' options.
+    /// </summary>
+    /// <param name="recorded">The rule the recording was made with.</param>
+    /// <param name="candidate">The rule the user wants to replay.</param>
+    /// <param name="compareChoiceOptions">Whether a Choice rule's options are part of the comparison.</param>
+    /// <param name="differingField">
+    /// The name of the first field that differs, as the policy file spells it, or <see langword="null"/> when
+    /// the rules match.
+    /// </param>
+    public static bool Matches(Rule recorded, Rule candidate, bool compareChoiceOptions, out string? differingField)
     {
         ArgumentNullException.ThrowIfNull(recorded);
         ArgumentNullException.ThrowIfNull(candidate);
-        differingField = FirstDifference(recorded, candidate);
+        differingField = FirstDifference(recorded, candidate, compareChoiceOptions);
         return differingField is null;
     }
 
-    private static string? FirstDifference(Rule recorded, Rule candidate)
+    private static string? FirstDifference(Rule recorded, Rule candidate, bool compareChoiceOptions)
     {
         if (!string.Equals(recorded.Id, candidate.Id, StringComparison.Ordinal))
         {
@@ -47,7 +62,8 @@ public static class RuleShape
             (BooleanRule first, BooleanRule second) => BooleanDifference(first, second),
             // An option's description is part of what the provider was shown, and their order is the order it
             // was shown them in, so both are compared as written.
-            (ChoiceRule first, ChoiceRule second) => first.Options.SequenceEqual(second.Options) ? null : "options",
+            (ChoiceRule first, ChoiceRule second) =>
+                !compareChoiceOptions || first.Options.SequenceEqual(second.Options) ? null : "options",
             (ScoreRule first, ScoreRule second) => ScoreDifference(first, second),
             _ => "type",
         };

@@ -102,7 +102,7 @@ public sealed class DatasetReaderTests
         using TempFile file = TempFile.Write($$"""{"id": "r1", "input": "x", "label": "{{label}}"}""" + "\n");
         Dataset dataset = DatasetReader.Read(file.Path);
 
-        Action act = () => dataset.ForRule(rule);
+        Action act = () => dataset.ForPolicy(Samples.Guard(["local"], [rule]), rule);
 
         act.Should().Throw<EvalsFormatException>().Which.Message.Should()
             .Contain("line 1").And.Contain(rule.Id).And.Contain(label);
@@ -117,7 +117,8 @@ public sealed class DatasetReaderTests
             """{"id": "c", "input": "x", "label": false}""" + "\n" +
             """{"id": "d", "input": "x", "label": "false"}""" + "\n");
 
-        IReadOnlyList<DatasetRow> rows = DatasetReader.Read(file.Path).ForRule(RuleOfKind("boolean"));
+        Rule boolean = RuleOfKind("boolean");
+        IReadOnlyList<DatasetRow> rows = DatasetReader.Read(file.Path).ForPolicy(Samples.Guard(["local"], [boolean]), boolean);
 
         rows.Select(row => row.Label).Should().Equal(
             new RowLabel(RowLabelKind.Answer, "true"),

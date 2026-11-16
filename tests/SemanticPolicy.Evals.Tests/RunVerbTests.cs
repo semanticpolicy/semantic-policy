@@ -534,6 +534,44 @@ public sealed partial class RunVerbTests
         everything.Should().AllSatisfy(written => written.Should().NotContain(_marker));
     }
 
+    [Fact]
+    public async Task Run_Sends_Each_Rows_Own_Options_To_The_Provider()
+    {
+        Policy policy = Samples.Guard(FailureBehavior.Escalate, ["local"], [Samples.Route()]);
+        using TempFile policyFile = TempFile.Write(JsonSerializer.Serialize(policy, SemanticPolicyJson.Options), ".json");
+        using TempFile dataset = TempFile.Write(
+            """{"id": "own", "input": "row-own", "label": "zeta", "options": {"route": [{"key": "zeta", "description": "description-z", "verdict": "deny"}, {"key": "alpha", "description": "description-a", "verdict": "allow"}]}}""" + "\n" +
+            """{"id": "policy", "input": "row-policy", "label": "review"}""" + "\n");
+        string recording = Path.Combine(Path.GetTempPath(), $"semanticpolicy-evals-{Guid.NewGuid():N}.recording.jsonl");
+        ConcurrentDictionary<string, KeyValuePair<string, string>[]> shown = new(StringComparer.Ordinal);
+        ScriptedProvider local = new ScriptedProvider().Returns(request =>
+        {
+            KeyValuePair<string, string>[] options = [.. request.Options!];
+            shown[ScriptedProvider.TextOf(request)] = options;
+            return Samples.Answer(new ChoiceValue(options[0].Key), "local", Samples.Probability((options[0].Key, 0.8)));
+        });
+
+        try
+        {
+            (int exit, _, string error) = await InvokeAsync(
+                ["run", "--policy", policyFile.Path, "--dataset", dataset.Path, "--record", recording],
+                builder => builder.AddProvider(local, "local"));
+
+            exit.Should().Be(ExitCodes.Success, error);
+            shown["row-own"].Should().Equal(
+                new KeyValuePair<string, string>("zeta", "description-z"),
+                new KeyValuePair<string, string>("alpha", "description-a"));
+            shown["row-policy"].Should().Equal(
+                new KeyValuePair<string, string>("allow", "description-a"),
+                new KeyValuePair<string, string>("review", "description-b"),
+                new KeyValuePair<string, string>("deny", "description-c"));
+        }
+        finally
+        {
+            File.Delete(recording);
+        }
+    }
+
     // Six rows whose inputs carry the marker and the probability the scripted provider answers with.
     private static readonly (string Label, double PTrue)[] _rows =
         [("true", 0.95), ("true", 0.7), ("true", 0.3), ("false", 0.1), ("false", 0.65), ("false", 0.92)];

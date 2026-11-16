@@ -35,6 +35,14 @@ public sealed record DatasetRow(string Id, SemanticContext Input, RowLabel Label
     }
 
     /// <summary>
+    /// The Choice options the row was shown, by rule id, or <see langword="null"/> when the row carries none. For a
+    /// rule named here they replace the rule's own options, for this row only: what a provider is asked, what its
+    /// answer maps to, and which keys a label may be. A rule the row does not name keeps the policy's options.
+    /// <see cref="Dataset.ForPolicy"/> checks them as Core checks a policy's.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<ChoiceOption>>? Options { get; init; }
+
+    /// <summary>
     /// The 1-based line the row was read from, or 0 for a row that was not read from a file. A writer ignores it:
     /// the line a row lands on is decided by the rows written before it.
     /// </summary>
