@@ -4,8 +4,8 @@ Notable changes to the packages `SemanticPolicy.Core`, `SemanticPolicy.Providers
 0.1.0-alpha.2), `SemanticPolicy.Providers.Http` (from 0.1.0-alpha.2),
 `SemanticPolicy.Providers.TypeSafe`, `SemanticPolicy.Extensions.AI` (from 0.1.0-alpha.3),
 `SemanticPolicy.AgentFramework`, `SemanticPolicy.FluentValidation` (from 0.1.0-alpha.2),
-`SemanticPolicy.Evals` (from 0.1.0-alpha.2) and `SemanticPolicy.Mcp.Gateway`, which share one
-version. Versions follow [Semantic Versioning](https://semver.org/); while the major version is 0,
+`SemanticPolicy.Evals` (from 0.1.0-alpha.2), `SemanticPolicy.Evals.Format` and
+`SemanticPolicy.Mcp.Gateway`, which share one version. Versions follow [Semantic Versioning](https://semver.org/); while the major version is 0,
 any release can change the API.
 
 ## Unreleased
@@ -62,6 +62,16 @@ tool guards already cover an MCP client's tools, and now have tests that show it
   The digest is not part of the policy's JSON. Reading it on a policy that has no JSON form — one
   that holds a NaN or infinite number, a rule outside the Boolean, Choice and Score rules, or an enum
   value its enum does not define — throws `PolicyConfigurationException`.
+- **`SemanticPolicy.Evals.Format`.** New. The evaluation CLI's dataset and recording formats as a
+  library an application references: the records of a dataset row and of a recording, the reader
+  of each with the CLI's validation and messages, `RecordingWriter`, and a new `DatasetWriter` that
+  writes rows as a stream and returns the SHA-256 a recording's header names the file by. It refuses
+  a row that would read back as a different row. Every error is an `EvalsFormatException` whose
+  message names a path, a line, an id or a field, never content. Both formats stay `v0`, and every
+  dataset and recording written before reads unchanged.
+- **`SemanticPolicy.Evals`.** The CLI reads and writes both formats through
+  `SemanticPolicy.Evals.Format`, which it carries inside its package as it carries Core, so it still
+  installs as one package with no NuGet dependency. Its commands and exit codes are as before.
 
 ## 0.1.0-alpha.3 - 2026-10-03
 

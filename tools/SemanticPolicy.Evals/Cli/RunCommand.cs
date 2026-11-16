@@ -3,7 +3,6 @@ using System.Globalization;
 using System.Text.Json;
 using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Evals.Gating;
-using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Evals.Results;
 using SemanticPolicy.Evals.Running;
 using SemanticPolicy.Providers;
@@ -148,7 +147,7 @@ internal static class RunCommand
 
             // An adapter reports its model per answer, so the header leaves it open until every row is in.
             [.. inputs.Policy.Bindings.Select(binding => new RecordedProvider(binding.ProviderId, Model: null))],
-            RecordingHeader.CurrentToolVersion,
+            EvalsCli.ToolVersion,
             DateTimeOffset.UtcNow,
             parallel,
             timeout,
@@ -264,7 +263,7 @@ internal static class RunCommand
             Resumptions =
             [
                 .. header.Resumptions ?? [],
-                new RecordedResumption(DateTimeOffset.UtcNow, parallel, retries, RecordingHeader.CurrentToolVersion),
+                new RecordedResumption(DateTimeOffset.UtcNow, parallel, retries, EvalsCli.ToolVersion),
             ],
         };
         EvalRunner runner = new(providers, parallel, timeout, retries, _retryBase);
@@ -355,7 +354,7 @@ internal static class RunCommand
             HashSet<string> written = new(RecordingReader.Read(rewrite).Rows.Select(row => row.Id), StringComparer.Ordinal);
             whole = held.All(written.Contains);
         }
-        catch (EvalsException)
+        catch (EvalsFormatException)
         {
             whole = false;
         }

@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
-namespace SemanticPolicy.Evals.Recordings;
+namespace SemanticPolicy.Evals.Format;
 
 /// <summary>
 /// A recording as read: the header and every row that survived in the file. A run killed halfway leaves
@@ -29,7 +29,7 @@ public static class RecordingReader
     /// it wrote a row leaves exactly that, and every row before it is sound.
     /// </summary>
     /// <param name="path">The recording to read.</param>
-    /// <exception cref="EvalsException">
+    /// <exception cref="EvalsFormatException">
     /// The file cannot be read, holds no header, carries another format, or has a line other than the last row
     /// that is not valid JSON, or one that is JSON but not a recording line; the message names the line.
     /// </exception>
@@ -43,7 +43,7 @@ public static class RecordingReader
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            throw new EvalsException($"Recording '{path}' cannot be read: {e.Message}");
+            throw new EvalsFormatException($"Recording '{path}' cannot be read: {e.Message}");
         }
 
         int last = Array.FindLastIndex(lines, text => !string.IsNullOrWhiteSpace(text));
@@ -78,7 +78,7 @@ public static class RecordingReader
         }
 
         return header is null
-            ? throw new EvalsException($"Recording '{path}' holds no header line; it is empty.")
+            ? throw new EvalsFormatException($"Recording '{path}' holds no header line; it is empty.")
             : new Recording(path, header, rows, torn);
     }
 
@@ -124,7 +124,7 @@ public static class RecordingReader
 
         if (!string.Equals(format, RecordingHeader.FormatV0, StringComparison.Ordinal))
         {
-            throw Fail(path, line, $"the format is '{format}'; this tool reads '{RecordingHeader.FormatV0}'.");
+            throw Fail(path, line, $"the format is '{format}'; this reader reads '{RecordingHeader.FormatV0}'.");
         }
 
         return Parse<RecordingHeader>(path, line, text);
@@ -152,9 +152,9 @@ public static class RecordingReader
     }
 
     // Only the position is passed on: the parser's own message can quote the token it stopped at.
-    private static EvalsException Torn(string path, int line, JsonException error) =>
+    private static EvalsFormatException Torn(string path, int line, JsonException error) =>
         Fail(path, line, $"the line is not valid JSON (byte {error.BytePositionInLine ?? 0}).");
 
-    private static EvalsException Fail(string path, int line, string error) =>
+    private static EvalsFormatException Fail(string path, int line, string error) =>
         new($"Recording '{path}', line {line}: {error}");
 }

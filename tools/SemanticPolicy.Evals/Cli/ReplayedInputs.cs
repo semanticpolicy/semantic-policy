@@ -1,7 +1,6 @@
 using System.CommandLine;
 using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Evals.Metrics;
-using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Evals.Replay;
 using SemanticPolicy.Evals.Results;
 using SemanticPolicy.Evals.Sweeping;
@@ -109,7 +108,7 @@ internal sealed record ReplayedInputs(
         new(
             EvalsResult.FormatV0,
             verb,
-            RecordingHeader.CurrentToolVersion,
+            EvalsCli.ToolVersion,
             DateTimeOffset.UtcNow,
             Inputs.Policy.Id,
             Inputs.Policy.Mode,

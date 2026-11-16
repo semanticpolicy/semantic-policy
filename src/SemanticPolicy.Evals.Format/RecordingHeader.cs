@@ -1,14 +1,12 @@
-using System.Reflection;
-using SemanticPolicy.Evals.Cli;
 
-namespace SemanticPolicy.Evals.Recordings;
+namespace SemanticPolicy.Evals.Format;
 
 /// <summary>
 /// The first line of a recording: everything a later replay needs to know what produced the results, and
 /// nothing a row said. The policy is stored whole because a replay is only allowed against a structurally
 /// identical rule, and the digests are what a dataset is joined back to.
 /// </summary>
-/// <param name="Format">The format marker; <see cref="FormatV0"/> is the only one this tool reads.</param>
+/// <param name="Format">The format marker; <see cref="FormatV0"/> is the only one this package reads.</param>
 /// <param name="Policy">The policy the run was made with, as the library serializes it.</param>
 /// <param name="Datasets">The dataset files read, each with the digest of its bytes.</param>
 /// <param name="Providers">The providers called, by the registration name the attempts are keyed by.</param>
@@ -41,11 +39,8 @@ public sealed record RecordingHeader(
     IReadOnlyList<string>? Where = null,
     IReadOnlyList<RecordedResumption>? Resumptions = null)
 {
-    /// <summary>The format of a recording this tool writes and reads.</summary>
+    /// <summary>The format of a recording this package writes and reads.</summary>
     public const string FormatV0 = "semanticpolicy/evals-recording/v0";
-
-    /// <summary>The version a header written now carries.</summary>
-    public static string CurrentToolVersion { get; } = ReadToolVersion();
 
     /// <summary>The format marker, which a reader checks before anything else.</summary>
     public string Format { get; init; } = Format ?? throw new ArgumentNullException(nameof(Format));
@@ -63,16 +58,6 @@ public sealed record RecordingHeader(
 
     /// <summary>The tool version of the run.</summary>
     public string ToolVersion { get; init; } = ToolVersion ?? throw new ArgumentNullException(nameof(ToolVersion));
-
-    private static string ReadToolVersion()
-    {
-        // The tool's own assembly, never the entry assembly: under `dotnet test` the entry assembly is the
-        // test runner, so a recording written from a test would carry the runner's version.
-        Assembly assembly = typeof(EvalsCli).Assembly;
-        return assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-            ?? assembly.GetName().Version?.ToString()
-            ?? "0.0.0";
-    }
 }
 
 /// <summary>One dataset file of a run, as the header records it.</summary>

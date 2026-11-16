@@ -1,5 +1,4 @@
 using SemanticPolicy.Evals.Counting;
-using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Evals.Metrics;
 using SemanticPolicy.Evals.Replay;
 using SemanticPolicy.Protocol;

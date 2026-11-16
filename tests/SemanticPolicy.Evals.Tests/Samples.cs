@@ -1,7 +1,5 @@
-using System.Collections.ObjectModel;
-using System.Text.Json;
+using SemanticPolicy.Evals.Cli;
 using SemanticPolicy.Evals.Datasets;
-using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy.Evals.Tests;
@@ -88,7 +86,7 @@ internal static class Samples
         new(EvidenceKind.Probability, values.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal));
 
     public static DatasetRow Row(string id, string label, int line = 1) =>
-        new(id, line, SemanticContext.FromText("context"), Label(label), ReadOnlyDictionary<string, JsonElement>.Empty);
+        new(id, SemanticContext.FromText("context"), Label(label)) { Line = line };
 
     public static RowLabel Label(string text) => text switch
     {
@@ -118,7 +116,7 @@ internal static class Samples
             policy,
             [new RecordedDataset(DatasetPath, sha, Split: null)],
             [.. policy.Bindings.Select(binding => new RecordedProvider(binding.ProviderId, "model-" + binding.ProviderId))],
-            RecordingHeader.CurrentToolVersion,
+            EvalsCli.ToolVersion,
             new DateTimeOffset(2026, 9, 22, 12, 0, 0, TimeSpan.Zero),
             Parallel: 4,
             TimeSpan.FromSeconds(30));

@@ -1,4 +1,4 @@
-namespace SemanticPolicy.Evals.Datasets;
+namespace SemanticPolicy.Evals.Format;
 
 /// <summary>What a row's <c>label</c> says about it.</summary>
 public enum RowLabelKind

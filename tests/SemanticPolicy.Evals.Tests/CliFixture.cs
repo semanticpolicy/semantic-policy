@@ -3,8 +3,6 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using SemanticPolicy.Evals.Cli;
-using SemanticPolicy.Evals.Datasets;
-using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy.Evals.Tests;

@@ -7,9 +7,9 @@
     <PackageTags>$(PackageTags);evaluation;cli;dotnet-tool</PackageTags>
   </PropertyGroup>
 
-  <!-- Packed as a dotnet tool: one framework-dependent package that carries Core, Http, SystemOne and TypeSafe as
-       assemblies beside its own, with their .pdb files, and declares no NuGet dependency. That leaves the symbol
-       package Directory.Build.props asks of every project nothing to carry, so the tool has none. -->
+  <!-- Packed as a dotnet tool: one framework-dependent package that carries Core, Evals.Format, Http, SystemOne and
+       TypeSafe as assemblies beside its own, with their .pdb files, and declares no NuGet dependency. That leaves the
+       symbol package Directory.Build.props asks of every project nothing to carry, so the tool has none. -->
   <PropertyGroup>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>semantic-policy</ToolCommandName>
@@ -30,12 +30,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Using Include="SemanticPolicy.Evals.Format" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="System.CommandLine" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
+    <ProjectReference Include="..\..\src\SemanticPolicy.Evals.Format\SemanticPolicy.Evals.Format.csproj" />
     <ProjectReference Include="..\..\src\SemanticPolicy.Providers.Http\SemanticPolicy.Providers.Http.csproj" />
     <ProjectReference Include="..\..\src\SemanticPolicy.Providers.SystemOne\SemanticPolicy.Providers.SystemOne.csproj" />
     <ProjectReference Include="..\..\src\SemanticPolicy.Providers.TypeSafe\SemanticPolicy.Providers.TypeSafe.csproj" />
@@ -49,7 +54,7 @@
   <!-- The shipped datasets travel as files beside the assembly, where `samples` reads them: in the build output, in a
        project that references this one, and through the publish directory in the tool package. Selected by extension
        and given an explicit lower-case path, because on a case-insensitive file system datasets\ is one folder with
-       Datasets\, which holds the dataset reader's source files. -->
+       Datasets\, which holds the dataset filters' source files. -->
   <ItemGroup>
     <None Remove="datasets\**" />
     <None Include="datasets\**\*.json;datasets\**\*.jsonl" Link="datasets\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

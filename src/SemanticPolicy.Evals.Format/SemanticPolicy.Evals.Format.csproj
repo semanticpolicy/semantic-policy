@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Description>The SemanticPolicy evaluation formats: the records of a labelled JSONL dataset and of a recording of provider answers, with a reader and a writer for each that validate as the semantic-policy tool does.</Description>
+    <PackageTags>$(PackageTags);evaluation;dataset;jsonl</PackageTags>
+  </PropertyGroup>
+
+  <!-- The package's README is its own, in place of the repository's that Directory.Build.props packs:
+       nuget.org shows it to people writing a dataset or a recording, and it explains this package alone. -->
+  <ItemGroup>
+    <None Remove="$(MSBuildThisFileDirectory)..\..\README.md" />
+    <None Update="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SemanticPolicy.Core\SemanticPolicy.Core.csproj" />
+  </ItemGroup>
+
+</Project>

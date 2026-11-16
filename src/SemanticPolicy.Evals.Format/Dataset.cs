@@ -1,4 +1,4 @@
-namespace SemanticPolicy.Evals.Datasets;
+namespace SemanticPolicy.Evals.Format;
 
 /// <summary>
 /// A dataset file as read: its rows in file order and the digest a recording is later joined to it by.
@@ -14,7 +14,7 @@ public sealed record Dataset(string Path, string Sha256, IReadOnlyList<DatasetRo
     /// a Score rule. Ambiguous and abstain labels belong to every rule.
     /// </summary>
     /// <param name="rule">The rule the dataset is about to be evaluated on.</param>
-    /// <exception cref="EvalsException">A label is outside the vocabulary; the first one is named.</exception>
+    /// <exception cref="EvalsFormatException">A label is outside the vocabulary; the first one is named.</exception>
     public IReadOnlyList<DatasetRow> ForRule(Rule rule)
     {
         ArgumentNullException.ThrowIfNull(rule);
@@ -42,7 +42,7 @@ public sealed record Dataset(string Path, string Sha256, IReadOnlyList<DatasetRo
         {
             if (row.Label is { Kind: RowLabelKind.Answer, Answer: { } answer } && !accepts(answer))
             {
-                throw new EvalsException(
+                throw new EvalsFormatException(
                     $"Dataset '{Path}', line {row.Line}, id '{row.Id}': label '{answer}' is not {vocabulary} '{rule.Id}'.");
             }
         }

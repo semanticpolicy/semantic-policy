@@ -1,10 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using SemanticPolicy.Evals.Datasets;
-using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Protocol;
 
-namespace SemanticPolicy.Evals.Tests;
+namespace SemanticPolicy.Evals.Format.Tests;
 
 public sealed class RecordingTests
 {
@@ -12,7 +10,7 @@ public sealed class RecordingTests
     public async Task Writer_Then_Reader_Round_Trips_The_Header_And_Rows_Keyed_By_Rule_And_Provider()
     {
         using TempFile file = TempFile.Write("");
-        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local", "jev"], [Samples.Flagged(), Samples.Route()]);
+        Policy policy = Samples.Guard(["local", "jev"], [Samples.Flagged(), Samples.Route()]);
         RecordingHeader header = Samples.Header(policy);
         ProviderResult local = Samples.BooleanAnswer(0.95);
         ProviderResult jev = Samples.BooleanAnswer(0.2, "jev");
@@ -55,7 +53,7 @@ public sealed class RecordingTests
     {
         using TempFile file = TempFile.Write("");
         const string marker = "marker-7f3a";
-        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+        Policy policy = Samples.Guard(["local"], [Samples.Flagged()]);
         JsonElement raw = JsonSerializer.Deserialize<JsonElement>($$"""{ "text": "{{marker}}" }""");
         DatasetRow row = Samples.Row("a", marker) with
         {
@@ -79,7 +77,7 @@ public sealed class RecordingTests
     public async Task Reader_Rejects_An_Unknown_Format_Version_Naming_The_Line_And_An_Empty_File()
     {
         using TempFile file = TempFile.Write("");
-        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+        Policy policy = Samples.Guard(["local"], [Samples.Flagged()]);
         await Samples.RecordAsync(
             file.Path,
             Samples.Header(policy),
@@ -93,38 +91,27 @@ public sealed class RecordingTests
         Action readUnknown = () => RecordingReader.Read(unknown.Path);
         Action readEmpty = () => RecordingReader.Read(empty.Path);
 
-        readUnknown.Should().Throw<EvalsException>().Which.Message.Should()
+        readUnknown.Should().Throw<EvalsFormatException>().Which.Message.Should()
             .Contain("line 1").And.Contain(unknownFormat).And.Contain(RecordingHeader.FormatV0);
-        readEmpty.Should().Throw<EvalsException>().Which.Message.Should().Contain(empty.Path);
+        readEmpty.Should().Throw<EvalsFormatException>().Which.Message.Should().Contain(empty.Path);
     }
 
     [Fact]
     public async Task Torn_Last_Line_Is_Skipped_With_A_Note()
     {
-        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
-        using CliFixture fixture = await CliFixture.CreateAsync(
-            policy,
-            [
-                FixtureRow.Of("true", null, ("local", Samples.BooleanAnswer(0.95))),
-                FixtureRow.Of("false", null, ("local", Samples.BooleanAnswer(0.1))),
-                FixtureRow.Of("true", null, ("local", Samples.BooleanAnswer(0.7))),
-                FixtureRow.Of("false", null, ("local", Samples.BooleanAnswer(0.3))),
-            ]);
-        string[] lines = await File.ReadAllLinesAsync(fixture.RecordingPath, TestContext.Current.CancellationToken);
-        await File.WriteAllTextAsync(
-            fixture.RecordingPath,
-            Joined(lines[..4]) + lines[4][..(lines[4].Length / 2)],
-            TestContext.Current.CancellationToken);
+        using TempFile written = TempFile.Write("");
+        Policy policy = Samples.Guard(["local"], [Samples.Flagged()]);
+        await Samples.RecordAsync(
+            written.Path,
+            Samples.Header(policy),
+            [.. new[] { 0.95, 0.1, 0.7, 0.3 }.Select((p, index) => Samples.Recorded($"r{index:00}", (Samples.Injection, "local", Samples.BooleanAnswer(p))))]);
+        string[] lines = await File.ReadAllLinesAsync(written.Path, TestContext.Current.CancellationToken);
+        using TempFile torn = TempFile.Write(Joined(lines[..4]) + lines[4][..(lines[4].Length / 2)]);
 
-        foreach (string verb in new[] { "report", "sweep", "compare" })
-        {
-            CliRun run = await fixture.RunAsync(verb);
+        Recording recording = RecordingReader.Read(torn.Path);
 
-            run.ExitCode.Should().Be(ExitCodes.Success, $"{verb} reads the rows before the torn line: {run.Error}");
-            run.Output.Should().Contain("line 5 of the recording skipped", verb);
-            fixture.ReadOut().GetProperty("rows").GetProperty("tornLine").GetInt32().Should().Be(5, verb);
-            fixture.ReadOut().GetProperty("rows").GetProperty("recordedRows").GetInt32().Should().Be(3, verb);
-        }
+        recording.TornLine.Should().Be(5);
+        recording.Rows.Select(row => row.Id).Should().Equal("r00", "r01", "r02");
 
         // Anywhere but at the end, a line that does not parse is damage rather than an interruption.
         using TempFile middle = TempFile.Write(Joined([lines[0], lines[1], lines[2][..(lines[2].Length / 2)], lines[3], lines[4]]));
@@ -134,7 +121,7 @@ public sealed class RecordingTests
         foreach ((TempFile file, string line) in new[] { (middle, "line 3"), (header, "line 1"), (notARow, "line 6") })
         {
             Action read = () => RecordingReader.Read(file.Path);
-            read.Should().Throw<EvalsException>().Which.Message.Should().Contain(line).And.Contain(file.Path);
+            read.Should().Throw<EvalsFormatException>().Which.Message.Should().Contain(line).And.Contain(file.Path);
         }
     }
 
@@ -142,7 +129,7 @@ public sealed class RecordingTests
     public async Task Writer_Writes_The_Build_Metadata_Of_The_Tool_Version_Unescaped()
     {
         using TempFile file = TempFile.Write("");
-        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+        Policy policy = Samples.Guard(["local"], [Samples.Flagged()]);
 
         await Samples.RecordAsync(file.Path, Samples.Header(policy) with { ToolVersion = "1.0.0+abc" });
 
@@ -154,7 +141,7 @@ public sealed class RecordingTests
     public async Task Replacing_The_Header_Leaves_Every_Row_As_It_Was_Written()
     {
         using TempFile file = TempFile.Write("");
-        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+        Policy policy = Samples.Guard(["local"], [Samples.Flagged()]);
         RecordingHeader header = Samples.Header(policy) with { Providers = [new RecordedProvider("local", Model: null)] };
         await Samples.RecordAsync(
             file.Path,
