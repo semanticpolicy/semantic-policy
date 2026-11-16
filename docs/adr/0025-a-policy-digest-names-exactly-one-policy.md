@@ -83,13 +83,17 @@ the library" as a correlation key, which raised the question of whether a hash o
   digest without .NET.
 - **Every later change to a policy's shape inherits point 3.** A new property on `Policy` or on
   anything a policy holds is optional and omitted at its default, or it moves the digest of every
-  existing policy; the pinned test fails when it does. Renaming or reordering a C# property is free,
-  because the canonical form sorts members.
+  existing policy; the pinned test fails when it does. Reordering C# properties is free, because the
+  canonical form sorts members. Renaming a property or an enum member is not: its JSON name comes
+  from the C# name, so the rename moves the digest of every policy that writes it, unless
+  `[JsonPropertyName]` or `[JsonStringEnumMemberName]` keeps the old name.
 - The step function reads the digest on every evaluation. A registered policy pays for one
   canonicalization and one SHA-256 once; a policy built per call pays for them on every call.
-- A policy whose mode or failure action holds a value its enum does not define passes `Validate` but
-  has no digest, so every evaluation of it throws `PolicyConfigurationException`. Only a cast from an
-  integer produces such a value.
+- A policy can pass `Validate` with an enum member holding a value its enum does not define: the
+  mode, the failure action, the verdict of a Choice option, a ladder rung or a Score rung, or the
+  evidence kind of an uncalibrated threshold or gate. Such a policy has no digest, so every
+  evaluation of it throws `PolicyConfigurationException`. Only a cast from an integer produces such a
+  value.
 - The digest is a hash of the policy's text, not a secret. A short policy can be recovered from it
   by enumeration, and option descriptions built from user input reach traces as a hash. The
   documentation says so; nothing prevents it.
