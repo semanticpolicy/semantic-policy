@@ -72,6 +72,18 @@ tool guards already cover an MCP client's tools, and now have tests that show it
 - **`SemanticPolicy.Evals`.** The CLI reads and writes both formats through
   `SemanticPolicy.Evals.Format`, which it carries inside its package as it carries Core, so it still
   installs as one package with no NuGet dependency. Its commands and exit codes are as before.
+- **`SemanticPolicy.Evals.Format`.** A dataset row can carry `options`: the Choice options it was
+  shown, by rule id, in the policy file's option shape, for a router whose options change between
+  requests. The reader and the writer read and write them, and `Dataset.ForPolicy` checks them as
+  Core checks a rule's options and checks the row's label against them; an error names the file,
+  the line, the id and the rule, never an option's description. A row without `options` uses the
+  policy's, so every dataset written before reads unchanged.
+- **`SemanticPolicy.Evals`.** A row's own options replace the rule's for that row: `run` sends them,
+  a replay maps the recorded answer through them, and a recording is compared with the policy's
+  options only when a selected row uses those. When the rows were shown more than one option set,
+  the Choice metrics and requirements count the keys the rows used, the text says the options vary,
+  the JSON result carries `optionSets`, and the class table prints the confusion matrix up to 10
+  classes. A report whose rows share one option set is as before.
 
 ## 0.1.0-alpha.3 - 2026-10-03
 

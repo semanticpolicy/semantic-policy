@@ -76,6 +76,8 @@ public sealed class DatasetWriterTests
     [InlineData("an abstain label with an answer", "'b'")]
     [InlineData("an ambiguous label with an answer", "'b'")]
     [InlineData("a JSON part holding a JSON string", "'b'")]
+    [InlineData("an option with a null key", "option at index 1")]
+    [InlineData("an option whose verdict is not a Verdict name", "option at index 0")]
     public async Task DatasetWriter_Refuses_A_Row_That_Would_Read_Back_Differently(string fault, string names)
     {
         using TempFile file = TempFile.Write("");
@@ -95,6 +97,8 @@ public sealed class DatasetWriterTests
                 "b",
                 new SemanticContext([ContextPart.Text("message", "secret-content"), ContextPart.Json("payload", Json("\"secret-content\""))]),
                 "true"),
+            "an option with a null key" => Row("b", Text("secret-content"), "true") with { Options = RouteOptions(new ChoiceOption("allow", "secret-content", Verdict.Allow), new ChoiceOption("deny", "secret-content", Verdict.Deny) with { Key = null! }) },
+            "an option whose verdict is not a Verdict name" => Row("b", Text("secret-content"), "true") with { Options = RouteOptions(new ChoiceOption("allow", "secret-content", (Verdict)42), new ChoiceOption("deny", "secret-content", Verdict.Deny)) },
             _ => throw new ArgumentOutOfRangeException(nameof(fault)),
         };
 
@@ -112,6 +116,11 @@ public sealed class DatasetWriterTests
         if (fault == "a JSON part holding a JSON string")
         {
             message.Should().Contain("'payload'").And.Contain("text part");
+        }
+
+        if (fault.StartsWith("an option", StringComparison.Ordinal))
+        {
+            message.Should().Contain("'b'").And.Contain("rule 'route'");
         }
 
         DatasetReader.Read(file.Path).Rows.Select(row => row.Id).Should().Equal("a", "c");
@@ -152,6 +161,9 @@ public sealed class DatasetWriterTests
     }
 
     private static DatasetRow Row(string id, SemanticContext input, string label) => new(id, input, Samples.Label(label));
+
+    private static Dictionary<string, IReadOnlyList<ChoiceOption>> RouteOptions(params ChoiceOption[] options) =>
+        new(StringComparer.Ordinal) { ["route"] = options };
 
     private static SemanticContext Text(string text) => SemanticContext.FromText(text);
 

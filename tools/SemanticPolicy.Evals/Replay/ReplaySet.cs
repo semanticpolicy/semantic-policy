@@ -66,7 +66,12 @@ public sealed class ReplaySet
         ArgumentNullException.ThrowIfNull(recording);
         ArgumentNullException.ThrowIfNull(inputs);
         CheckDatasets(recording, inputs, force);
-        CheckRule(recording, inputs.Rule);
+
+        // A row with its own options was asked those, so only a row that falls back on the policy's ties the replay
+        // to the options the recording was made with.
+        bool policyOptionsUsed = inputs.Rule is not ChoiceRule choice
+            || inputs.Selected.Any(row => row.Options?.ContainsKey(choice.Id) != true);
+        CheckRule(recording, inputs.Rule, policyOptionsUsed);
 
         Dictionary<string, RecordedRow> byId = new(recording.Rows.Count, StringComparer.Ordinal);
         foreach (RecordedRow row in recording.Rows)
@@ -117,7 +122,7 @@ public sealed class ReplaySet
             + "results are about other rows. Pass --force to replay against it anyway.");
     }
 
-    private static void CheckRule(Recording recording, Rule rule)
+    private static void CheckRule(Recording recording, Rule rule, bool compareChoiceOptions)
     {
         Rule? recorded = recording.Header.Policy.Rules
             .FirstOrDefault(candidate => string.Equals(candidate.Id, rule.Id, StringComparison.Ordinal));
@@ -127,7 +132,7 @@ public sealed class ReplaySet
             throw new EvalsException($"Recording '{recording.Path}' has no rule '{rule.Id}'; its rules are {ids}.");
         }
 
-        if (!RuleShape.Matches(recorded, rule, out string? field))
+        if (!RuleShape.Matches(recorded, rule, compareChoiceOptions, out string? field))
         {
             throw new EvalsException(
                 $"Recording '{recording.Path}': rule '{rule.Id}' differs from the recorded one in '{field}'. "
@@ -160,7 +165,8 @@ public sealed class ReplaySet
     /// provider names. Only the rule's id and type have to match the loaded rule: a variant may reorder or
     /// drop bindings and change thresholds, gates, the failure behaviour, the mode and the budget, which is
     /// what makes a sweep possible without calling a provider again. The question itself was checked at
-    /// <see cref="Load"/>.
+    /// <see cref="Load"/>. A row that carries its own options for a Choice rule is decided under them, so its
+    /// recorded answer maps to the verdict its own options give that key.
     /// </summary>
     /// <param name="variant">The policy to evaluate at; it must carry the selected rule.</param>
     /// <exception cref="EvalsException">
@@ -171,10 +177,28 @@ public sealed class ReplaySet
     {
         ArgumentNullException.ThrowIfNull(variant);
         Policy narrowed = Narrow(variant);
+
+        // Core validates and digests each policy instance it evaluates, so a row with its own options gets the policy
+        // built for its set, shared with every other row of that set, rather than one of its own.
+        Dictionary<IReadOnlyList<ChoiceOption>, Policy> bySet = new(OptionSets.Comparer);
         List<EvaluatedRow> evaluated = new(Rows.Count);
         foreach (ReplayRow row in Rows)
         {
-            evaluated.Add(new EvaluatedRow(row.Row, Decide(narrowed, row)));
+            Policy policy = narrowed;
+            if (narrowed.Rules[0] is ChoiceRule choice && row.Row.Options?.GetValueOrDefault(choice.Id) is { } own)
+            {
+                if (!bySet.TryGetValue(own, out Policy? built))
+                {
+                    // Only the rule's options change: the bindings, and so the attempt keys Core accepts, stay the
+                    // narrowed policy's.
+                    built = narrowed with { Rules = [choice with { Options = own }] };
+                    bySet.Add(own, built);
+                }
+
+                policy = built;
+            }
+
+            evaluated.Add(new EvaluatedRow(row.Row, Decide(policy, row)));
         }
 
         return evaluated;

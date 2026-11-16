@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Encodings.Web;
@@ -8,9 +9,9 @@ namespace SemanticPolicy.Evals.Format;
 
 /// <summary>
 /// Writes a dataset one row at a time, in the shape <see cref="DatasetReader"/> reads: <c>id</c>, <c>input</c>,
-/// <c>label</c>, and <c>metadata</c> when the row has any. The bytes do not depend on the machine — UTF-8 without a
-/// byte-order mark, one <c>\n</c> per row — and <see cref="CompleteAsync"/> returns their SHA-256, the digest a
-/// recording's header names the file by.
+/// <c>label</c>, <c>options</c> when the row carries them and <c>metadata</c> when it has any. The bytes do not depend
+/// on the machine — UTF-8 without a byte-order mark, one <c>\n</c> per row — and <see cref="CompleteAsync"/> returns
+/// their SHA-256, the digest a recording's header names the file by.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -24,7 +25,12 @@ namespace SemanticPolicy.Evals.Format;
 /// </description></item>
 /// <item><description>an <see cref="RowLabelKind.Ambiguous"/> or <see cref="RowLabelKind.Abstain"/> label carrying an answer;</description></item>
 /// <item><description>a JSON input part whose value is a JSON string, which reads back as a text part;</description></item>
-/// <item><description>a metadata entry with no value.</description></item>
+/// <item><description>a metadata entry with no value;</description></item>
+/// <item><description>
+/// a rule in <see cref="DatasetRow.Options"/> with no list, or an option that is null, has a null key or description,
+/// or has a verdict that is not a <see cref="Verdict"/> name. Whether the options make a valid rule is not the
+/// writer's to say: <see cref="Dataset.ForPolicy"/> checks that when the file is read for a policy.
+/// </description></item>
 /// </list>
 /// <para>
 /// A refused row writes nothing, and the writer takes the next one. A row that fails while it is written, or whose
@@ -231,6 +237,30 @@ public sealed class DatasetWriter : IAsyncDisposable
                 throw Refuse(row.Id, $"metadata '{key}' has no value.");
             }
         }
+
+        foreach ((string rule, IReadOnlyList<ChoiceOption> options) in row.Options ?? ReadOnlyDictionary<string, IReadOnlyList<ChoiceOption>>.Empty)
+        {
+            if (options is null)
+            {
+                throw Refuse(row.Id, $"rule '{rule}' has no options list.");
+            }
+
+            for (int at = 0; at < options.Count; at++)
+            {
+                string? error = options[at] switch
+                {
+                    null => "the option is null.",
+                    { Key: null } => "the key is null.",
+                    { Description: null } => "the description is null.",
+                    { Verdict: var verdict } when !Enum.IsDefined(verdict) => "the verdict is not a Verdict name.",
+                    _ => null,
+                };
+                if (error is not null)
+                {
+                    throw Refuse(row.Id, string.Create(CultureInfo.InvariantCulture, $"rule '{rule}', option at index {at}: {error}"));
+                }
+            }
+        }
     }
 
     // Called only on a validated row, whose string-valued parts are all text parts.
@@ -268,6 +298,28 @@ public sealed class DatasetWriter : IAsyncDisposable
             default:
                 json.WriteStringValue(row.Label.Answer);
                 break;
+        }
+
+        if (row.Options is { } options)
+        {
+            json.WriteStartObject("options");
+            foreach ((string rule, IReadOnlyList<ChoiceOption> list) in options)
+            {
+                json.WriteStartArray(rule);
+                foreach (ChoiceOption option in list)
+                {
+                    json.WriteStartObject();
+                    json.WriteString("key", option.Key);
+                    json.WriteString("description", option.Description);
+                    json.WritePropertyName("verdict");
+                    JsonSerializer.Serialize(json, option.Verdict, SemanticPolicyJson.Options);
+                    json.WriteEndObject();
+                }
+
+                json.WriteEndArray();
+            }
+
+            json.WriteEndObject();
         }
 
         if (row.Metadata.Count > 0)

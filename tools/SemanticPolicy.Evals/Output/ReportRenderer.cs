@@ -16,6 +16,10 @@ public static class ReportRenderer
     // The rates of a matrix that carry an interval, in the order the rate tables print them; F1 has none.
     internal static readonly string[] IntervalHeaders = ["accuracy", "precision", "recall", "fpr", "fnr"];
 
+    // The widest confusion matrix printed when the rows were shown different option sets: ten answer columns still
+    // fit a terminal.
+    private const int _matrixClassCap = 10;
+
     private static readonly CultureInfo _invariant = CultureInfo.InvariantCulture;
 
     /// <summary>Writes the report: header, rows, then every measured section and the notes.</summary>
@@ -41,7 +45,7 @@ public static class ReportRenderer
 
         if (report.Classes is { } classes)
         {
-            ClassTable(classes, report.Outcomes, output);
+            ClassTable(classes, report.Outcomes, report.OptionSets, output);
         }
 
         DiscriminationSection(report, result.DecisionType, output);
@@ -163,16 +167,20 @@ public static class ReportRenderer
         WriteIntervals(intervals, output);
     }
 
-    private static void ClassTable(MulticlassConfusion classes, OutcomeCounts outcomes, TextWriter output)
+    // With one option set the matrix is printed whatever its size, as it always was. When the rows' sets differ, the
+    // classes are every key they used, which can run to hundreds; past the cap only the per-class rates still fit.
+    private static void ClassTable(MulticlassConfusion classes, OutcomeCounts outcomes, int? optionSets, TextWriter output)
     {
-        TextTable table = new(["label", .. classes.Classes, "support", "precision", "recall", "f1"]);
+        bool matrix = optionSets is null || classes.Classes.Count <= _matrixClassCap;
+        string[] columns = matrix ? [.. classes.Classes] : [];
+        TextTable table = new(["label", .. columns, "support", "precision", "recall", "f1"]);
         foreach (ClassMetrics metrics in classes.PerClass)
         {
             IReadOnlyDictionary<string, int> answered = classes.Counts[metrics.Class];
             table.AddRow(
             [
                 metrics.Class,
-                .. classes.Classes.Select(answer => Count(answered[answer])),
+                .. columns.Select(answer => Count(answered[answer])),
                 Count(metrics.Support),
                 Rate(metrics.Precision),
                 Rate(metrics.Recall),
@@ -183,10 +191,21 @@ public static class ReportRenderer
         output.WriteLine();
         output.WriteLine(
             $"classes: accuracy {RateAndBounds(classes.Accuracy, classes.AccuracyInterval)}, macro-F1 {Rate(classes.MacroF1)}; "
-            + "rows are labels, columns are answers");
+            + (matrix ? "rows are labels, columns are answers" : "rows are labels"));
         table.Write(output);
         output.WriteLine(
             $"outside the table: failed {Count(outcomes.Failed)}, abstained {Count(outcomes.Abstained)}, ambiguous {Count(outcomes.Ambiguous)}");
+        if (optionSets is { } sets)
+        {
+            output.WriteLine(
+                $"the options vary between rows: {Count(sets)} distinct sets, so the classes are the keys seen as a label or an answer");
+            if (!matrix)
+            {
+                output.WriteLine(
+                    $"the confusion matrix of {Count(classes.Classes.Count)} classes is in the JSON result (--out), "
+                    + $"not printed above {Count(_matrixClassCap)}");
+            }
+        }
     }
 
     private static void DiscriminationSection(ReportSection report, DecisionType type, TextWriter output)

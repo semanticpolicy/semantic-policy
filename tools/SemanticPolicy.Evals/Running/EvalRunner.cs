@@ -241,7 +241,11 @@ public sealed class EvalRunner
 
                         if (request is null)
                         {
-                            request = rule.CreateRequest(row.Row.Input);
+                            // A row that carries options for a Choice rule was shown those, not the policy's.
+                            Rule asked = rule is ChoiceRule choice && row.Row.Options?.GetValueOrDefault(choice.Id) is { } own
+                                ? choice with { Options = own }
+                                : rule;
+                            request = asked.CreateRequest(row.Row.Input);
                             request.EnsureValid();
                         }
 

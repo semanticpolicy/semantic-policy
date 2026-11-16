@@ -265,6 +265,7 @@ A JSONL file: UTF-8, one JSON object per line, with these properties and no othe
 | `input` | yes | What the rule judges: a string, or an object whose properties become the parts of the input, in the order written, such as a request and the document it is about. |
 | `label` | yes | The right answer: `true` or `false` for a Boolean rule, an option `key` for a Choice rule, a level name for a Score rule; or `ambiguous` or `abstain`. |
 | `metadata` | no | Where the row came from, how hard it is, which split it is in. Passed through, never read as truth. |
+| `options` | no | The Choice options this row was shown, by rule id, in the policy file's own option shape. They replace that rule's options for this row only; see [Options per row](#options-per-row). |
 
 One row per rule type, from the examples under `datasets/examples/`:
 
@@ -282,8 +283,34 @@ One row per rule type, from the examples under `datasets/examples/`:
   should decide. Both are still sent to providers and shown with their verdicts, but stay out of
   every error rate.
 - **Errors** stop the command with exit code 1: a line that is not a JSON object, a missing or
-  unknown property, a repeated `id`, a metadata key repeated within a row, or a label the rule does
-  not know. The message names the file, the line and the id, never the input.
+  unknown property, a repeated `id`, a metadata key repeated within a row, malformed `options`, or a
+  label the rule does not know. The message names the file, the line and the id, never the input.
+
+### Options per row
+
+A Choice rule's options are usually the policy's. When the options a provider was shown change from
+one request to the next, such as a router whose list of destinations comes from a registry, each row
+can carry the options it was shown:
+
+```jsonl
+{"id": "rt-014", "input": "placeholder: asks to move a subscription to another plan (routing sample 14)", "label": "plans", "options": {"route": [{"key": "plans", "description": "Changes to a subscription plan.", "verdict": "allow"}, {"key": "person", "description": "A person should take over.", "verdict": "escalate"}]}}
+```
+
+- **Shape.** `options` maps a Choice rule's id to a list of options, each with `key`, `description`
+  and `verdict`, exactly as the rule's `options` are written in the policy file.
+- **Default.** A row without `options`, or whose `options` do not name the rule, uses the policy's
+  options for it. A row that names the rule uses its own, for that row only: `run` sends them, a
+  replay maps the recorded answer through them, and the row's `label` is one of their keys.
+- **Validation.** A row's options are checked as the policy's are, by the library: at least two
+  options, distinct non-empty keys, a description each, and no `abstain` verdict. `options` naming a
+  rule the policy does not have, or one that is not a Choice rule, is an error, and so is a label
+  that is not one of the row's keys. The message names the file, the line, the id and the rule id,
+  never an option's description.
+- **`ambiguous` and `abstain`** stay reserved label words, as everywhere in a dataset. An option may
+  still be keyed `ambiguous` or `abstain`, but a row whose right answer is that option cannot carry
+  it as its label: the label reads as the reserved word.
+- **Metrics.** When the rows were shown different option sets, the Choice metrics count every key
+  the rows used; [`report`](#report) says how.
 
 ## The policy
 
@@ -489,6 +516,17 @@ binding carries a calibration for the rule. A result that names no model is not 
 zero, a note names the count and the calibration's model; a map fitted on one model's answers may
 not fit another's, so calibrate again on a recording of the model now answering. `run` counts the
 same way.
+
+When the rows of a Choice rule carry [options of their own](#options-per-row) and were shown more
+than one distinct option set, no one set lists every answer. The classes are then the keys seen as a
+label or as an answer, in ordinal order, and accuracy, macro-F1, `min-accuracy`, `min-macro-f1` and
+`sweep`'s accuracy are all computed over them. A line under the class table says the options vary
+and how many distinct sets there are, and the JSON result carries `optionSets`. The class table
+prints the confusion matrix up to 10 classes; above 10 it prints only each class's support,
+precision, recall and F1, with a line pointing to the JSON result, which `--out` writes and which
+always holds the whole matrix. The cap applies only when the options vary: with one set, whether the
+policy's or one every row shares, the report is what it was, the matrix printed whatever the class
+count.
 
 ### `calibrate`
 
@@ -794,7 +832,8 @@ Eighty synthetic rows show the two bindings side by side, not which provider rou
   flagged answer*: true and false positives and negatives, accuracy, precision (flags that were
   right), recall (flagged rows caught), F1, FPR (other rows flagged) and FNR.
 - **classes** (Choice and Score rules): accuracy, macro-F1, and labels against answers with each
-  class's precision and recall.
+  class's precision and recall. When a Choice rule's rows were shown different option sets, the
+  classes are the keys they used, and the matrix is printed up to 10 of them (see [`report`](#report)).
 - **discrimination** (Boolean rules): ROC-AUC and PR-AUC, how well the evidence separates flagged
   rows from the rest at any threshold. For ROC-AUC, 1.0 is perfect and 0.5 a coin toss. Only the
   first binding's threshold moves, so with several bindings, judge each provider with `compare`.
@@ -1048,8 +1087,11 @@ Replaying checks that the recording still fits:
 
 - The dataset's digest must match the recorded one; `--force` reads it anyway.
 - The rule must be the one recorded: the same id, type, question, criteria and flagged answer, and
-  the same ladder, options or levels. Thresholds, gates, the order and set of bindings, `onFailure`,
-  `mode` and `budget` may change; that is what a sweep varies.
+  the same ladder or levels. A Choice rule's options are compared with the recorded policy's only
+  when a selected row carries none of its own: a row with [its own options](#options-per-row) was
+  shown those, and the dataset's digest already ties the recording to them. Thresholds, gates, the
+  order and set of bindings, `onFailure`, `mode` and `budget` may change; that is what a sweep
+  varies.
 - Every binding must have an answer for every selected row; the tool never makes up a failure.
 
 ## Exit codes
@@ -1085,7 +1127,9 @@ recording, shortened:
 
 - **`report`**: the report's sections, `sweptProvider`, the binding the discrimination curve
   moves, and `calibrationModelMismatchRows`, the rows answered by a model other than the one a
-  calibration was fitted on, present only when a binding carries a calibration for the rule.
+  calibration was fitted on, present only when a binding carries a calibration for the rule; and
+  `optionSets`, an integer, the number of distinct option sets a Choice rule's rows were shown,
+  present only when there is more than one, when `classes` holds the keys the rows used.
 - **`requirements`**, from `report` or `run` with `--require` and absent without it: one entry per
   requirement, in the order given, with the `requirement` as typed, its `goal`, the `value` it was
   judged on, `null` when the rate is undefined, its `interval`, left out when there is none, and
