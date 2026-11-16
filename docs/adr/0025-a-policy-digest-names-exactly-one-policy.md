@@ -92,8 +92,10 @@ the library" as a correlation key, which raised the question of whether a hash o
 - A policy can pass `Validate` with an enum member holding a value its enum does not define: the
   mode, the failure action, the verdict of a Choice option, a ladder rung or a Score rung, or the
   evidence kind of an uncalibrated threshold or gate. Such a policy has no digest, so every
-  evaluation of it throws `PolicyConfigurationException`. Only a cast from an integer produces such a
-  value.
+  evaluation of it throws `PolicyConfigurationException`. A cast from an integer produces such a
+  value, and so does a verdict or an evidence kind in a policy's JSON that joins member names with a
+  comma, such as `"abstain, deny"`: `JsonStringEnumConverter` ORs the names even for an enum without
+  `[Flags]`.
 - The digest is a hash of the policy's text, not a secret. A short policy can be recovered from it
   by enumeration, and option descriptions built from user input reach traces as a hash. The
   documentation says so; nothing prevents it.
