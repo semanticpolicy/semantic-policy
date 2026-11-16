@@ -152,7 +152,10 @@ internal static class RunCommand
             parallel,
             timeout,
             retries,
-            [.. selection.Filters.Select(Token)]);
+            [.. selection.Filters.Select(Token)])
+        {
+            PolicyDigest = inputs.Policy.Digest,
+        };
 
         EvalRunner runner = new(providers, parallel, timeout, retries, _retryBase);
         await using (RecordingWriter writer = await RecordingWriter.CreateAsync(recordPath, header, cancellationToken)
@@ -199,14 +202,20 @@ internal static class RunCommand
 
         Recording recording = RecordingReader.Read(path);
         RecordingHeader header = recording.Header;
-        if (header.Where is not { } recordedWhere || header.Retries is null)
+        if (header.Source is { Kind: RecordingSourceKind.Export } source)
         {
             throw new EvalsException(
-                $"Recording '{path}' does not say which --where and --retries it was made with, so --resume cannot tell "
-                + $"which rows it selected; it was written by tool version {header.ToolVersion}.");
+                $"Recording '{path}' is an export written by {source.Name} {source.Version}, not a run: it holds the "
+                + "attempts its evaluator made and nothing a resume could finish. Replay it with report instead.");
         }
 
-        TimeSpan timeout = header.Timeout;
+        if (header.Where is not { } recordedWhere || header.Retries is null || header.Timeout is not { } timeout)
+        {
+            throw new EvalsException(
+                $"Recording '{path}' does not say which --where, --retries and --timeout it was made with, so --resume "
+                + $"cannot tell which rows it selected or how it asked them; it was written by tool version {header.ToolVersion}.");
+        }
+
         if (parseResult.GetResult(_timeout) is { Implicit: false })
         {
             int seconds = parseResult.GetValue(_timeout);

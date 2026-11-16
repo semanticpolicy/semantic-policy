@@ -65,24 +65,32 @@ public sealed class ReplaySetEvaluateTests
     }
 
     [Fact]
-    public async Task Evaluate_Rejects_A_Binding_Whose_Provider_Has_No_Recorded_Attempt_Naming_Rule_Provider_And_Row()
+    public async Task Replay_Fails_When_Core_Asks_For_An_Attempt_The_Recording_Lacks_Naming_Rule_Provider_And_Row()
     {
         using TempFile file = TempFile.Write("");
-        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local", "jev"], [Samples.Flagged()]);
+        Policy policy = Samples.Guard(FailureBehavior.Fallback(Verdict.Escalate), ["local", "jev"], [Samples.Flagged()]);
+
+        // local decides row a at binding 0, so jev's missing attempt is never asked for there; on row b local
+        // fails and the chain moves on to jev, which the recording does not have.
         Recording recording = await Samples.RecordAsync(
             file.Path,
             Samples.Header(policy),
             Samples.Recorded("a", (Samples.Injection, "local", Samples.BooleanAnswer(0.95))),
-            Samples.Recorded("b", (Samples.Injection, "local", Samples.BooleanAnswer(0.1))));
-        LoadedInputs inputs = Samples.Inputs(
-            policy,
-            Samples.Dataset(Samples.Row("a", "true"), Samples.Row("b", "false", 2)));
-        ReplaySet set = ReplaySet.Load(recording, inputs, force: false);
+            Samples.Recorded("b", (Samples.Injection, "local", Samples.Failed(FailureKind.Unavailable))));
+        ReplaySet decidedEarly = ReplaySet.Load(
+            recording,
+            Samples.Inputs(policy, Samples.Dataset(Samples.Row("a", "true"))),
+            force: false);
+        ReplaySet set = ReplaySet.Load(
+            recording,
+            Samples.Inputs(policy, Samples.Dataset(Samples.Row("a", "true"), Samples.Row("b", "false", 2))),
+            force: false);
 
         Action evaluate = () => set.Evaluate();
 
+        decidedEarly.Evaluate().Single().Verdict.Attempts.Should().ContainSingle().Which.ProviderId.Should().Be("local");
         evaluate.Should().Throw<EvalsException>().Which.Message.Should()
-            .Contain(Samples.Injection).And.Contain("jev").And.Contain("'a'");
+            .Contain($"'{Samples.Injection}'").And.Contain("'jev'").And.Contain("'b'").And.NotContain("'a'");
     }
 
     [Fact]

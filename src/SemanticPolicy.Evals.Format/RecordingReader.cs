@@ -102,6 +102,7 @@ public static class RecordingReader
     private static RecordingHeader ReadHeader(string path, int line, string text)
     {
         string? format = null;
+        bool sourceWithoutKind = false;
         try
         {
             using JsonDocument document = JsonDocument.Parse(text);
@@ -111,6 +112,12 @@ public static class RecordingReader
             {
                 format = value.GetString();
             }
+
+            // An absent kind deserializes as the enum's first value, a run, so only the document can tell it was left out.
+            sourceWithoutKind = document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("source", out JsonElement source)
+                && source.ValueKind == JsonValueKind.Object
+                && !source.TryGetProperty("kind", out _);
         }
         catch (JsonException e)
         {
@@ -127,7 +134,28 @@ public static class RecordingReader
             throw Fail(path, line, $"the format is '{format}'; this reader reads '{RecordingHeader.FormatV0}'.");
         }
 
-        return Parse<RecordingHeader>(path, line, text);
+        if (sourceWithoutKind)
+        {
+            throw Fail(path, line, "the header's 'source.kind' is missing; it is 'run' or 'export'.");
+        }
+
+        RecordingHeader header = Parse<RecordingHeader>(path, line, text);
+        if (header.Source is { Kind: RecordingSourceKind.Export } export)
+        {
+            // Absent and null are one thing on the file, so the deserialized values are what is checked.
+            string? error =
+                string.IsNullOrWhiteSpace(export.Name) ? "an export's 'source.name' is missing; it names the program that wrote it."
+                : string.IsNullOrWhiteSpace(export.Version) ? "an export's 'source.version' is missing; it names that program's version."
+                : header.Parallel is not null ? "an export carries 'parallel', which only a run has."
+                : header.Timeout is not null ? "an export carries 'timeout', which only a run has."
+                : null;
+            if (error is not null)
+            {
+                throw Fail(path, line, error);
+            }
+        }
+
+        return header;
     }
 
     private static T Parse<T>(string path, int line, string text)
