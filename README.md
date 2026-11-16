@@ -9,11 +9,13 @@ Write a decision that no `if` or regex can make as a rule, let a decision model 
 measure it on labelled examples, without tying your application to one provider. Use it in business
 logic, around a model call, or inside an AI agent's loop.
 
-> **Status: alpha.** `0.1.0-alpha.3` is the third release, with every package on NuGet as a
+> **Status: alpha.** `0.1.0-alpha.4` is the fourth release, with every package on NuGet as a
 > prerelease: the core library (policies, the evaluation engine, calibration, telemetry, DI
 > registration), the TypeSafe Jev, System One and Http providers, the Microsoft.Extensions.AI,
-> Microsoft Agent Framework and FluentValidation integrations, and the evaluation CLI, the
-> `semantic-policy` dotnet tool. Every part of the API can still change between alpha releases.
+> Microsoft Agent Framework and FluentValidation integrations, the evaluation CLI, the
+> `semantic-policy` dotnet tool, with its dataset and recording formats as a package, and the MCP
+> gateway, the `semantic-policy-mcp` dotnet tool. Every part of the API can still change between
+> alpha releases.
 
 ## The idea
 
@@ -84,7 +86,7 @@ dotnet add package SemanticPolicy.Providers.Http --prerelease      # any protoco
 dotnet add package SemanticPolicy.Extensions.AI --prerelease       # for any IChatClient's tool calls, from 0.1.0-alpha.3
 dotnet add package SemanticPolicy.AgentFramework --prerelease      # for a Microsoft Agent Framework agent
 dotnet add package SemanticPolicy.FluentValidation --prerelease    # semantic rules on a validator, from 0.1.0-alpha.2
-dotnet add package SemanticPolicy.Evals.Format --prerelease        # write and read the evaluation CLI's datasets and recordings
+dotnet add package SemanticPolicy.Evals.Format --prerelease        # write and read the evaluation CLI's datasets and recordings, from 0.1.0-alpha.4
 ```
 
 The providers, the Microsoft.Extensions.AI package, the Agent Framework package, the
