@@ -4,15 +4,19 @@ Notable changes to the packages `SemanticPolicy.Core`, `SemanticPolicy.Providers
 0.1.0-alpha.2), `SemanticPolicy.Providers.Http` (from 0.1.0-alpha.2),
 `SemanticPolicy.Providers.TypeSafe`, `SemanticPolicy.Extensions.AI` (from 0.1.0-alpha.3),
 `SemanticPolicy.AgentFramework`, `SemanticPolicy.FluentValidation` (from 0.1.0-alpha.2),
-`SemanticPolicy.Evals` (from 0.1.0-alpha.2), `SemanticPolicy.Evals.Format` and
-`SemanticPolicy.Mcp.Gateway`, which share one version. Versions follow [Semantic Versioning](https://semver.org/); while the major version is 0,
-any release can change the API.
+`SemanticPolicy.Evals` (from 0.1.0-alpha.2), `SemanticPolicy.Evals.Format` (from 0.1.0-alpha.4)
+and `SemanticPolicy.Mcp.Gateway` (from 0.1.0-alpha.4), which share one version. Versions follow
+[Semantic Versioning](https://semver.org/); while the major version is 0, any release can change the
+API.
 
-## Unreleased
+## 0.1.0-alpha.4 - 2026-11-16
 
 A new dotnet tool, `SemanticPolicy.Mcp.Gateway`, runs one MCP server behind SemanticPolicy for a
 host you do not write, such as Claude Desktop, Claude Code, Cursor or VS Code. In your own code, the
-tool guards already cover an MCP client's tools, and now have tests that show it.
+tool guards already cover an MCP client's tools, and now have tests that show it. Every policy and
+every verdict carries a stable digest, the evaluation CLI's dataset and recording formats ship as a
+package of their own, `SemanticPolicy.Evals.Format`, and the System One and TypeSafe providers can
+ask OpenRouter for zero data retention.
 
 - **`SemanticPolicy.Mcp.Gateway`.** New. The `semantic-policy-mcp` command, which a host starts as
   `dnx SemanticPolicy.Mcp.Gateway --prerelease -- --gateway <file> -- <server command>`, sits
