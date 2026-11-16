@@ -629,6 +629,11 @@ other four commands work right after the install, without a key or a server. `re
 committed recording fails when a policy change makes the rule worse. [Its README][evals-readme]
 explains the dataset format, the six commands and how to read their output.
 
+An application that stores each decision's `PolicyVerdict` can export those verdicts as a dataset and
+a recording through the `SemanticPolicy.Evals.Format` package, `RecordingHeader.ForExport` and
+`RecordedRow.FromVerdict`, and measure the policy on what production saw with the same commands;
+[Exporting production decisions][evals-export] walks through it.
+
 `calibrate` fits Platt scaling to one binding's answers on your labelled rows and writes a new policy
 whose thresholds read the fitted probability and flag the same rows as before. It changes what the
 number means, not how well the rule tells flagged inputs from the rest. The probability is an
@@ -720,6 +725,7 @@ Apache-2.0. See [`LICENSE`][licence].
 [support-ticket-form]: https://github.com/semanticpolicy/semantic-policy/tree/main/examples/SupportTicketForm
 [classification]: https://github.com/semanticpolicy/semantic-policy/blob/main/docs/classification.md
 [evals-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md
+[evals-export]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md#exporting-production-decisions
 [evals-quick-start]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md#quick-start
 [evals-pitfalls]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Evals/README.md#pitfalls
 [gateway-readme]: https://github.com/semanticpolicy/semantic-policy/blob/main/tools/SemanticPolicy.Mcp.Gateway/README.md

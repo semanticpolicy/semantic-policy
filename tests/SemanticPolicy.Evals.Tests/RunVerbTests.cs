@@ -184,6 +184,24 @@ public sealed partial class RunVerbTests
     }
 
     [Fact]
+    public async Task Run_Writes_The_Policys_Digest_In_The_Header()
+    {
+        using Fixture fixture = Fixture.Create(Guard());
+
+        (int exit, _, string error) = await InvokeAsync(
+            fixture.RunArgs(),
+            builder => builder.AddProvider(Answering(), "local").AddProvider(Answering(), "jev"));
+
+        exit.Should().Be(ExitCodes.Success, error);
+        Recording recording = RecordingReader.Read(fixture.RecordingPath);
+        recording.Header.PolicyDigest.Should().Be(Guard().Digest);
+        recording.Header.Source.Should().BeNull("a run writes no source");
+        string[] lines = File.ReadAllLines(fixture.RecordingPath);
+        lines[0].Should().NotContain("\"source\"");
+        lines.Skip(1).Should().NotContain(line => line.Contains("\"policyDigest\"", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Header_And_Row_Record_The_Retries()
     {
         using Fixture fixture = Fixture.Create(Guard(), split: true);
@@ -259,13 +277,46 @@ public sealed partial class RunVerbTests
         recording.Header.Resumptions.Should().ContainSingle().Which.Should().Match<RecordedResumption>(resumption =>
             resumption.Parallel == 4 && resumption.Retries == 2 && resumption.ToolVersion == EvalsCli.ToolVersion);
         recording.Header.Retries.Should().Be(0, "the header keeps the first run's values");
+        recording.Header.PolicyDigest.Should().Be(Guard().Digest);
         recording.Header.Providers.Should().OnlyContain(provider => provider.Model != null);
         File.Exists(fixture.RecordingPath + ".tmp").Should().BeFalse();
         output.Should().Contain("4 of 4 recorded rows");
     }
 
+    [Fact]
+    public async Task Resume_Refuses_An_Export_Naming_The_Recording()
+    {
+        // The rows of a cut recording under an export's header: the rows a resume would otherwise call again.
+        using Fixture fixture = await Fixture.RecordedAsync(rows: 4, cutAfter: 2, unavailable: null);
+        Recording recorded = RecordingReader.Read(fixture.RecordingPath);
+        RecordingHeader export = RecordingHeader.ForExport(
+            recorded.Header.Policy,
+            recorded.Header.Datasets,
+            recorded.Header.Providers,
+            "exporter",
+            "2.1.0",
+            recorded.Header.RecordedAt);
+        await RecordingWriter.ReplaceHeaderAsync(fixture.RecordingPath, export, TestContext.Current.CancellationToken);
+        byte[] bytes = File.ReadAllBytes(fixture.RecordingPath);
+        ScriptedProvider scripted = Answering();
+
+        (int exit, string output, string error) = await InvokeAsync(
+            fixture.ResumeArgs(),
+            builder => builder.AddProvider(scripted, "local").AddProvider(scripted, "jev"));
+
+        exit.Should().Be(ExitCodes.UsageOrData);
+        error.Should().Contain($"Recording '{fixture.RecordingPath}'").And.Contain("export")
+            .And.NotContain("--where").And.NotContain(_marker);
+        output.Should().BeEmpty();
+        scripted.Calls.Should().Be(0);
+        File.ReadAllBytes(fixture.RecordingPath).Should().Equal(bytes);
+    }
+
     public static TheoryData<string> Unfinishable =>
-        ["another policy", "a changed dataset", "another timeout", "another filter", "a record path", "a header without where"];
+        [
+            "another policy", "a changed dataset", "another timeout", "another filter", "a record path", "a header without where",
+            "a header without timeout",
+        ];
 
     [Theory]
     [MemberData(nameof(Unfinishable))]
@@ -299,11 +350,11 @@ public sealed partial class RunVerbTests
                 expected = "--record";
                 break;
             default:
+                expected = mismatch == "a header without where" ? "where" : "timeout";
                 string[] lines = File.ReadAllLines(fixture.RecordingPath);
                 JsonObject header = JsonNode.Parse(lines[0])!.AsObject();
-                header.Remove("where");
+                header.Remove(expected);
                 File.WriteAllLines(fixture.RecordingPath, [header.ToJsonString(), .. lines[1..]]);
-                expected = "where";
                 break;
         }
 

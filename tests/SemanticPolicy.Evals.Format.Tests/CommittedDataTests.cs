@@ -27,6 +27,13 @@ public sealed class CommittedDataTests
             recording.Header.Format.Should().Be(RecordingHeader.FormatV0);
             recording.Rows.Should().HaveCount(rows);
             recording.TornLine.Should().BeNull();
+
+            // Written before a recording could name its source or its policy's digest: a run, and no digest.
+            recording.Header.Source.Should().BeNull();
+            recording.Header.PolicyDigest.Should().BeNull();
+            recording.Header.Parallel.Should().NotBeNull();
+            recording.Header.Timeout.Should().NotBeNull();
+            recording.Rows.Should().OnlyContain(row => row.PolicyDigest == null);
         }
         else
         {

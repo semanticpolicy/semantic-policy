@@ -84,6 +84,21 @@ tool guards already cover an MCP client's tools, and now have tests that show it
   the Choice metrics and requirements count the keys the rows used, the text says the options vary,
   the JSON result carries `optionSets`, and the class table prints the confusion matrix up to 10
   classes. A report whose rows share one option set is as before.
+- **`SemanticPolicy.Evals.Format`.** A recording can be exported from stored verdicts.
+  `RecordedRow.FromVerdict` turns a `PolicyVerdict` into a row: each rule's attempts keyed by the
+  binding's provider, only the attempts the evaluator made, and the verdict's `PolicyDigest`.
+  `RecordingHeader.ForExport` makes the header, which names the exporting program in a new `source`
+  and carries no `parallel`, `timeout`, `where`, `retries` or `resumptions`. The header and a row
+  gain an optional `policyDigest`, and `Parallel` and `Timeout` become nullable; the reader refuses
+  an export header with `parallel` or `timeout`, and a `source` without its kind, name or version.
+  Every recording written before reads unchanged, as a run.
+- **`SemanticPolicy.Evals`.** Replay fails only when the policy being replayed reaches a binding a
+  row has no answer from, and the message names the rule, the provider and the row, so an export
+  whose cascade stopped early replays under its own policy. A run's recording replays as before. `run`
+  writes its policy's digest into the header, `--resume` refuses an export, and refuses a header
+  without `timeout` as it refuses one without `where` or `retries`. Every replaying command says how
+  many distinct policies the scored rows name, in the text and as `rows.distinctPolicies`, when
+  they carry a digest.
 
 ## 0.1.0-alpha.3 - 2026-10-03
 

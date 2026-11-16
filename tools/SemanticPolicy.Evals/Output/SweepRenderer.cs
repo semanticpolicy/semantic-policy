@@ -227,6 +227,11 @@ public static class SweepRenderer
         {
             writer.WriteLine(ReportRenderer.TornLineNote(line));
         }
+
+        if (rows.DistinctPolicies is { } policies)
+        {
+            writer.WriteLine(ReportRenderer.DistinctPoliciesNote(policies));
+        }
     }
 
     private static string NoGateCurve(EvalsResult result, SweepSection section) =>

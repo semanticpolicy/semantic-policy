@@ -479,10 +479,11 @@ answer as it was recorded. Give it the policy and the data the recording was mad
   must be the recording's; the filters may come in any order.
 - `--parallel` and `--retries` may differ from the first run's. The recording lists each resume
   with the values it used, and keeps the first run's.
-- It stops with exit code 1 before any call, and leaves the file as it was, when the policy is not
-  the one recorded, a dataset's digest differs, `--timeout` or `--where` differs, `--record` is
-  given too, or the recording comes from a version of the tool that did not record its filters and
-  retries.
+- It stops with exit code 1 before any call, and leaves the file as it was, when the recording is
+  an [export](#exporting-production-decisions), which it checks before anything else, the policy is
+  not the one recorded, a dataset's digest differs, `--timeout` or `--where` differs, `--record` is
+  given too, or the header does not say its filters, retries and timeout, as in a recording from a
+  version of the tool that did not record them.
 
 The finished recording is written next to the old one, as `<recording>.tmp`, and takes its place
 only when it holds every row the old one did. A resume that is itself stopped still keeps each row
@@ -821,7 +822,10 @@ Eighty synthetic rows show the two bindings side by side, not which provider rou
 
 - **rows**: rows in the recording, rows that passed the filter, and how many are tune, test or
   neither. A last line torn by an interrupted run is named there, and counts as not recorded; the
-  JSON result's `rows.tornLine` holds its number.
+  JSON result's `rows.tornLine` holds its number. When rows carry a `policyDigest`, as an
+  [export](#exporting-production-decisions) writes it, a line says how many distinct policies the
+  rows that passed the filter name, before any split; a row without one is not counted, and a run's
+  recording, whose rows carry none, prints no such line. `rows.distinctPolicies` holds the number.
 - **outcomes**: each row lands in one bucket. *Classified*: a clear label and a verdict; only these
   rows enter the tables below. *Failed*: no provider answered, counted by failure kind.
   *Abstained*: no provider was sure enough. *Ambiguous*: labelled `ambiguous` or `abstain`, shown
@@ -1043,6 +1047,18 @@ and refuses a recording without them. Each resume adds an entry to `resumptions`
 shipped recordings were each made in a single run, before these fields existed, and carry none of
 them.
 
+A header written by this version also carries `policyDigest`, the `Policy.Digest` of its policy:
+`sha256:` and 64 lowercase hex digits, the same value a verdict of that policy carries. The tool
+stores it as written and never recomputes or checks it.
+
+A header may also name its `source`: `{"kind": "run"}`, or `{"kind": "export", "name": …,
+"version": …}` with the name and version of the program that wrote it. A header without `source` is a
+run's, and `run` writes none. An [export](#exporting-production-decisions) has no `parallel`,
+`timeout`, `where`, `retries` or `resumptions`, because it called no provider and selected no rows,
+and `toolVersion` is the version of `SemanticPolicy.Evals.Format` that wrote it. The reader refuses
+a `source` without `kind`, an export without `name` or `version`, and an export header that carries
+`parallel` or `timeout`, and names the field.
+
 A row is the dataset row's `id` and every answer it got, keyed by rule id and provider name, as the
 library serializes it. The shipped recording's first row, without its request id:
 
@@ -1080,6 +1096,12 @@ rule id and provider name, that counts the calls made after the first, as in
 `"retries": { "prompt-injection": { "jev": 1 } }`. The attempt is the last call's answer. A row
 where no attempt was retried has no map.
 
+A row may also carry `policyDigest`, the digest of the policy whose evaluation produced its answers,
+as a stored verdict names it. An export writes it on every row, so an export that spans several
+versions of a policy says which one decided which row; `run` never writes it, because a run's policy
+is the header's. The tool compares it with nothing, the header's digest included: it counts the
+distinct values among the rows a verb scores, and the report prints that count.
+
 **A recording carries no input, no label and no raw provider output**, so it can sit in a repository
 next to its dataset without copying the dataset's content.
 
@@ -1092,7 +1114,68 @@ Replaying checks that the recording still fits:
   shown those, and the dataset's digest already ties the recording to them. Thresholds, gates, the
   order and set of bindings, `onFailure`, `mode` and `budget` may change; that is what a sweep
   varies.
-- Every binding must have an answer for every selected row; the tool never makes up a failure.
+- Replay hands the library every answer a row has, and fails only when the policy being replayed
+  asks for one the row lacks: a binding its chain reaches on that row whose provider never answered.
+  The message names the rule, the provider and the row; the tool never makes up a failure. A run
+  asks every binding about every row, so its recording replays under any chain of its providers; an
+  export holds only the answers its evaluator asked for.
+
+## Exporting production decisions
+
+An application that stores the `PolicyVerdict` of each decision can turn those verdicts into a
+dataset and a recording, and measure, sweep or calibrate the policy on what production saw, through
+`SemanticPolicy.Evals.Format`. The dataset comes first, because the recording's header names it by
+its digest:
+
+```csharp
+using SemanticPolicy;
+using SemanticPolicy.Evals.Format;
+using SemanticPolicy.Evaluation;
+
+// What the application stored: an id it chose, the context, the label a person gave, the verdict.
+IReadOnlyList<(string Id, SemanticContext Input, RowLabel Label, PolicyVerdict Verdict)> decisions = ...;
+
+string sha256;
+await using (DatasetWriter dataset = await DatasetWriter.CreateAsync("decisions.jsonl", cancellationToken))
+{
+    foreach (var decision in decisions)
+    {
+        await dataset.WriteAsync(new DatasetRow(decision.Id, decision.Input, decision.Label), cancellationToken);
+    }
+
+    sha256 = await dataset.CompleteAsync(cancellationToken);
+}
+
+RecordingHeader header = RecordingHeader.ForExport(
+    policy,
+    [new RecordedDataset("decisions.jsonl", sha256, Split: null)],
+    [.. policy.Bindings.Select(binding => new RecordedProvider(binding.ProviderId, Model: null))],
+    sourceName: "my-exporter",
+    sourceVersion: "1.4.0",
+    recordedAt: DateTimeOffset.UtcNow);
+await using (RecordingWriter recording = await RecordingWriter.CreateAsync("decisions.recording.jsonl", header, cancellationToken))
+{
+    foreach (var decision in decisions)
+    {
+        await recording.WriteAsync(RecordedRow.FromVerdict(decision.Id, decision.Verdict), cancellationToken);
+    }
+}
+```
+
+`report --policy <policy file> --dataset decisions.jsonl --recording decisions.recording.jsonl` then
+replays the verdicts. Under the policy that made them, each comes back as it was decided.
+
+What an export can and cannot do follows from what it holds:
+
+- **Only the attempts production made.** A cascade stops at the binding that decides, so a row
+  decided by the first binding holds no answer from the others. A replay that needs one fails, and
+  names the rule, the provider and the row. `compare`, which measures every binding on every row,
+  cannot run on such an export, and neither can a `sweep` whose gates send rows on to a binding
+  production never asked. A `report` or a `sweep` whose chain stops where production's did runs.
+- **No `--resume`.** `run --resume` refuses an export before anything else. Every older release
+  that has `--resume` refuses it too, because the header has no `where` or `retries`.
+- **This release or a later one.** Read an export with the release that introduced it or a later
+  one: an older release reads the header, but replays with rules that do not fit an export.
 
 ## Exit codes
 
@@ -1125,6 +1208,12 @@ recording, shortened:
 }
 ```
 
+- **`rows`**: the rows the numbers are about, stage by stage, as the text's rows section prints
+  them; `tornLine`, the recording's skipped last line, present only when one was skipped; and
+  `distinctPolicies`, an integer: how many distinct `policyDigest` values the `afterFilter` rows
+  carry, before any split, counting only the rows that carry one. It is absent when no such row
+  names a digest, as in a run's recording. Every verb's `rows` carries it, `sweep`, `compare` and
+  `calibrate` as well as `report` and `run`.
 - **`report`**: the report's sections, `sweptProvider`, the binding the discrimination curve
   moves, and `calibrationModelMismatchRows`, the rows answered by a model other than the one a
   calibration was fitted on, present only when a binding carries a calibration for the rule; and

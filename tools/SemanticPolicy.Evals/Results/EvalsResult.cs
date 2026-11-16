@@ -67,6 +67,11 @@ public sealed record EvalsResult(
 /// The recording's last line, when it was skipped as not valid JSON, the way a run cut short while writing a
 /// row leaves it; its row counts as not recorded. Absent when every line was read.
 /// </param>
+/// <param name="DistinctPolicies">
+/// How many distinct policies the <see cref="AfterFilter"/> rows name by their recorded <c>policyDigest</c>, before
+/// any split, as an export from stored verdicts records them; a row without one is not counted. Absent when no
+/// counted row names a digest, as in a run's recording.
+/// </param>
 public sealed record RowSelection(
     int DatasetRows,
     int RecordedRows,
@@ -75,7 +80,8 @@ public sealed record RowSelection(
     string SplitSource,
     int TuneRows,
     int TestRows,
-    int? TornLine = null);
+    int? TornLine = null,
+    int? DistinctPolicies = null);
 
 /// <summary>
 /// Everything measured about one rule on one selection. A section that does not apply to the rule's
