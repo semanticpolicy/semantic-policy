@@ -15,7 +15,8 @@ dotnet add package SemanticPolicy.Evals.Format --prerelease
   `RecordedDataset`, `RecordedProvider`, `RecordedResumption`, `RecordedRow` and `Recording` for a
   recording.
 - **Both readers.** `DatasetReader.Read` and `RecordingReader.Read` validate as the CLI does, and
-  `Dataset.ForRule` checks every label against a rule's answers, options or levels.
+  `Dataset.ForPolicy` checks every label against a rule's answers, options or levels, and every
+  row's own options against the policy.
 - **Both writers.** `DatasetWriter` writes a dataset one row at a time and returns the SHA-256 of
   the file, which a recording's header names the dataset by. `RecordingWriter` writes a recording's
   header and then its rows, each flushed as it is written.
@@ -71,6 +72,37 @@ at all: an id that is empty, white space or already written; an answer label tha
 `ambiguous` or `abstain`; an ambiguous or abstain label that carries an answer; and a JSON input part
 whose value is a JSON string, which the reader reads back as text, so write it as a text part. A
 refused row writes nothing, and the writer takes the next one.
+
+## Options per row
+
+A row of a Choice rule can carry the options it was shown, when they change from one request to the
+next. `DatasetRow.Options` maps a rule id to its options, as `ChoiceOption` values, and the file
+holds them under `options` in the policy file's own option shape:
+
+```csharp
+DatasetRow row = new("r-003", SemanticContext.FromText("placeholder: asks to change a plan"), new RowLabel(RowLabelKind.Answer, "plans"))
+{
+    Options = new Dictionary<string, IReadOnlyList<ChoiceOption>>
+    {
+        ["route"] =
+        [
+            new ChoiceOption("plans", "Changes to a subscription plan.", Verdict.Allow),
+            new ChoiceOption("person", "A person should take over.", Verdict.Escalate),
+        ],
+    },
+};
+```
+
+```jsonl
+{"id":"r-003","input":"placeholder: asks to change a plan","label":"plans","options":{"route":[{"key":"plans","description":"Changes to a subscription plan.","verdict":"allow"},{"key":"person","description":"A person should take over.","verdict":"escalate"}]}}
+```
+
+A row without options for a rule uses the policy's. `Dataset.ForPolicy(policy, rule)` checks each
+row's options as Core checks a Choice rule's, refuses options for a rule the policy lacks or that is
+not a Choice rule, and checks the row's label against the row's own keys. The writer refuses an
+options list, option, key or description that is null, and a verdict that is not a `Verdict` name.
+`ambiguous` and `abstain` stay reserved label words: a row whose right answer is an option keyed so
+cannot carry it as its label.
 
 ## Errors
 

@@ -86,7 +86,8 @@ public static class ReportPipeline
                     (attempt.Key, attempt.Value, row.RetriesByProvider.GetValueOrDefault(attempt.Key))))),
             Notes(inputs, recording, force, mismatched, calibrated),
             swept,
-            mismatched);
+            mismatched,
+            classes is { DistinctOptionSets: > 1 and var sets } ? sets : null);
 
         return new EvalsResult(
             EvalsResult.FormatV0,

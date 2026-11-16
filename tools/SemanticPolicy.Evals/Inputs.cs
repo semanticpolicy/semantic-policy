@@ -35,7 +35,7 @@ public static class Inputs
         if (selection.DatasetPath is { } single)
         {
             Dataset dataset = DatasetReader.Read(single);
-            IReadOnlyList<DatasetRow> rows = MetadataFilter.Apply(selection.Filters, dataset.ForRule(rule));
+            IReadOnlyList<DatasetRow> rows = MetadataFilter.Apply(selection.Filters, dataset.ForPolicy(policy, rule));
 
             // The filter runs before the split is read, so a filtered-out row is in neither half and the
             // report's row counts describe the same rows the halves hold.
@@ -47,8 +47,8 @@ public static class Inputs
             selection.TunePath ?? throw new InvalidOperationException("The selection names neither --dataset nor --tune."));
         Dataset test = DatasetReader.Read(
             selection.TestPath ?? throw new InvalidOperationException("The selection names --tune without --test."));
-        IReadOnlyList<DatasetRow> tuneRows = MetadataFilter.Apply(selection.Filters, tune.ForRule(rule));
-        IReadOnlyList<DatasetRow> testRows = MetadataFilter.Apply(selection.Filters, test.ForRule(rule));
+        IReadOnlyList<DatasetRow> tuneRows = MetadataFilter.Apply(selection.Filters, tune.ForPolicy(policy, rule));
+        IReadOnlyList<DatasetRow> testRows = MetadataFilter.Apply(selection.Filters, test.ForPolicy(policy, rule));
         return new LoadedInputs(
             policy,
             rule,
