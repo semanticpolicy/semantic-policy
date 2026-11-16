@@ -27,7 +27,9 @@ namespace SemanticPolicy.Evals.Format;
 /// <item><description>a metadata entry with no value.</description></item>
 /// </list>
 /// <para>
-/// A refused row writes nothing, and the writer takes the next one. <see cref="DatasetRow.Line"/> is ignored: the
+/// A refused row writes nothing, and the writer takes the next one. A row that fails while it is written, or whose
+/// write is cancelled, may have left part of itself in the file, so the writer is faulted: it takes no more rows and
+/// does not complete, and the file is to be discarded. <see cref="DatasetRow.Line"/> is ignored: the
 /// line a row lands on is decided by the rows before it.
 /// </para>
 /// </remarks>
@@ -45,6 +47,7 @@ public sealed class DatasetWriter : IAsyncDisposable
     private readonly Dictionary<string, int> _rowOfId = new(StringComparer.Ordinal);
     private int _rows;
     private string? _digest;
+    private bool _faulted;
 
     private DatasetWriter(FileStream stream, string path)
     {
@@ -81,7 +84,12 @@ public sealed class DatasetWriter : IAsyncDisposable
     /// The row would not read back as itself, or it cannot be written. The message names the row's id, or its
     /// number in the file when the id is at fault, and never its input or metadata.
     /// </exception>
-    /// <exception cref="InvalidOperationException"><see cref="CompleteAsync"/> was already called.</exception>
+    /// <exception cref="OperationCanceledException">
+    /// The write was cancelled. The file may hold part of the row, so the writer is faulted.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    /// <see cref="CompleteAsync"/> was already called, or an earlier write failed or was cancelled.
+    /// </exception>
     public async Task WriteAsync(DatasetRow row, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -89,6 +97,8 @@ public sealed class DatasetWriter : IAsyncDisposable
         {
             throw new InvalidOperationException("The dataset is complete; no row can be added to it.");
         }
+
+        ThrowIfFaulted();
 
         int number = _rows + 1;
         JsonElement input = row.Input.ToJson();
@@ -101,18 +111,26 @@ public sealed class DatasetWriter : IAsyncDisposable
             WriteRow(json, row, input);
         }
 
+        buffer.Write(_newline);
+
         try
         {
             await _stream.WriteAsync(buffer.WrittenMemory, cancellationToken).ConfigureAwait(false);
-            await _stream.WriteAsync(_newline, cancellationToken).ConfigureAwait(false);
         }
-        catch (IOException e)
+        catch (Exception e)
         {
-            throw new EvalsFormatException($"Dataset '{_path}', id '{row.Id}': the row cannot be written: {e.Message}");
+            // Part of the row may already sit in the stream's buffer while the digest and the row count have not
+            // moved, so the next row would be flushed behind bytes the digest never saw.
+            _faulted = true;
+            if (e is IOException)
+            {
+                throw new EvalsFormatException($"Dataset '{_path}', id '{row.Id}': the row cannot be written: {e.Message}");
+            }
+
+            throw;
         }
 
         _sha256.AppendData(buffer.WrittenSpan);
-        _sha256.AppendData(_newline);
         _rowOfId.Add(row.Id, number);
         _rows = number;
     }
@@ -124,12 +142,15 @@ public sealed class DatasetWriter : IAsyncDisposable
     /// <param name="cancellationToken">Cancels the flush.</param>
     /// <returns>The digest of the file's bytes.</returns>
     /// <exception cref="EvalsFormatException">The file cannot be flushed; the message names the path.</exception>
+    /// <exception cref="InvalidOperationException">An earlier write failed or was cancelled, so no digest would match the file.</exception>
     public async Task<string> CompleteAsync(CancellationToken cancellationToken)
     {
         if (_digest is not null)
         {
             return _digest;
         }
+
+        ThrowIfFaulted();
 
         try
         {
@@ -154,6 +175,15 @@ public sealed class DatasetWriter : IAsyncDisposable
     {
         await _stream.DisposeAsync().ConfigureAwait(false);
         _sha256.Dispose();
+    }
+
+    private void ThrowIfFaulted()
+    {
+        if (_faulted)
+        {
+            throw new InvalidOperationException(
+                $"An earlier write to dataset '{_path}' failed, so the file may not match the rows written; discard it.");
+        }
     }
 
     private void Validate(DatasetRow row, JsonElement input, int number)

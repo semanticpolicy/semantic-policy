@@ -117,6 +117,28 @@ public sealed class DatasetWriterTests
         DatasetReader.Read(file.Path).Rows.Select(row => row.Id).Should().Equal("a", "c");
     }
 
+    [Fact]
+    public async Task DatasetWriter_That_Failed_To_Write_A_Row_Takes_No_More_Rows_And_Returns_No_Digest()
+    {
+        using TempFile file = TempFile.Write("");
+        CancellationToken cancellation = TestContext.Current.CancellationToken;
+        using CancellationTokenSource cancelled = new();
+        await cancelled.CancelAsync();
+
+        await using DatasetWriter writer = await DatasetWriter.CreateAsync(file.Path, cancellation);
+        await writer.WriteAsync(Row("a", Text("first"), "true"), cancellation);
+
+        // The bytes of a cancelled write may be partly in the file, so a digest of the rows before it would not match.
+        Func<Task> cancelledWrite = () => writer.WriteAsync(Row("b", Text("second"), "false"), cancelled.Token);
+        await cancelledWrite.Should().ThrowAsync<OperationCanceledException>();
+
+        Func<Task> next = () => writer.WriteAsync(Row("c", Text("third"), "false"), cancellation);
+        (await next.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain(file.Path);
+
+        Func<Task<string>> complete = () => writer.CompleteAsync(cancellation);
+        await complete.Should().ThrowAsync<InvalidOperationException>();
+    }
+
     private static async Task WriteAsync(string path, IEnumerable<DatasetRow> rows)
     {
         CancellationToken cancellation = TestContext.Current.CancellationToken;
