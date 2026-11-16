@@ -84,14 +84,15 @@ dotnet add package SemanticPolicy.Providers.Http --prerelease      # any protoco
 dotnet add package SemanticPolicy.Extensions.AI --prerelease       # for any IChatClient's tool calls, from 0.1.0-alpha.3
 dotnet add package SemanticPolicy.AgentFramework --prerelease      # for a Microsoft Agent Framework agent
 dotnet add package SemanticPolicy.FluentValidation --prerelease    # semantic rules on a validator, from 0.1.0-alpha.2
+dotnet add package SemanticPolicy.Evals.Format --prerelease        # write and read the evaluation CLI's datasets and recordings
 ```
 
-The providers, the Microsoft.Extensions.AI package, the Agent Framework package and the
-FluentValidation package all depend on `SemanticPolicy.Core`, so any one of them brings it along; the
-FluentValidation package brings FluentValidation too. From `0.1.0-alpha.2`, the TypeSafe provider is
-built on the System One provider and brings it too, at exactly its own version. From
-`0.1.0-alpha.3`, the Agent Framework package is built on the Microsoft.Extensions.AI package and
-brings it too.
+The providers, the Microsoft.Extensions.AI package, the Agent Framework package, the
+FluentValidation package and the formats package all depend on `SemanticPolicy.Core`, so any one of
+them brings it along; the FluentValidation package brings FluentValidation too. From
+`0.1.0-alpha.2`, the TypeSafe provider is built on the System One provider and brings it too, at
+exactly its own version. From `0.1.0-alpha.3`, the Agent Framework package is built on the
+Microsoft.Extensions.AI package and brings it too.
 
 The evaluation CLI is a dotnet tool whose command is `semantic-policy`, installed for your user
 rather than added to a project; [Evals][evals] shows what it does.
@@ -647,6 +648,7 @@ src/
   SemanticPolicy.Extensions.AI/         Microsoft.Extensions.AI integration — tool guards on any IChatClient
   SemanticPolicy.AgentFramework/        Microsoft Agent Framework integration, built on the one above
   SemanticPolicy.FluentValidation/      FluentValidation integration — semantic rules on validators
+  SemanticPolicy.Evals.Format/          the evaluation CLI's dataset and recording formats — readers and writers
 tools/
   SemanticPolicy.Evals/                 the evaluation CLI — runs on TypeSafe Jev and a local Von
   SemanticPolicy.Mcp.Gateway/           the MCP gateway — one MCP server's tool results and definitions screened by policy
@@ -661,6 +663,7 @@ tests/
   SemanticPolicy.AgentFramework.Tests/  the adapter's tests, no key needed
   SemanticPolicy.FluentValidation.Tests/  the validator integration's tests, no key needed
   SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, no key needed
+  SemanticPolicy.Evals.Format.Tests/    the format package's tests, which also read every committed dataset and recording
   SemanticPolicy.Mcp.Gateway.Tests/     the gateway's tests, no key needed
 docs/
   adr/                                  architecture decisions, immutable once merged

@@ -5,7 +5,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using SemanticPolicy.Evals.Cli;
-using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Evals.Tests.Support;
 using SemanticPolicy.Protocol;
 
@@ -258,7 +257,7 @@ public sealed partial class RunVerbTests
         recording.Rows[0].Attempts[Samples.Injection]["local"].Outcome.Status.Should().Be(OutcomeStatus.Success);
         File.ReadAllLines(fixture.RecordingPath)[2].Should().Be(before[2]);
         recording.Header.Resumptions.Should().ContainSingle().Which.Should().Match<RecordedResumption>(resumption =>
-            resumption.Parallel == 4 && resumption.Retries == 2 && resumption.ToolVersion == RecordingHeader.CurrentToolVersion);
+            resumption.Parallel == 4 && resumption.Retries == 2 && resumption.ToolVersion == EvalsCli.ToolVersion);
         recording.Header.Retries.Should().Be(0, "the header keeps the first run's values");
         recording.Header.Providers.Should().OnlyContain(provider => provider.Model != null);
         File.Exists(fixture.RecordingPath + ".tmp").Should().BeFalse();

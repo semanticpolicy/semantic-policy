@@ -3,8 +3,6 @@ using System.Globalization;
 using System.Text.Json;
 using System.Xml.Linq;
 using SemanticPolicy.Evals.Cli;
-using SemanticPolicy.Evals.Datasets;
-using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Protocol;
 
 namespace SemanticPolicy.Evals.Tests;
@@ -389,6 +387,57 @@ public sealed class ReportVerbTests
             .Select(provider => provider.GetProperty("retried").GetInt32()).Should().Equal(2, 0);
         committed.ExitCode.Should().Be(ExitCodes.Success, committed.Error);
         RetriedColumn(committed.Output).Should().Equal("local 0", "jev 0");
+    }
+
+    [Fact]
+    public async Task Report_On_A_Malformed_Dataset_Exits_1_Naming_The_Line()
+    {
+        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+        using CliFixture fixture = await CliFixture.CreateAsync(
+            policy,
+            [
+                FixtureRow.Of("true", null, ("local", Samples.BooleanAnswer(0.95))),
+                FixtureRow.Of("false", null, ("local", Samples.BooleanAnswer(0.1))),
+            ]);
+        string[] lines = await File.ReadAllLinesAsync(fixture.DatasetPath, TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(
+            fixture.DatasetPath,
+            Lines([lines[0], """{"id": "r01", "input": "secret-content", "label": tru"""]),
+            TestContext.Current.CancellationToken);
+
+        CliRun run = await fixture.RunAsync("report");
+
+        run.ExitCode.Should().Be(ExitCodes.UsageOrData);
+        run.Error.Should().Contain(fixture.DatasetPath).And.Contain("line 2").And.NotContain("secret-content");
+    }
+
+    [Fact]
+    public async Task Verbs_Read_The_Rows_Before_A_Torn_Last_Line_And_Say_So()
+    {
+        Policy policy = Samples.Guard(FailureBehavior.Deny, ["local"], [Samples.Flagged()]);
+        using CliFixture fixture = await CliFixture.CreateAsync(
+            policy,
+            [
+                FixtureRow.Of("true", null, ("local", Samples.BooleanAnswer(0.95))),
+                FixtureRow.Of("false", null, ("local", Samples.BooleanAnswer(0.1))),
+                FixtureRow.Of("true", null, ("local", Samples.BooleanAnswer(0.7))),
+                FixtureRow.Of("false", null, ("local", Samples.BooleanAnswer(0.3))),
+            ]);
+        string[] lines = await File.ReadAllLinesAsync(fixture.RecordingPath, TestContext.Current.CancellationToken);
+        await File.WriteAllTextAsync(
+            fixture.RecordingPath,
+            Lines(lines[..4]) + lines[4][..(lines[4].Length / 2)],
+            TestContext.Current.CancellationToken);
+
+        foreach (string verb in new[] { "report", "sweep", "compare" })
+        {
+            CliRun run = await fixture.RunAsync(verb);
+
+            run.ExitCode.Should().Be(ExitCodes.Success, $"{verb} reads the rows before the torn line: {run.Error}");
+            run.Output.Should().Contain("line 5 of the recording skipped", verb);
+            fixture.ReadOut().GetProperty("rows").GetProperty("tornLine").GetInt32().Should().Be(5, verb);
+            fixture.ReadOut().GetProperty("rows").GetProperty("recordedRows").GetInt32().Should().Be(3, verb);
+        }
     }
 
     private static string? Model(string models, int index) => models switch

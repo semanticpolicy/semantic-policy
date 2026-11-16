@@ -1,6 +1,6 @@
 using SemanticPolicy.Protocol;
 
-namespace SemanticPolicy.Evals.Recordings;
+namespace SemanticPolicy.Evals.Format;
 
 /// <summary>
 /// One row of a run: the dataset row's id and every result it produced, keyed by rule id and then by the

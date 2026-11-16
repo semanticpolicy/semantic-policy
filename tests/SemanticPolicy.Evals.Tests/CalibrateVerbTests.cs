@@ -4,7 +4,6 @@ using System.Text.Json.Nodes;
 using SemanticPolicy.Evals.Cli;
 using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Evals.Policies;
-using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Evals.Replay;
 using SemanticPolicy.Protocol;
 

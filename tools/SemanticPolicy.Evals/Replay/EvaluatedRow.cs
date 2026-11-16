@@ -1,4 +1,3 @@
-using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Evaluation;
 
 namespace SemanticPolicy.Evals.Replay;

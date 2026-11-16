@@ -1,8 +1,7 @@
 using System.Security.Cryptography;
-using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Protocol;
 
-namespace SemanticPolicy.Evals.Tests;
+namespace SemanticPolicy.Evals.Format.Tests;
 
 public sealed class DatasetReaderTests
 {
@@ -47,8 +46,7 @@ public sealed class DatasetReaderTests
 
         Action act = () => DatasetReader.Read(file.Path);
 
-        EvalsException failure = act.Should().Throw<EvalsException>().Which;
-        failure.ExitCode.Should().Be(ExitCodes.UsageOrData);
+        EvalsFormatException failure = act.Should().Throw<EvalsFormatException>().Which;
         failure.Message.Should().Contain("line 2").And.Contain(field).And.NotContain("secret-content");
     }
 
@@ -62,7 +60,7 @@ public sealed class DatasetReaderTests
 
         Action act = () => DatasetReader.Read(file.Path);
 
-        act.Should().Throw<EvalsException>().Which.Message.Should()
+        act.Should().Throw<EvalsFormatException>().Which.Message.Should()
             .Contain("line 3").And.Contain("line 1").And.Contain("r1");
     }
 
@@ -106,7 +104,7 @@ public sealed class DatasetReaderTests
 
         Action act = () => dataset.ForRule(rule);
 
-        act.Should().Throw<EvalsException>().Which.Message.Should()
+        act.Should().Throw<EvalsFormatException>().Which.Message.Should()
             .Contain("line 1").And.Contain(rule.Id).And.Contain(label);
     }
 

@@ -255,6 +255,9 @@ policy's thresholds are illustrations, not a recommendation.
 ## The dataset
 
 A JSONL file: UTF-8, one JSON object per line, with these properties and no others.
+`SemanticPolicy.Evals.Format` implements the format: the tool reads every dataset through its
+`DatasetReader`, and an application that writes datasets of its own can write them with its
+`DatasetWriter` ([its README](https://github.com/semanticpolicy/semantic-policy/blob/main/src/SemanticPolicy.Evals.Format/README.md)).
 
 | Property | Required | Meaning |
 |---|---|---|
@@ -971,8 +974,10 @@ instead of passing it. Keep the dataset's line endings fixed, as [Pitfalls](#pit
 
 ## The recording
 
-JSONL: a header line, then one line per dataset row, in dataset order. The header says what produced
-the answers; from the shipped smoke recording, spread over lines and with the policy cut:
+JSONL: a header line, then one line per dataset row, in dataset order. `SemanticPolicy.Evals.Format`
+implements the format: the tool writes and reads every recording through its `RecordingWriter` and
+`RecordingReader`, which an application can use as well. The header says what produced the answers;
+from the shipped smoke recording, spread over lines and with the policy cut:
 
 ```json
 {

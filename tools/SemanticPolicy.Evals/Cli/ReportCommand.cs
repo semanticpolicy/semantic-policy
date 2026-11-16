@@ -2,7 +2,6 @@ using System.CommandLine;
 using SemanticPolicy.Evals.Gating;
 using SemanticPolicy.Evals.Metrics;
 using SemanticPolicy.Evals.Output;
-using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Evals.Results;
 using SemanticPolicy.Protocol;
 

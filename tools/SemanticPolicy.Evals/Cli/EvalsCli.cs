@@ -1,11 +1,15 @@
 using System.CommandLine;
 using System.CommandLine.Help;
+using System.Reflection;
 
 namespace SemanticPolicy.Evals.Cli;
 
 /// <summary>The command tree of the tool, and the error boundary every verb action runs inside.</summary>
 public static class EvalsCli
 {
+    /// <summary>The tool's version, which the header of every recording <c>run</c> writes or resumes carries.</summary>
+    public static string ToolVersion { get; } = ReadToolVersion();
+
     /// <summary>Builds the root command with every verb attached.</summary>
     /// <param name="io">Where output goes; the console when omitted.</param>
     /// <param name="configureProviders">
@@ -37,8 +41,10 @@ public static class EvalsCli
 
     /// <summary>
     /// Runs a verb's body. An <see cref="EvalsException"/> is the tool telling the user what to fix: its
-    /// message goes to <see cref="CliIo.Error"/> and its exit code is returned. Any other exception is a bug
-    /// and passes through untouched, so it is reported with its stack rather than as a usage error.
+    /// message goes to <see cref="CliIo.Error"/> and its exit code is returned. An <see cref="EvalsFormatException"/>
+    /// is a dataset or a recording the user has to fix, and ends the same way with
+    /// <see cref="ExitCodes.UsageOrData"/>. Any other exception is a bug and passes through untouched, so it is
+    /// reported with its stack rather than as a usage error.
     /// </summary>
     /// <param name="io">Where the message goes.</param>
     /// <param name="body">The verb's work, returning its exit code.</param>
@@ -54,6 +60,11 @@ public static class EvalsCli
         {
             io.Error.WriteLine(failure.Message);
             return failure.ExitCode;
+        }
+        catch (EvalsFormatException failure)
+        {
+            io.Error.WriteLine(failure.Message);
+            return ExitCodes.UsageOrData;
         }
     }
 
@@ -73,6 +84,11 @@ public static class EvalsCli
             await io.Error.WriteLineAsync(failure.Message).ConfigureAwait(false);
             return failure.ExitCode;
         }
+        catch (EvalsFormatException failure)
+        {
+            await io.Error.WriteLineAsync(failure.Message).ConfigureAwait(false);
+            return ExitCodes.UsageOrData;
+        }
     }
 
     // With no verb there is nothing to do, so the usage text is the error message: the help renderer is
@@ -81,5 +97,15 @@ public static class EvalsCli
     {
         root.Parse(["--help"]).Invoke(new InvocationConfiguration { Output = io.Error, Error = io.Error });
         return ExitCodes.UsageOrData;
+    }
+
+    private static string ReadToolVersion()
+    {
+        // The tool's own assembly, never the entry assembly: under `dotnet test` the entry assembly is the
+        // test runner, so a recording written from a test would carry the runner's version.
+        Assembly assembly = typeof(EvalsCli).Assembly;
+        return assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+            ?? assembly.GetName().Version?.ToString()
+            ?? "0.0.0";
     }
 }
