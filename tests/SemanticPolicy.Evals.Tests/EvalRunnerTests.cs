@@ -1,8 +1,4 @@
 using System.Collections.Concurrent;
-using System.Collections.ObjectModel;
-using System.Text.Json;
-using SemanticPolicy.Evals.Datasets;
-using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Evals.Running;
 using SemanticPolicy.Evals.Tests.Support;
 using SemanticPolicy.Protocol;
@@ -262,7 +258,7 @@ public sealed class EvalRunnerTests
     }
 
     private static DatasetRow Row(string id, string text, string label = "true") =>
-        new(id, 1, SemanticContext.FromText(text), Samples.Label(label), ReadOnlyDictionary<string, JsonElement>.Empty);
+        new(id, SemanticContext.FromText(text), Samples.Label(label)) { Line = 1 };
 
     private static Dictionary<string, IDecisionProvider> Registered(params (string Name, IDecisionProvider Provider)[] providers) =>
         providers.ToDictionary(entry => entry.Name, entry => entry.Provider, StringComparer.Ordinal);

@@ -23,7 +23,9 @@ tests, and `docs/custom-providers.md` gives the rules it follows.
 `tools/SemanticPolicy.Evals/`, the evaluation CLI, is implemented and tested. Its `run` verb calls
 Jev through OpenRouter and a local Von server through SystemOne, or the providers a providers file
 names; it makes a call answered `unavailable` again and resumes a run cut short. `report` and `run`
-can gate a build on required rates.
+can gate a build on required rates. It reads and writes datasets and recordings through
+`src/SemanticPolicy.Evals.Format/`, implemented and tested: the package an application references to
+write a dataset or a recording the CLI reads, which the CLI's tool package carries inside it.
 
 `tools/SemanticPolicy.Mcp.Gateway/`, the MCP gateway, is implemented and tested in
 `tests/SemanticPolicy.Mcp.Gateway.Tests/`. It is the `semantic-policy-mcp` dotnet tool: it proxies
@@ -42,6 +44,7 @@ src/SemanticPolicy.Providers.Http/          decision provider for any protocol v
 src/SemanticPolicy.Extensions.AI/           Microsoft.Extensions.AI integration: tool guards on any IChatClient
 src/SemanticPolicy.AgentFramework/          Microsoft Agent Framework integration, built on Extensions.AI
 src/SemanticPolicy.FluentValidation/        FluentValidation integration: semantic rules on validators
+src/SemanticPolicy.Evals.Format/            the evaluation CLI's dataset and recording formats: records, readers, writers
 tools/SemanticPolicy.Evals/                 evaluation CLI
 tools/SemanticPolicy.Mcp.Gateway/           MCP gateway: one stdio server's tool results and definitions screened by policy, and its samples
 examples/                                   demos on Jev: PromptInjectionGuard, ToolIntentGuard, ToolResultGuard, AgentRouter, SupportTicketForm
@@ -52,6 +55,7 @@ tests/SemanticPolicy.Extensions.AI.Tests/   the chat-client guards' tests, on a 
 tests/SemanticPolicy.AgentFramework.Tests/  the adapter's tests, on a scripted model and provider
 tests/SemanticPolicy.FluentValidation.Tests/  the integration's tests, on a scripted provider
 tests/SemanticPolicy.Evals.Tests/           the evaluation CLI's tests, on a scripted provider
+tests/SemanticPolicy.Evals.Format.Tests/    the format package's tests, and every committed dataset and recording read through it
 tests/SemanticPolicy.Mcp.Gateway.Tests/     the gateway's tests, on scripted servers and a scripted provider
 docs/adr/                                   architecture decisions, immutable once merged
 docs/classification.md                      a Choice rule that picks a label, outside any agent
@@ -77,6 +81,7 @@ Run the narrowest command that reads what you changed. All three must pass befor
 | `src/SemanticPolicy.Extensions.AI/**`, `src/Shared/Guards/**` | `dotnet test tests/SemanticPolicy.Extensions.AI.Tests/SemanticPolicy.Extensions.AI.Tests.csproj` |
 | `src/SemanticPolicy.AgentFramework/**`, `src/Shared/Guards/**` | `dotnet test tests/SemanticPolicy.AgentFramework.Tests/SemanticPolicy.AgentFramework.Tests.csproj` |
 | `src/SemanticPolicy.FluentValidation/**` | `dotnet test tests/SemanticPolicy.FluentValidation.Tests/SemanticPolicy.FluentValidation.Tests.csproj` |
+| `src/SemanticPolicy.Evals.Format/**` | `dotnet test tests/SemanticPolicy.Evals.Format.Tests/SemanticPolicy.Evals.Format.Tests.csproj` and `dotnet test tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj` |
 | `tools/SemanticPolicy.Evals/**` | `dotnet test tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj` |
 | `tools/SemanticPolicy.Mcp.Gateway/**` | `dotnet test tests/SemanticPolicy.Mcp.Gateway.Tests/SemanticPolicy.Mcp.Gateway.Tests.csproj` |
 | `src/Shared/ProvidersFileReader.cs` | `dotnet test tests/SemanticPolicy.Evals.Tests/SemanticPolicy.Evals.Tests.csproj` and `dotnet test tests/SemanticPolicy.Mcp.Gateway.Tests/SemanticPolicy.Mcp.Gateway.Tests.csproj` |

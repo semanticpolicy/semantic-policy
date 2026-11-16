@@ -6,7 +6,6 @@ using SemanticPolicy.Evals.Cli;
 using SemanticPolicy.Evals.Counting;
 using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Evals.Metrics;
-using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Evals.Replay;
 using SemanticPolicy.Protocol;
 
@@ -311,7 +310,7 @@ public sealed class ExampleDatasetsTests
         Regex longToken = new(@"(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{40,}");
 
         // By extension: on a case-insensitive file system this folder is also the one that holds the dataset
-        // reader's source files.
+        // filters' source files.
         string[] files =
         [
             .. Directory.GetFiles(datasets, "*", SearchOption.AllDirectories)

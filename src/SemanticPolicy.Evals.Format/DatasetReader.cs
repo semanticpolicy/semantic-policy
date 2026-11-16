@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace SemanticPolicy.Evals.Datasets;
+namespace SemanticPolicy.Evals.Format;
 
 /// <summary>
 /// Reads dataset schema v0: one JSON object per line with <c>id</c>, <c>input</c>, <c>label</c> and an
@@ -22,7 +22,7 @@ public static class DatasetReader
 
     /// <summary>Reads the whole file. Blank lines are skipped but counted, so line numbers match an editor.</summary>
     /// <param name="path">The file to read.</param>
-    /// <exception cref="EvalsException">The file cannot be read, or a row is malformed; the message says where.</exception>
+    /// <exception cref="EvalsFormatException">The file cannot be read, or a row is malformed; the message says where.</exception>
     public static Dataset Read(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -33,7 +33,7 @@ public static class DatasetReader
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            throw new EvalsException($"Dataset '{path}' cannot be read: {e.Message}");
+            throw new EvalsFormatException($"Dataset '{path}' cannot be read: {e.Message}");
         }
 
         string sha256 = Convert.ToHexStringLower(SHA256.HashData(bytes));
@@ -91,12 +91,11 @@ public static class DatasetReader
                 }
             }
 
-            return new DatasetRow(
-                id,
-                line,
-                ReadInput(path, line, id, root),
-                ReadLabel(path, line, id, root),
-                ReadMetadata(path, line, id, root));
+            return new DatasetRow(id, ReadInput(path, line, id, root), ReadLabel(path, line, id, root))
+            {
+                Metadata = ReadMetadata(path, line, id, root),
+                Line = line,
+            };
         }
     }
 
@@ -201,11 +200,11 @@ public static class DatasetReader
         return values;
     }
 
-    private static EvalsException Fail(string path, int line, string? id, string error)
+    private static EvalsFormatException Fail(string path, int line, string? id, string error)
     {
         string where = id is null
             ? $"Dataset '{path}', line {line}"
             : $"Dataset '{path}', line {line}, id '{id}'";
-        return new EvalsException($"{where}: {error}");
+        return new EvalsFormatException($"{where}: {error}");
     }
 }

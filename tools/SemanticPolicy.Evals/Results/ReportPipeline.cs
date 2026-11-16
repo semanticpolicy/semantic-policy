@@ -1,8 +1,8 @@
+using SemanticPolicy.Evals.Cli;
 using SemanticPolicy.Evals.Counting;
 using SemanticPolicy.Evals.Curves;
 using SemanticPolicy.Evals.Datasets;
 using SemanticPolicy.Evals.Metrics;
-using SemanticPolicy.Evals.Recordings;
 using SemanticPolicy.Evals.Replay;
 
 namespace SemanticPolicy.Evals.Results;
@@ -91,7 +91,7 @@ public static class ReportPipeline
         return new EvalsResult(
             EvalsResult.FormatV0,
             verb,
-            RecordingHeader.CurrentToolVersion,
+            EvalsCli.ToolVersion,
             DateTimeOffset.UtcNow,
             inputs.Policy.Id,
             inputs.Policy.Mode,

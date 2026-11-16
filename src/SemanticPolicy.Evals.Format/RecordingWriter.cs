@@ -2,7 +2,7 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 
-namespace SemanticPolicy.Evals.Recordings;
+namespace SemanticPolicy.Evals.Format;
 
 /// <summary>
 /// Writes a recording: the header, then one line per row. Each row is flushed as it is written, so a run
@@ -34,7 +34,7 @@ public sealed class RecordingWriter : IAsyncDisposable
     /// <param name="path">Where the recording goes.</param>
     /// <param name="header">The header line.</param>
     /// <param name="cancellationToken">Cancels the write.</param>
-    /// <exception cref="EvalsException">The file cannot be written; the message names the path.</exception>
+    /// <exception cref="EvalsFormatException">The file cannot be written; the message names the path.</exception>
     public static async Task<RecordingWriter> CreateAsync(
         string path,
         RecordingHeader header,
@@ -49,7 +49,7 @@ public sealed class RecordingWriter : IAsyncDisposable
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            throw new EvalsException($"Recording '{path}' cannot be written: {e.Message}");
+            throw new EvalsFormatException($"Recording '{path}' cannot be written: {e.Message}");
         }
 
         RecordingWriter writer = new(stream, path);
@@ -71,7 +71,7 @@ public sealed class RecordingWriter : IAsyncDisposable
     /// <summary>Appends one row and flushes it.</summary>
     /// <param name="row">The row's results, already keyed by rule and provider.</param>
     /// <param name="cancellationToken">Cancels the write.</param>
-    /// <exception cref="EvalsException">The row cannot be written; the message names the path and the row.</exception>
+    /// <exception cref="EvalsFormatException">The row cannot be written; the message names the path and the row.</exception>
     public Task WriteAsync(RecordedRow row, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -85,7 +85,7 @@ public sealed class RecordingWriter : IAsyncDisposable
     /// <param name="path">The recording.</param>
     /// <param name="header">The header that takes the first line's place.</param>
     /// <param name="cancellationToken">Cancels the rewrite.</param>
-    /// <exception cref="EvalsException">The file cannot be rewritten; the message names the path.</exception>
+    /// <exception cref="EvalsFormatException">The file cannot be rewritten; the message names the path.</exception>
     public static async Task ReplaceHeaderAsync(string path, RecordingHeader header, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -102,7 +102,7 @@ public sealed class RecordingWriter : IAsyncDisposable
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            throw new EvalsException($"Recording '{path}': the header cannot be rewritten: {e.Message}");
+            throw new EvalsFormatException($"Recording '{path}': the header cannot be rewritten: {e.Message}");
         }
     }
 
@@ -121,7 +121,7 @@ public sealed class RecordingWriter : IAsyncDisposable
         catch (IOException e)
         {
             string what = rowId is null ? "the header" : $"row '{rowId}'";
-            throw new EvalsException($"Recording '{_path}': {what} cannot be written: {e.Message}");
+            throw new EvalsFormatException($"Recording '{_path}': {what} cannot be written: {e.Message}");
         }
     }
 }
