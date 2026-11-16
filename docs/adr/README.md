@@ -28,6 +28,8 @@ belongs here.
   policy declares its failure behaviour, and Shadow and Enforce both ship.
 - [0008](0008-telemetry-and-content-logging.md) — Telemetry carries metadata only; logging the
   judged content is an explicit opt-in.
+  [0025](0025-a-policy-digest-names-exactly-one-policy.md) clarifies it: a policy is configuration,
+  not judged content, so its digest is a tag by default.
 - [0009](0009-normalization-layer-deferred-to-calibration.md) — The normalization layer has no type
   of its own until a calibration layer produces it.
   [0019](0019-calibration-is-data-on-a-boolean-operating-point.md) answers it: the calibration adds
@@ -89,6 +91,9 @@ belongs here.
 - [0024](0024-mcp-gateway-acts-through-the-operators-mapping.md) — The MCP gateway proxies one stdio
   server at one MCP revision, screens its tool results and definitions, acts only through its
   operator's mapping, and writes no content.
+- [0025](0025-a-policy-digest-names-exactly-one-policy.md) — A policy's digest is SHA-256 over the
+  RFC 8785 form of its JSON, written `sha256:<hex>` and stable across library versions; every verdict
+  carries it, and only the evaluation span is tagged with it.
 - [0026](0026-evaluation-formats-are-a-package-and-a-recording-may-be-an-export.md) — The
   evaluation formats ship as the `SemanticPolicy.Evals.Format` package and stay `v0`; a dataset row
   may carry its own Choice options, and a recording exported from stored verdicts names its source,
